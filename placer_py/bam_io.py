@@ -1,0 +1,214 @@
+"""
+Reading the BAM: a streaming reader, an indexed fetch, and a region scope.
+
+Ported from `include/bam_io.h`, `src/stream/bam_io.cpp` and
+`src/denovo/indexed_bam_reader.cpp`, pinned by
+`tests/test_31_outputs.py`.
+
+TWO ACCESS PATTERNS, and the pipeline needs both. The scan STREAMS the whole
+file once in order, which is the only affordable way to touch six million reads.
+The local stages then FETCH small intervals around candidates, which needs an
+index. The C++ opens the file twice for exactly this reason -- one handle
+positioned by the stream, one by the fetch -- and the Python reader does the
+same through pysam.
+
+THE FILTER IS APPLIED AT THE SOURCE. Secondary and unmapped records never reach
+any handler. That is not an optimisation: a secondary alignment is the same read
+placed somewhere else, and letting one through would let a single read support
+two loci. Supplementary records DO pass here and are filtered per stage, because
+the fragment extractor genuinely needs them.
+
+`pysam` IS IMPORTED LAZILY. The decision layer needs no BAM at all, and making a
+compiled dependency a hard import would put it in front of the half of the
+package that does not use it.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+from typing import Callable, Iterator
+
+from placer_py.alignment import AlignedRead, read_from_pysam
+from placer_py.config import BamRegionScope
+
+#: SAM flags filtered at the source.
+FLAG_UNMAP = 0x4
+FLAG_SECONDARY = 0x100
+
+
+def normalize_region_scope(scope: BamRegionScope) -> BamRegionScope:
+    """Make a region scope self-consistent, or disable it.
+
+    An enabled scope with no contig is DISABLED rather than raising -- the
+    caller asked for "everything on nothing", which is most likely a default
+    left set, and refusing the run for it would be unhelpful. A negative start
+    clamps to 0, and an end at or before the start becomes `start + 1` so the
+    interval is never empty.
+    """
+    if not scope.enabled:
+        return scope
+    if not scope.chrom:
+        scope.enabled = False
+        return scope
+    scope.start = max(0, scope.start)
+    if scope.end > 0 and scope.end <= scope.start:
+        scope.end = scope.start + 1
+    return scope
+
+
+@dataclass
+class BamReadStats:
+    total: int = 0
+    skipped_secondary: int = 0
+    skipped_unmapped: int = 0
+
+
+class BamStreamReader:
+    """A pysam-backed reader with the `BamStreamReader` surface.
+
+    Holds TWO handles when the file is indexed -- see the module docstring --
+    and falls back to a stream-only reader when it is not, which is the correct
+    behaviour for a name-sorted or streamed input: the scan still works, and the
+    local stages that need `fetch` are told they cannot have it rather than
+    getting silently wrong answers.
+    """
+
+    def __init__(self, bam_path: str, decompression_threads: int = 2,
+                 region_scope: BamRegionScope | None = None) -> None:
+        import pysam  # noqa: F401  (lazy: the decision layer needs no BAM)
+
+        self.bam_path = bam_path
+        self.region_scope = normalize_region_scope(region_scope or BamRegionScope())
+        self.stats = BamReadStats()
+        self._pysam = pysam
+        self._stream = pysam.AlignmentFile(bam_path, "rb",
+                                           threads=max(1, decompression_threads))
+        self._fetch = None
+        try:
+            if self._stream.has_index():
+                self._fetch = pysam.AlignmentFile(bam_path, "rb",
+                                                  threads=max(1, decompression_threads))
+        except (ValueError, OSError):
+            self._fetch = None
+
+    # ------------------------------------------------------------- metadata
+    def is_valid(self) -> bool:
+        return self._stream is not None
+
+    def chromosome_count(self) -> int:
+        return self._stream.nreferences
+
+    def chromosome_name(self, tid: int) -> str:
+        if tid < 0 or tid >= self._stream.nreferences:
+            return ""
+        return self._stream.get_reference_name(tid)
+
+    def chromosome_length(self, tid: int) -> int:
+        if tid < 0 or tid >= self._stream.nreferences:
+            return 0
+        return self._stream.lengths[tid]
+
+    def can_fetch(self) -> bool:
+        return self._fetch is not None
+
+    # ------------------------------------------------------------- reading
+    def _keep(self, record) -> bool:
+        if record.flag & FLAG_SECONDARY:
+            self.stats.skipped_secondary += 1
+            return False
+        if record.flag & FLAG_UNMAP:
+            self.stats.skipped_unmapped += 1
+            return False
+        return True
+
+    def stream(self, progress: Callable[[int, int], bool] | None = None,
+               progress_interval: int = 100000) -> Iterator[AlignedRead]:
+        """Every usable record, in file order, as `AlignedRead`s.
+
+        A generator rather than a callback: the C++ has to pass a handler
+        because it owns the record memory, and Python does not. The progress
+        callback is kept because it can ABORT the scan by returning False, which
+        a generator's consumer cannot do from outside.
+        """
+        source = (self._stream.fetch(self.region_scope.chrom,
+                                     self.region_scope.start,
+                                     self.region_scope.end if self.region_scope.end > 0 else None)
+                  if (self.region_scope.enabled and self.can_fetch())
+                  else self._stream.fetch(until_eof=True))
+        processed = 0
+        last_progress = 0
+        for record in source:
+            if not self._keep(record):
+                continue
+            self.stats.total += 1
+            processed += 1
+            yield read_from_pysam(record)
+            if progress is not None and progress_interval > 0 and (
+                    processed - last_progress) >= progress_interval:
+                last_progress = processed
+                if not progress(processed, int(record.reference_id)):
+                    return
+
+    def fetch(self, chrom: str, start: int, end: int) -> list[AlignedRead]:
+        """Records overlapping one interval, or [] when there is no index.
+
+        Returning an empty list rather than raising matches the C++'s `can_fetch`
+        contract: the caller is expected to have checked, and a run on an
+        unindexed BAM should degrade to the scan-only stages rather than abort.
+        """
+        if self._fetch is None:
+            return []
+        return [read_from_pysam(record)
+                for record in self._fetch.fetch(chrom, max(0, start), end)
+                if self._keep(record)]
+
+    def close(self) -> None:
+        for handle in (self._stream, self._fetch):
+            if handle is not None:
+                handle.close()
+        self._stream = None
+        self._fetch = None
+
+    def __enter__(self) -> "BamStreamReader":
+        return self
+
+    def __exit__(self, *exc_info) -> None:
+        self.close()
+
+
+def make_bam_reader(bam_path: str, decompression_threads: int = 2,
+                    region_scope: BamRegionScope | None = None) -> BamStreamReader:
+    return BamStreamReader(bam_path, decompression_threads, region_scope)
+
+
+class ReferenceFetcher:
+    """Reference sequence by interval, for the TSD detector and segmentation.
+
+    Uppercased on the way out, because every consumer compares against
+    uppercased read bases and a reference with soft-masked (lower-case) repeats
+    would otherwise mismatch at exactly the loci this caller is about.
+    """
+
+    def __init__(self, fasta_path: str) -> None:
+        import pysam  # noqa: F401
+
+        self._fasta = pysam.FastaFile(fasta_path)
+
+    def can_fetch_reference(self) -> bool:
+        return self._fasta is not None
+
+    def fetch_window(self, chrom: str, start: int, end: int) -> str:
+        if self._fasta is None or not chrom or end <= start:
+            return ""
+        try:
+            return self._fasta.fetch(chrom, max(0, start), end).upper()
+        except (KeyError, ValueError):
+            # An unknown contig or an out-of-range interval is a MISSING window,
+            # not an error: the caller's own `if not window` branch reports it
+            # as REFERENCE_WINDOW_FETCH_FAILED, which is the right verdict.
+            return ""
+
+    def close(self) -> None:
+        if self._fasta is not None:
+            self._fasta.close()
+            self._fasta = None

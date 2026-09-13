@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "placer-py"
+version = "0.1.0"
+description = "Python port of the PLACER pipeline: BAM to TE insertion calls, constrained by golden vectors from the C++ implementation"
+readme = "README.md"
+# 3.9 works and is what the suite is run on: every module uses
+# `from __future__ import annotations`, so the `X | Y` syntax throughout is
+# never evaluated at runtime.
+requires-python = ">=3.9"
+keywords = ["transposable-element", "long-read", "structural-variant", "bioinformatics"]
+classifiers = [
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    "numpy>=1.24",
+]
+
+[project.urls]
+Homepage = "https://github.com/lifelix1209/placer-py"
+"Reference implementation" = "https://github.com/lifelix1209/PLACER"
+
+[project.scripts]
+placer-py = "placer_py.main:main"
+
+[project.optional-dependencies]
+# The decision layer needs nothing but numpy: `placer_py.finalization` and
+# everything it imports run on a ledger alone, which is why these are optional
+# rather than required.
+#
+#   pysam    reading the BAM and the indexed reference
+#   pyabpoa  the event consensus -- see placer_py/consensus.py for why there is
+#            no pure-Python fallback
+#
+# BLAST+ (blastn, makeblastdb) is also needed for the TE alignment, and is not
+# a Python package: it has to be on PATH, or `te_blastn_path` set.
+scan = ["pysam>=0.22", "pyabpoa>=1.4"]
+dev = ["pytest>=7.4"]
+
+[tool.setuptools.packages.find]
+include = ["placer_py*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# The suite imports `placer_py` and the tests import each other's helpers via
+# conftest, so both the root and tests/ have to be importable.
+pythonpath = [".", "tests"]
+# -r s prints the skip reasons, which is how any remaining migration surface is
+# read off the suite: every skip is one unported function.
+addopts = "-q -r s --strict-markers"
+markers = [
+    "golden: asserts equality against a vector frozen from the C++ implementation",
+    "invariant: asserts a mathematical property that any implementation must satisfy",
+    "regression: pins a bug that was found and fixed, so it cannot come back",
+    "contract: pins the ledger schema, i.e. the seam between the two languages",
+]
