@@ -171,6 +171,8 @@ tests/
   test_30_call_selection.py  one call per component, the interval cache
   test_31_outputs.py    triage, posterior, output contracts, the CLI
   test_32_pipeline.py   THE end-to-end acceptance test, and de novo
+  redesign/             the redesign's own unittest suite; needs pysam, and is
+                        skipped without it (tests/redesign/conftest.py)
   oracle/cpp_reference.json      frozen from the C++
 tools/
   dump_oracle.cpp                generates the golden vectors
