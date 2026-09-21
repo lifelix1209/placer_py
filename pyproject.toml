@@ -12,14 +12,23 @@ readme = "README.md"
 # never evaluated at runtime.
 requires-python = ">=3.9"
 keywords = ["transposable-element", "long-read", "structural-variant", "bioinformatics"]
+license = "MIT"
+license-files = ["LICENSE"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
     "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
     "Topic :: Scientific/Engineering :: Bio-Informatics",
 ]
-dependencies = [
-    "numpy>=1.24",
-]
+# Empty, and that is the point: nothing in the decision layer imports a third-
+# party package. `numpy` was declared here and imported nowhere -- removing it
+# is what makes the `no-dependencies` CI job's claim true end to end.
+dependencies = []
 
 [project.urls]
 Homepage = "https://github.com/lifelix1209/placer-py"
@@ -52,7 +61,18 @@ testpaths = ["tests"]
 pythonpath = [".", "tests"]
 # -r s prints the skip reasons, which is how any remaining migration surface is
 # read off the suite: every skip is one unported function.
-addopts = "-q -r s --strict-markers"
+# --import-mode=importlib is REQUIRED, not a preference. There are two
+# conftest.py files (tests/ and tests/redesign/). Under the default "prepend"
+# mode both are registered in sys.modules under the basename `conftest`, so
+# whichever loads second wins and the 28 test files doing
+# `from conftest import call_or_skip, close` get the wrong one -- 28 collection
+# errors, which is why the pytest CI job had never passed. importlib mode
+# derives a unique module name from each path.
+#
+# --strict-config turns an unknown ini key into an error. Without it a typo'd
+# option is a warning that scrolls past, which is exactly how the line above
+# was first written wrong (as a bare `importmode =` key) and silently ignored.
+addopts = "-q -r s --strict-markers --strict-config --import-mode=importlib"
 markers = [
     "golden: asserts equality against a vector frozen from the C++ implementation",
     "invariant: asserts a mathematical property that any implementation must satisfy",

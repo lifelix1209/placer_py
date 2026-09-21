@@ -27,6 +27,7 @@ import os
 import sys
 from dataclasses import dataclass
 
+from placer_py import __version__
 from placer_py.config import BamRegionScope, FinalReportMode, PipelineConfig
 
 #: `PLACER_*` environment overrides, and the config field each sets. The C++
@@ -155,6 +156,9 @@ def apply_environment_config(config: PipelineConfig,
 
 def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="placer", usage=USAGE, add_help=True)
+    parser.add_argument("--version", action="version",
+                        version=f"placer-py {__version__}",
+                        help="print the version and exit")
     parser.add_argument("--region", default=None,
                         help="restrict the scan to chrom or chrom:start-end (1-based)")
     parser.add_argument("--final-fdr-q", type=float, default=None,
