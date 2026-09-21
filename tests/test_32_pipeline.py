@@ -89,7 +89,34 @@ def test_a_read_belongs_to_the_bin_of_its_start():
 
 def test_a_contig_change_always_starts_a_new_bin():
     reads = [AlignedRead(qname="a", tid=0, pos=0), AlignedRead(qname="b", tid=1, pos=0)]
-    assert len(group_reads_into_bins(reads, 10000)) == 2
+    assert len(list(group_reads_into_bins(reads, 10000))) == 2
+
+
+def test_binning_yields_each_bin_before_reading_the_next():
+    """The streaming property, pinned so it cannot regress into a list.
+
+    `group_reads_into_bins` must hand a bin over as soon as a read with a
+    different key arrives, rather than accumulating every bin first: each
+    AlignedRead holds its full sequence, so materialising the whole scan is
+    what made a 10 Mb region of ultra-long ONT take 2.2 GB. Consuming from a
+    generator that records how far the source has advanced is the only way to
+    observe the difference from outside.
+    """
+    reads = [AlignedRead(qname="a", tid=0, pos=5),
+             AlignedRead(qname="b", tid=0, pos=10005),
+             AlignedRead(qname="c", tid=0, pos=20005)]
+    consumed = []
+
+    def source():
+        for read in reads:
+            consumed.append(read.qname)
+            yield read
+
+    bins = group_reads_into_bins(source(), 10000)
+    first = next(bins)
+    assert [r.qname for r in first[2]] == ["a"]
+    # "b" had to be read to close bin 0; "c" must NOT have been.
+    assert consumed == ["a", "b"], consumed
 
 
 # ------------------------------------------------------------- end to end

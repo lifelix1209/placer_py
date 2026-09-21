@@ -43,7 +43,7 @@ calls, genotype calls) are kept because they appear in `scientific.txt`.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Iterator
 
 from placer_py import breakpoints as bp_module
 from placer_py import call_selection as selection_module
@@ -102,7 +102,7 @@ def _bin_index_for(read: AlignedRead, bin_size: int) -> int:
 
 
 def group_reads_into_bins(reads: Iterable[AlignedRead], bin_size: int
-                          ) -> list[tuple[int, int, list[AlignedRead]]]:
+                          ) -> Iterator[tuple[int, int, list[AlignedRead]]]:
     """Group a stream into `(tid, bin_index, reads)`, in order.
 
     A read belongs to the bin of its START. A long read spanning several bins is
@@ -110,16 +110,28 @@ def group_reads_into_bins(reads: Iterable[AlignedRead], bin_size: int
     windowing stage allows candidate windows to extend `WINDOW_BIN_SLACK_BP`
     past the bin edge, and why components are filtered by ANCHOR position
     afterwards rather than by read overlap.
+
+    A GENERATOR, which the coordinate-sorted input is what makes possible: a
+    bin is complete the moment a read with a different key arrives, so it can
+    be handed over and dropped instead of accumulated. This used to return a
+    list of every bin, which -- together with the caller draining the read
+    stream into a list first -- meant the whole scanned region was resident as
+    Python objects. On a 10 Mb region of ultra-long ONT that was 2.2 GB and
+    thrashing; each AlignedRead holds its full `seq`, and 31,773 UL reads carry
+    ~590 Mbp between them.
     """
-    bins: list[tuple[int, int, list[AlignedRead]]] = []
     current_key: tuple[int, int] | None = None
+    batch: list[AlignedRead] = []
     for read in reads:
         key = (read.tid, _bin_index_for(read, bin_size))
-        if current_key is None or key != current_key:
-            bins.append((key[0], key[1], []))
+        if current_key is None:
             current_key = key
-        bins[-1][2].append(read)
-    return bins
+        elif key != current_key:
+            yield current_key[0], current_key[1], batch
+            current_key, batch = key, []
+        batch.append(read)
+    if current_key is not None:
+        yield current_key[0], current_key[1], batch
 
 
 def _summary_ledger_row(component: ComponentCall, summary: hyp_module.HypothesisSummary,
@@ -692,17 +704,25 @@ def run_pipeline(reads: Iterable[AlignedRead], chromosome_name: Callable[[int], 
     bin_size = max(1, config.bin_size)
 
     gate_config = Gate1SignalConfig()
-    kept: list[AlignedRead] = []
-    for read in reads:
-        result.total_reads += 1
-        nm = read.get_int_tag("NM")
-        if not pass_preliminary(read.cigar, read.flag, read.seq_len, read.mapq,
-                                read.has_sa_tag(), nm, gate_config):
-            continue
-        result.gate1_passed += 1
-        kept.append(read)
 
-    for tid, bin_index, bin_reads in group_reads_into_bins(kept, bin_size):
+    def gated(stream: Iterable[AlignedRead]) -> Iterator[AlignedRead]:
+        """Gate-1 as a filter rather than a materialising pass.
+
+        The counters are incremented here, so they are only final once the
+        stream has been fully consumed -- which it has by the time
+        `finalize_final_calls` runs below.
+        """
+        for read in stream:
+            result.total_reads += 1
+            nm = read.get_int_tag("NM")
+            if not pass_preliminary(read.cigar, read.flag, read.seq_len,
+                                    read.mapq, read.has_sa_tag(), nm,
+                                    gate_config):
+                continue
+            result.gate1_passed += 1
+            yield read
+
+    for tid, bin_index, bin_reads in group_reads_into_bins(gated(reads), bin_size):
         process_bin_records(bin_reads, chromosome_name(tid), tid,
                             bin_index * bin_size, (bin_index + 1) * bin_size,
                             config, hooks, result, fetch_local)
