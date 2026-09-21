@@ -10,8 +10,8 @@ reach.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import finalization as F
 from placer_py import hypotheses as H
 from placer_py import main as M
@@ -23,7 +23,7 @@ from placer_py.clustering import (
     BreakpointCandidate,
     ComponentCall,
 )
-from placer_py.config import BamRegionScope, FinalReportMode, PipelineConfig
+from placer_py.config import FinalReportMode, PipelineConfig
 from placer_py.events import EventReadEvidence
 from placer_py.ledger import EvidenceLedgerRow, FinalCall
 
@@ -200,14 +200,13 @@ def test_the_shortlist_keeps_a_distinct_challenger_but_not_a_duplicate():
     not. "Distinct" is a DISJUNCTION of position and support.
     """
     def candidate(index, bp_left, qnames):
-        evidence = H.collect_hypothesis_validator_evidence(
+        return H.collect_hypothesis_validator_evidence(
             summary(original_index=index, bp_left=bp_left, bp_right=bp_left + 12,
                     support_qnames=qnames, alt_split_reads=1),
             H.ConsensusInputCounts(full_context_input_reads=2,
                                    left_anchor_input_reads=2,
                                    right_anchor_input_reads=2, input_event_reads=2),
             1000)
-        return evidence
 
     shared = ["a", "b", "c", "d"]
     duplicate = [candidate(0, 1000, shared), candidate(1, 1010, shared)]

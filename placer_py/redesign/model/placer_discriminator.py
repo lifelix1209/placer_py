@@ -481,7 +481,6 @@ def te_alignment_log_support(te_alignment: TeAlignmentEvidence) -> float:
 def evaluate_local_hypothesis_posterior(evidence: DiscriminatorEvidence) -> LocalHypothesisPosterior:
     existence = evidence.existence
     segmentation = evidence.segmentation
-    te_alignment = evidence.te_alignment
     boundary = evidence.boundary
     segmental = evidence.segmental
     alt = max(0, existence.alt_struct_reads)
@@ -661,7 +660,7 @@ def evaluate_robust_local_fdr(
 
     # Point posterior LFDR (plug-in).
     denom = _logsumexp3(ell_te, ell_non, ell_art)
-    post_te = math.exp(ell_te - denom)
+    math.exp(ell_te - denom)
     post_non = math.exp(ell_non - denom)
     post_art = math.exp(ell_art - denom)
     lfdr = _clamp(post_non + post_art, 0.0, 1.0)

@@ -385,8 +385,7 @@ def evaluate_robust_lfdr(certificate: Certificate, prior: dict | None = None,
 def serialize_blocks(certificate: Certificate) -> str:
     if not certificate.blocks:
         return "NA"
-    parts = []
-    for b in certificate.blocks:
-        parts.append(f"{b.name}:raw={b.raw_signal},te_art={b.te_vs_artifact},"
-                     f"te_non={b.te_vs_non_te},amb={b.ambiguity_width}")
+    parts = [f"{b.name}:raw={b.raw_signal},te_art={b.te_vs_artifact},"
+             f"te_non={b.te_vs_non_te},amb={b.ambiguity_width}"
+             for b in certificate.blocks]
     return ";".join(parts)

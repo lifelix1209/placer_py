@@ -1,11 +1,10 @@
 from __future__ import annotations
 
 import csv
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Iterable
 
 from placer_py.redesign.models import TeExplanation
-
 
 LEDGER_FIELDS = [
     "candidate_id",

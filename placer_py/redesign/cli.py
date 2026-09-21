@@ -9,13 +9,20 @@ from placer_py.redesign.candidates.sniffles_vcf import iter_sniffles_insertions
 from placer_py.redesign.evidence.bam_local import collect_bam_evidence_from_handle
 from placer_py.redesign.evidence.reference_boundary import collect_reference_evidence
 from placer_py.redesign.evidence.segmental_explanation import build_segmental_explanation
-from placer_py.redesign.evidence.sequence import best_kmer_te_hit, build_te_kmer_index, read_fasta_records, sequence_features
+from placer_py.redesign.evidence.sequence import (
+    best_kmer_te_hit,
+    build_te_kmer_index,
+    read_fasta_records,
+    sequence_features,
+)
 from placer_py.redesign.evidence.te_alignment import read_te_besthits, segmental_from_record
 from placer_py.redesign.io import write_ledger
-from placer_py.redesign.model.placer_discriminator import build_discriminator_evidence, evaluate_joint_hypotheses
+from placer_py.redesign.model.placer_discriminator import (
+    build_discriminator_evidence,
+    evaluate_joint_hypotheses,
+)
 from placer_py.redesign.model.te_explainer import explain_candidate
 from placer_py.redesign.models import BamEvidence, TeExplanation
-
 
 MIN_REFERENCE_TRIMMED_MODEL_SEQUENCE_LEN = 17
 

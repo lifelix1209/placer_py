@@ -41,7 +41,7 @@ second kind.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from enum import IntEnum
 
 from placer_py.alignment import (
@@ -55,8 +55,8 @@ from placer_py.alignment import (
     SAEntryWithQuality,
     compute_ref_end,
     consumes_query,
-    consumes_ref,
     consumes_query_char,
+    consumes_ref,
     consumes_ref_char,
     find_first_non_hard_clip,
     find_last_non_hard_clip,

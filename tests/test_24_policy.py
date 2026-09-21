@@ -13,8 +13,8 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import policy as P
 from placer_py.te_classifier import TEAlignmentEvidence
 
@@ -659,12 +659,52 @@ def test_a_clean_non_te_insertion_passes_the_structural_gate():
 
 
 def test_reference_conflict_can_close_the_structural_gate():
-    posterior = P.LocalHypothesisPosterior(te=0.05, non_te=0.92, artifact=0.03)
-    args = (some_executed := some_existence(alt_struct_reads=20, ref_span_reads=2,
-                                            gq=60),
-            closed_segmentation(), make_boundary(), posterior)
+    """And only within 1.20 nats of the bar, which is the point.
+
+    REGRESSION, and the bug was in the test. This previously read
+
+        assert not P.should_emit_structural_event_call(*args, 1.0, True) or True
+
+    which is vacuously true -- `X or True` can never fail -- over a case
+    (artifact=0.03, alt=20, ref=2, gq=60) where the gate does NOT close. So
+    the assertion was hiding the fact that its own premise was false at that
+    evidence strength.
+
+    The claim is true, but it is quantitative rather than absolute.
+    `ref_conflict_penalty` is `1.20 * clamp01(signal)`, subtracted from an
+    evidence total compared against `STRUCTURAL_LOG_EVIDENCE = 2.0`. So a
+    saturated conflict can only overturn a call sitting within 1.20 nats of
+    the bar. At artifact=0.03 the odds term alone is log(0.97/0.03) = 3.48 and
+    nothing the conflict signal can do will close it; at artifact=0.25 it is
+    1.10 and the penalty decides.
+    """
+    near_the_bar = P.LocalHypothesisPosterior(te=0.05, non_te=0.70, artifact=0.25)
+    args = (some_existence(alt_struct_reads=3, ref_span_reads=2, gq=25),
+            closed_segmentation(), make_boundary(), near_the_bar)
     assert P.should_emit_structural_event_call(*args, 0.0, True)
-    assert not P.should_emit_structural_event_call(*args, 1.0, True) or True
+    assert not P.should_emit_structural_event_call(*args, 1.0, True)
+
+    # Far from the bar the same saturated conflict must NOT close it, or the
+    # penalty would be acting as a veto rather than as evidence.
+    far_above = P.LocalHypothesisPosterior(te=0.05, non_te=0.92, artifact=0.03)
+    strong = (some_existence(alt_struct_reads=20, ref_span_reads=2, gq=60),
+              closed_segmentation(), make_boundary(), far_above)
+    assert P.should_emit_structural_event_call(*strong, 1.0, True)
+
+
+def test_reference_conflict_is_monotone():
+    """More conflict never makes a call MORE likely.
+
+    The penalty is linear in the signal, so this is arithmetic rather than a
+    discovery -- but it is the property the gate would silently lose if the
+    term were ever moved to the other side of the subtraction.
+    """
+    posterior = P.LocalHypothesisPosterior(te=0.05, non_te=0.70, artifact=0.25)
+    args = (some_existence(alt_struct_reads=3, ref_span_reads=2, gq=25),
+            closed_segmentation(), make_boundary(), posterior)
+    emitted = [P.should_emit_structural_event_call(*args, signal / 10.0, True)
+               for signal in range(11)]
+    assert emitted == sorted(emitted, reverse=True), emitted
 
 
 # ---------------------------------------------------- context-conditioned prior

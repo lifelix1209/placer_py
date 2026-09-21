@@ -50,7 +50,7 @@ picking one -- see `is_one_sided_segmentation_pass` here and
 from __future__ import annotations
 
 import math
-from dataclasses import asdict, dataclass, field
+from dataclasses import dataclass, field
 from enum import IntEnum
 
 from placer_py import blocks as blocks_module
@@ -59,7 +59,6 @@ from placer_py.explanation import (
     EventExplanation,
     ExplanationDecision,
     ExplanationKind,
-    ExplanationResidual,
     compare_event_explanations,
     explanation_kind_name,
     serialize_explanation_path,

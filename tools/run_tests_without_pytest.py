@@ -98,9 +98,7 @@ def _build_pytest_stub() -> types.ModuleType:
         def __exit__(self, exc_type, exc, tb):
             if exc_type is None:
                 raise Failed(f"expected {self.expected.__name__}, nothing raised")
-            if not issubclass(exc_type, self.expected):
-                return False
-            return True
+            return issubclass(exc_type, self.expected)
 
     def raises(expected):
         return _Raises(expected)
@@ -170,7 +168,7 @@ def run_module(path: Path, oracle: dict) -> tuple[int, int, int, int, list[str]]
         wants_oracle = "oracle" in fn.__code__.co_varnames[:fn.__code__.co_argcount]
         try:
             fn(oracle) if wants_oracle else fn()
-        except Skipped as exc:
+        except Skipped:
             skipped += 1
             continue
         except (AssertionError, Failed, Exception) as exc:  # noqa: BLE001

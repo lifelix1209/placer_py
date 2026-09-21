@@ -520,9 +520,8 @@ def build_component_calls(records: list[AlignedRead], chrom: str,
         noise = collect_noise_indices(indices, clusters)
         if noise:
             clusters.extend(dbscan_cluster_indices(signatures, noise, WEAK_MIN_PTS))
-        for cluster in clusters:
-            if cluster:
-                out.append(project_cluster(signatures, cluster, chrom, tid))
+        out.extend(project_cluster(signatures, cluster, chrom, tid)
+                   for cluster in clusters if cluster)
 
     out.sort(key=lambda c: (c.anchor_pos, -c.peak_weight, -len(c.read_indices)))
     return out

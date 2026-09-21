@@ -542,8 +542,8 @@ def build_local_fragment_component(component, local_records: list[AlignedRead],
     """
     import copy
 
-    from placer_py.breakpoints import robust_local_split_insertion_positions
     from placer_py.alignment import CIGAR_I, CIGAR_S
+    from placer_py.breakpoints import robust_local_split_insertion_positions
     from placer_py.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ
 
     local = copy.copy(component)

@@ -9,8 +9,8 @@ function and pass every assertion over there.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import blocks
 
 pytestmark = pytest.mark.golden

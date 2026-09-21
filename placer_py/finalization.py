@@ -2012,7 +2012,6 @@ def promoted_call_from_ledger_row(row: EvidenceLedgerRow) -> FinalCall:
     does not have, and the widened one makes the uncertainty visible to the
     de-duplication that follows.
     """
-    import copy
 
     call = FinalCall()
     bilateral_partial_anchor_event = has_ref_unopposed_bilateral_partial_anchor_certificate(row)

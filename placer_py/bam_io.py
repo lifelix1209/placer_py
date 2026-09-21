@@ -25,8 +25,9 @@ package that does not use it.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Callable, Iterator
+from typing import Callable
 
 from placer_py.alignment import AlignedRead, read_from_pysam
 from placer_py.config import BamRegionScope
@@ -169,7 +170,7 @@ class BamStreamReader:
         self._stream = None
         self._fetch = None
 
-    def __enter__(self) -> "BamStreamReader":
+    def __enter__(self) -> BamStreamReader:
         return self
 
     def __exit__(self, *exc_info) -> None:

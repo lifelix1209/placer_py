@@ -10,8 +10,8 @@ these are among the few C++ tests that reach a pipeline helper directly.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import call_selection as S
 from placer_py import interval_cache as I
 from placer_py.alignment import AlignedRead

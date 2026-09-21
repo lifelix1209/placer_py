@@ -224,7 +224,7 @@ def edit_identity_if_at_least(lhs: str, rhs: str, max_edits: int) -> float | Non
     inf = max_edits + 1
     prev = [inf] * (m + 1)
     curr = [inf] * (m + 1)
-    for j in range(0, min(m, max_edits) + 1):
+    for j in range(min(m, max_edits) + 1):
         prev[j] = j
 
     # THE INNER LOOP IS 69% OF A REAL RUN, so it is written for the

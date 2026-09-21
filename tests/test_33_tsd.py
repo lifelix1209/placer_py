@@ -34,7 +34,6 @@ from __future__ import annotations
 import random
 
 import pytest
-
 from conftest import call_or_skip
 
 from placer_py.tsd import TsdConfig, detect, detect_from_insertion, fetcher_from_string

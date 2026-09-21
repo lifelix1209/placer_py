@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Optional
+from typing import Any
 
 
-def _fmt_float(value: Optional[float]) -> str:
+def _fmt_float(value: float | None) -> str:
     if value is None:
         return ""
     return f"{value:.6f}"
@@ -19,11 +19,11 @@ class InsertionCandidate:
     svlen: int
     filter: str
     support: int
-    stdev_pos: Optional[float] = None
-    stdev_len: Optional[float] = None
+    stdev_pos: float | None = None
+    stdev_len: float | None = None
     coverage: str = ""
     strand: str = ""
-    alt_sequence: Optional[str] = None
+    alt_sequence: str | None = None
     genotype: str = ""
     source: str = "sniffles2"
 
@@ -109,7 +109,7 @@ class TeExplanation:
     te_hit: TeHit
     sequence_features: SequenceFeatures
     bam_evidence: BamEvidence
-    discriminator: Optional[Any] = None
+    discriminator: Any | None = None
 
     def to_tsv_fields(self) -> dict[str, str]:
         row = {

@@ -13,8 +13,8 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import seqtools as S
 
 pytestmark = pytest.mark.invariant

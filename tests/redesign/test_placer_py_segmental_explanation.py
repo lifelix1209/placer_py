@@ -13,7 +13,6 @@ from placer_py.redesign.model.placer_discriminator import (
 )
 from placer_py.redesign.models import BamEvidence, InsertionCandidate, SequenceFeatures, TeHit
 
-
 TE_REFERENCE = (
     "ACGTTGCAATCGATCGGATCCTAGCTAGCATCGATCGTAGCTAGCTAGGCTAACGTGACAG"
     "TTCAGGCATGCATTAGCGCGATTACGATCGTTAGCCATGGTACCGATCGTACGATCGTAGC"

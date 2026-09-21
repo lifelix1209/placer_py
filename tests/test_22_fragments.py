@@ -13,8 +13,8 @@ fragment is right. These tests pin the boundaries, not just the counts.
 from __future__ import annotations
 
 import pytest
+from conftest import call_or_skip
 
-from conftest import call_or_skip, close
 from placer_py import clustering as C
 from placer_py import fragments as F
 from placer_py.alignment import CIGAR_D, CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead

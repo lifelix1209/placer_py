@@ -2,7 +2,13 @@ from __future__ import annotations
 
 import math
 
-from placer_py.redesign.models import BamEvidence, InsertionCandidate, SequenceFeatures, TeExplanation, TeHit
+from placer_py.redesign.models import (
+    BamEvidence,
+    InsertionCandidate,
+    SequenceFeatures,
+    TeExplanation,
+    TeHit,
+)
 
 
 def _softmax(scores: dict[str, float]) -> dict[str, float]:

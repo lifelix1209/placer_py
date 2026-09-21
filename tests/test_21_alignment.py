@@ -10,8 +10,8 @@ object costs one adapter and buys the whole layer a specification.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip
+
 from placer_py import alignment as A
 
 pytestmark = pytest.mark.invariant

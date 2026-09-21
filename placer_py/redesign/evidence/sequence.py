@@ -10,7 +10,7 @@ from placer_py.redesign.models import SequenceFeatures, TeHit
 def read_fasta_records(path: str | Path) -> dict[str, str]:
     records: dict[str, list[str]] = {}
     name: str | None = None
-    with open(path, "r", encoding="utf-8") as handle:
+    with open(path, encoding="utf-8") as handle:
         for line in handle:
             line = line.strip()
             if not line:
@@ -67,7 +67,7 @@ def _best_containment(query: str, reference: str) -> int:
     query = query.upper()
     reference = reference.upper()
     for size in range(len(query), 0, -1):
-        for start in range(0, len(query) - size + 1):
+        for start in range(len(query) - size + 1):
             if query[start : start + size] in reference:
                 return size
     return 0
@@ -110,7 +110,7 @@ def build_te_kmer_index(references: dict[str, str], k: int = 17) -> dict[str, se
         sequence = sequence.upper()
         if len(sequence) < k:
             continue
-        for start in range(0, len(sequence) - k + 1):
+        for start in range(len(sequence) - k + 1):
             index[sequence[start : start + k]].add(name)
     return dict(index)
 
@@ -134,7 +134,7 @@ def best_kmer_te_hit(
     reference_rank = {name: rank for rank, name in enumerate(references)}
     best_rank = len(reference_rank)
     for orientation, oriented_query in (("+", query), ("-", reverse_complement(query))):
-        kmers = {oriented_query[start : start + k] for start in range(0, len(oriented_query) - k + 1)}
+        kmers = {oriented_query[start : start + k] for start in range(len(oriented_query) - k + 1)}
         counts: Counter[str] = Counter()
         for kmer in sorted(kmers):
             for name in sorted(index.get(kmer, ()), key=lambda item: (reference_rank.get(item, len(reference_rank)), item)):

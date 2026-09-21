@@ -10,8 +10,8 @@ vote, the two slack bands, the clip partner rule -- are pinned directly.
 from __future__ import annotations
 
 import pytest
+from conftest import call_or_skip
 
-from conftest import call_or_skip, close
 from placer_py import clustering as C
 from placer_py import consensus as K
 from placer_py import events as E

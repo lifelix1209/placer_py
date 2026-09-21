@@ -50,7 +50,7 @@ resulting `bp_left == bp_right` as a blunt join.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable
 
 from placer_py.breakpoints import (
@@ -625,7 +625,7 @@ def segment_event_consensus(chrom: str, bp_left_in: int, bp_right_in: int,
                 return result
 
         if _allow_revcomp_retry and consensus.qc_reason != "PASS_EVENT_CONSENSUS_REVCOMP_RETRY":
-            reverse = EventConsensus(**{**consensus.__dict__})
+            reverse = EventConsensus(**consensus.__dict__)
             reverse.consensus_seq = reverse_complement(consensus.consensus_seq)
             reverse.consensus_len = len(reverse.consensus_seq)
             if reverse.consensus_seq and reverse.consensus_seq != consensus.consensus_seq:

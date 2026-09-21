@@ -10,8 +10,8 @@ turn on the anchor-proximal rescue.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import breakpoints as B
 from placer_py import clustering as C
 from placer_py import fragments as F
@@ -434,7 +434,7 @@ def _textbook_banded_levenshtein(lhs: str, rhs: str, max_edits: int):
         return None
     infinity = max_edits + 1
     previous = [infinity] * (m + 1)
-    for j in range(0, min(m, max_edits) + 1):
+    for j in range(min(m, max_edits) + 1):
         previous[j] = j
     for i in range(1, n + 1):
         current = [infinity] * (m + 1)

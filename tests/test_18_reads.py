@@ -9,8 +9,8 @@ table instead, case by case, with each case naming the fuse it exercises.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip
+
 from placer_py import reads as R
 
 pytestmark = pytest.mark.invariant

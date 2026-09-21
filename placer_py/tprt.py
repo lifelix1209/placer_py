@@ -129,7 +129,7 @@ def p_null_tandem_duplication(tau: int, mismatches_allowed: int,
     if tau <= 0:
         return 1.0
     total = sum(comb(tau, j) * (3.0 ** j)
-                for j in range(0, max(0, mismatches_allowed) + 1))
+                for j in range(max(0, mismatches_allowed) + 1))
     p_unique = total / (4.0 ** tau)
     frac = min(max(local_repeat_frac, 0.0), 1.0)
     return (1.0 - frac) * p_unique + frac * 1.0

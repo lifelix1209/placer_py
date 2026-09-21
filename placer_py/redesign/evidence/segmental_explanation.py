@@ -22,7 +22,11 @@ from __future__ import annotations
 from collections import Counter
 from dataclasses import dataclass
 
-from placer_py.redesign.evidence.sequence import _family_parts, best_exact_te_hit, reverse_complement
+from placer_py.redesign.evidence.sequence import (
+    _family_parts,
+    best_exact_te_hit,
+    reverse_complement,
+)
 
 
 def _clamp(value: float, lo: float, hi: float) -> float:
@@ -65,7 +69,7 @@ def _homopolymer_and_repeat_mask(seq: str, window: int = 16, dominance: float = 
         top_two = sum(count for _, count in counter.most_common(2))
         return top_two >= threshold
 
-    for start in range(0, length - win + 1):
+    for start in range(length - win + 1):
         if start > 0:
             counts[seq[start - 1]] -= 1
             counts[seq[start + win - 1]] += 1
@@ -107,7 +111,7 @@ def _polya_mask(seq: str) -> list[bool]:
     left_t = _terminal_run_fraction(rev, "T")
     head = max(left_a, left_t)
     if head >= 6:
-        for pos in range(0, head):
+        for pos in range(head):
             mask[pos] = True
     return mask
 
@@ -131,7 +135,7 @@ def _coverage_for_best_family(
     best_total = 0
     second_count = 0
     for orientation, oriented in (("+", query), ("-", reverse_complement(query))):
-        kmers = {oriented[start : start + k] for start in range(0, length - k + 1)}
+        kmers = {oriented[start : start + k] for start in range(length - k + 1)}
         counts: Counter[str] = Counter()
         for kmer in kmers:
             for name in index.get(kmer, ()):
@@ -152,7 +156,7 @@ def _coverage_for_best_family(
 
     oriented = query if best_orientation == "+" else reverse_complement(query)
     covered = [False] * length
-    for start in range(0, length - k + 1):
+    for start in range(length - k + 1):
         if best_name in index.get(oriented[start : start + k], ()):
             for pos in range(start, start + k):
                 covered[pos] = True

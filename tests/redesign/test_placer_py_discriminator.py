@@ -1,6 +1,5 @@
 import unittest
 
-from placer_py.redesign.models import BamEvidence, InsertionCandidate, SequenceFeatures, TeHit
 from placer_py.redesign.model.placer_discriminator import (
     BoundaryEvidence,
     EventExistenceEvidence,
@@ -12,6 +11,7 @@ from placer_py.redesign.model.placer_discriminator import (
     evaluate_joint_hypotheses,
     evaluate_local_hypothesis_posterior,
 )
+from placer_py.redesign.models import BamEvidence, InsertionCandidate, SequenceFeatures, TeHit
 
 
 class PlacerDiscriminatorModelsTest(unittest.TestCase):

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import genotype
 
 pytestmark = pytest.mark.golden

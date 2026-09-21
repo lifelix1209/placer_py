@@ -35,9 +35,10 @@ made explicitly rather than assumed.
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from enum import IntEnum
-from typing import Callable, Sequence
+from typing import Callable
 
 from placer_py.alignment import AlignedRead
 from placer_py.config import PipelineConfig
@@ -174,7 +175,7 @@ def infer_te_family(te_name: str) -> str:
         return "ALU"
     if upper.startswith("SVA"):
         return "SVA"
-    if upper.startswith("L1") or upper.startswith("LINE1") or upper.startswith("LINE_1"):
+    if upper.startswith(("L1", "LINE1", "LINE_1")):
         return "LINE1"
     if upper.startswith("ERV") or "HERV" in upper:
         return "ERV"
@@ -637,12 +638,12 @@ def render_veto_reads_tsv(result: DenovoResult) -> str:
         "evidence_type", "breakpoint_pos", "fragment_len", "matched_te",
         "matched_family", "veto_reason"))]
     for call in result.calls:
-        for evidence in call.parent_summary.veto_reads:
-            lines.append("\t".join((
-                call.child.chrom, str(call.child.pos), call.child.te_name,
-                evidence.parent_bam_path, evidence.read_name, evidence.evidence_type,
-                str(evidence.breakpoint_pos), str(evidence.fragment_len),
-                evidence.matched_te, evidence.matched_family, evidence.veto_reason)))
+        lines.extend("\t".join((
+            call.child.chrom, str(call.child.pos), call.child.te_name,
+            evidence.parent_bam_path, evidence.read_name, evidence.evidence_type,
+            str(evidence.breakpoint_pos), str(evidence.fragment_len),
+            evidence.matched_te, evidence.matched_family, evidence.veto_reason))
+            for evidence in call.parent_summary.veto_reads)
     return "\n".join(lines) + "\n"
 
 

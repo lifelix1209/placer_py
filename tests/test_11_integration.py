@@ -17,8 +17,8 @@ import math
 import random
 
 import pytest
-
 from conftest import call_or_skip
+
 from placer_py import integrate
 from placer_py.redesign.model import mechanistic as M
 

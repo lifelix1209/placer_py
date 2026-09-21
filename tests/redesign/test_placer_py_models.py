@@ -3,6 +3,9 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from placer_py.redesign.io import write_ledger
+from placer_py.redesign.model.placer_discriminator import JointDecisionResult
+from placer_py.redesign.model.te_explainer import explain_candidate
 from placer_py.redesign.models import (
     BamEvidence,
     InsertionCandidate,
@@ -10,9 +13,6 @@ from placer_py.redesign.models import (
     TeExplanation,
     TeHit,
 )
-from placer_py.redesign.io import write_ledger
-from placer_py.redesign.model.placer_discriminator import JointDecisionResult
-from placer_py.redesign.model.te_explainer import explain_candidate
 
 
 class PlacerPyModelsTest(unittest.TestCase):

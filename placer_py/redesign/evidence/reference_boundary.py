@@ -54,7 +54,7 @@ def _background_occurrence_fraction(region: str, motif: str) -> float:
         return 1.0
     total = 0
     hits = 0
-    for start in range(0, len(region) - len(motif) + 1):
+    for start in range(len(region) - len(motif) + 1):
         total += 1
         if region[start : start + len(motif)] == motif:
             hits += 1

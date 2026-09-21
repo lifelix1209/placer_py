@@ -15,8 +15,8 @@ from the run's own calls, which is the opposite of the point.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip
+
 from placer_py import tprt
 
 pytestmark = pytest.mark.invariant

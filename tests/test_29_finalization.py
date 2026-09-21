@@ -12,8 +12,8 @@ from __future__ import annotations
 import math
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import finalization as F
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 

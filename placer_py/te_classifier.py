@@ -34,8 +34,8 @@ number: the tiers are naming SPECIFICITY, not evidence strength.
 
 from __future__ import annotations
 
+import contextlib
 import os
-import shutil
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -47,7 +47,6 @@ from placer_py.seqtools import (
     TeNameParts,
     TeSequenceBackground,
     at_fraction,
-    canonical_kmer_key,
     compute_te_sequence_composition,
     confidence_from_qc_reason,
     fnv1a_append_int32,
@@ -431,13 +430,12 @@ class TeKmerQuickClassifier:
 
 def fragment_hits_tsv(hits: list[FragmentTEHit]) -> str:
     """The diagnostic hit table, in the C++ column order."""
-    rows = []
-    for hit in hits:
-        rows.append("\t".join((
-            hit.fragment_id, hit.te_name, str(hit.fragment_len),
-            str(hit.hit_kmers), str(hit.total_kmers), repr(hit.coverage),
-            str(hit.aligned_len_est), repr(hit.kmer_support),
-            repr(hit.multik_support), "1" if hit.rescue_used else "0")) + "\n")
+    rows = ["\t".join((
+        hit.fragment_id, hit.te_name, str(hit.fragment_len),
+        str(hit.hit_kmers), str(hit.total_kmers), repr(hit.coverage),
+        str(hit.aligned_len_est), repr(hit.kmer_support),
+        repr(hit.multik_support), "1" if hit.rescue_used else "0")) + "\n"
+        for hit in hits]
     return "".join(rows)
 
 
@@ -954,10 +952,8 @@ def run_blastn_batch_against_te_library(blastn_path: str, blast_db_prefix: str,
             hsps_by_query = parse_blast_output(handle.read(), query_lengths)
     finally:
         for path in (query_path, output_path):
-            try:
+            with contextlib.suppress(OSError):
                 os.remove(path)
-            except OSError:
-                pass
 
     for query_id, _ in queries:
         out[query_id] = collapse_blast_hsps(hsps_by_query.get(query_id, []),

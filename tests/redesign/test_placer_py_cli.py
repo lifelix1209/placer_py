@@ -5,7 +5,6 @@ from pathlib import Path
 
 from placer_py.redesign.cli import run_shadow_pipeline
 
-
 VCF_TEXT = """##fileformat=VCFv4.2
 ##contig=<ID=chr1,length=1000>
 ##INFO=<ID=SVTYPE,Number=1,Type=String,Description="Type">

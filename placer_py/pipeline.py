@@ -42,8 +42,9 @@ calls, genotype calls) are kept because they appear in `scientific.txt`.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
-from typing import Callable, Iterable, Iterator
+from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
+from typing import Callable
 
 from placer_py import breakpoints as bp_module
 from placer_py import call_selection as selection_module
@@ -54,7 +55,7 @@ from placer_py import hypotheses as hyp_module
 from placer_py import interval_cache as cache_module
 from placer_py import policy as policy_module
 from placer_py import segmentation as seg_module
-from placer_py.alignment import AlignedRead, compute_ref_end
+from placer_py.alignment import AlignedRead
 from placer_py.clustering import ComponentCall, build_component_calls
 from placer_py.config import PipelineConfig
 from placer_py.finalization import PipelineResult, finalize_final_calls

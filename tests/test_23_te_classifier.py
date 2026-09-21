@@ -12,8 +12,8 @@ directly and only the process plumbing needs an executable.
 from __future__ import annotations
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import te_classifier as T
 from placer_py.config import PipelineConfig
 from placer_py.fragments import InsertionFragment, InsertionFragmentSource

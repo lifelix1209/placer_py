@@ -22,8 +22,8 @@ and the read still carries its CIGAR evidence.
 
 from __future__ import annotations
 
+from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
-from typing import Iterable, Sequence
 
 from placer_py.reads import (  # noqa: F401  (re-exported: one definition of each)
     CIGAR_D,
@@ -162,7 +162,7 @@ def read_from_pysam(record) -> AlignedRead:
     making pysam a hard import would put a compiled dependency in front of the
     part of the pipeline that has none.
     """
-    tags = {key: value for key, value in (record.get_tags() or [])}
+    tags = dict(record.get_tags() or [])
     return AlignedRead(
         qname=record.query_name or "",
         flag=int(record.flag),

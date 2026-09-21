@@ -27,8 +27,8 @@ the hp-tier thresholds fitted against another caller's calls.
 from __future__ import annotations
 
 import math
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
-from typing import Callable, Iterable, Iterator, Sequence
 
 #: k for the two Jensen-Shannon composition features.
 SEQ_MODEL_JSD_K5 = 5
@@ -240,7 +240,7 @@ def sequence_low_complexity_fraction(seq: str) -> float:
         return 0.0
     window = min(LOW_COMPLEXITY_WINDOW, n)
     covered = [False] * n
-    for start in range(0, n - window + 1):
+    for start in range(n - window + 1):
         counts = [0, 0, 0, 0]
         total = 0
         for i in range(start, start + window):

@@ -29,7 +29,7 @@ rather than assume a fixed layout.
 
 from __future__ import annotations
 
-from typing import Iterable, Sequence
+from collections.abc import Sequence
 
 from placer_py.ledger import EvidenceLedgerRow, FinalCall
 
@@ -309,8 +309,8 @@ def render_structural_calls_tsv(result, include_insert_seq: bool = False) -> str
     """The set-aside structural calls, with the IDENTICAL call schema."""
     lines = [f"structural_calls\t{len(result.structural_calls)}", ""]
     lines.append("#" + "\t".join(final_call_header(include_insert_seq)))
-    for call in result.structural_calls:
-        lines.append("\t".join(final_call_row(call, include_insert_seq)))
+    lines.extend("\t".join(final_call_row(call, include_insert_seq))
+                 for call in result.structural_calls)
     return "\n".join(lines) + "\n"
 
 
@@ -320,7 +320,7 @@ def render_evidence_ledger_tsv(result, include_insert_seq: bool = False,
     report, and its first line is the header a TSV reader expects."""
     lines = ["\t".join(evidence_ledger_header(include_insert_seq,
                                               include_support_qnames))]
-    for row in result.evidence_ledger:
-        lines.append("\t".join(evidence_ledger_row(row, include_insert_seq,
-                                                   include_support_qnames)))
+    lines.extend("\t".join(evidence_ledger_row(row, include_insert_seq,
+                                               include_support_qnames))
+                 for row in result.evidence_ledger)
     return "\n".join(lines) + "\n"

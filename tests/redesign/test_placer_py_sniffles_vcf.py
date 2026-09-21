@@ -4,7 +4,6 @@ from pathlib import Path
 
 from placer_py.redesign.candidates.sniffles_vcf import iter_sniffles_insertions
 
-
 VCF_TEXT = """##fileformat=VCFv4.2
 ##contig=<ID=chr1,length=1000>
 ##contig=<ID=chr2,length=1000>

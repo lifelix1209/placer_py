@@ -77,8 +77,9 @@ from __future__ import annotations
 
 import math
 import random
+from collections.abc import Sequence
 from dataclasses import dataclass
-from typing import Callable, Sequence
+from typing import Callable
 
 #: Observables that belong to the INSERT and travel with it under permutation.
 INTERNAL_FIELDS = ("u", "v", "insert_len", "identity", "polya", "inverted")

@@ -10,8 +10,8 @@ diverges, because those are the places the golden vectors earn their keep.
 from __future__ import annotations
 
 import math
+from collections.abc import Sequence
 from dataclasses import dataclass, field
-from typing import Sequence
 
 #: Genotype priors, applied as log terms to the three likelihoods.
 PRIOR_HOM_REF = 0.25

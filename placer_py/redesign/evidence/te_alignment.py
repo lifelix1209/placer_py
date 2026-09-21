@@ -60,7 +60,7 @@ def read_te_besthits(path: str | Path) -> dict[str, TeAlignmentRecord]:
     Sniffles candidate ids regardless of the coordinate suffix.
     """
     out: dict[str, TeAlignmentRecord] = {}
-    with open(path, "r", encoding="utf-8", errors="replace", newline="") as handle:
+    with open(path, encoding="utf-8", errors="replace", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         for row in reader:
             hit = row.get("te_hit", "") or ""

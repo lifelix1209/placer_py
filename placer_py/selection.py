@@ -16,7 +16,7 @@ dependency bound provides. The two are a pair; neither is correct alone.
 from __future__ import annotations
 
 import math
-from typing import Sequence
+from collections.abc import Sequence
 
 #: Number of per-call e-value constructions (mechanistic, low-allele-fraction,
 #: reference-unopposed bilateral partial anchor). Fixed, NOT the count of the

@@ -18,8 +18,8 @@ from __future__ import annotations
 import random
 
 import pytest
+from conftest import call_or_skip
 
-from conftest import call_or_skip, close
 from placer_py import denovo as D
 from placer_py import main as M
 from placer_py import outputs as O
@@ -55,9 +55,9 @@ def synthetic_reads(alt: int = 8, ref: int = 3) -> list[AlignedRead]:
             cigar=[(CIGAR_M, 10000 - start), (CIGAR_I, len(INSERT)),
                    (CIGAR_M, end - 10000)],
             seq=REFERENCE[start:10000] + INSERT + REFERENCE[10000:end]))
-    for i in range(ref):
-        reads.append(AlignedRead(qname=f"ref{i}", tid=0, pos=9000, mapq=60,
-                                 cigar=[(CIGAR_M, 2000)], seq=REFERENCE[9000:11000]))
+    reads.extend(AlignedRead(qname=f"ref{i}", tid=0, pos=9000, mapq=60,
+                             cigar=[(CIGAR_M, 2000)], seq=REFERENCE[9000:11000])
+                 for i in range(ref))
     return reads
 
 

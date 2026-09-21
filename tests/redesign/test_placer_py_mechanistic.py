@@ -1,6 +1,8 @@
 import unittest
 
-from placer_py.redesign.evidence.segmental_explanation import build_segmental_explanation_from_alignment
+from placer_py.redesign.evidence.segmental_explanation import (
+    build_segmental_explanation_from_alignment,
+)
 from placer_py.redesign.model.mechanistic import (
     endonuclease_motif_score,
     high_precision_te_score,
@@ -9,7 +11,10 @@ from placer_py.redesign.model.mechanistic import (
     polya_loglr,
     tsd_loglr,
 )
-from placer_py.redesign.model.placer_discriminator import build_discriminator_evidence, evaluate_joint_hypotheses
+from placer_py.redesign.model.placer_discriminator import (
+    build_discriminator_evidence,
+    evaluate_joint_hypotheses,
+)
 from placer_py.redesign.models import BamEvidence, InsertionCandidate, SequenceFeatures, TeHit
 
 

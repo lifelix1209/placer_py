@@ -4,7 +4,10 @@ from pathlib import Path
 
 import pysam
 
-from placer_py.redesign.evidence.bam_local import collect_bam_evidence, collect_bam_evidence_from_handle
+from placer_py.redesign.evidence.bam_local import (
+    collect_bam_evidence,
+    collect_bam_evidence_from_handle,
+)
 
 
 def make_segment(name, start, cigar, seq, mapq=60, reverse=False):

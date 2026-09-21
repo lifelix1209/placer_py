@@ -12,8 +12,8 @@ import math
 import random
 
 import pytest
-
 from conftest import call_or_skip, close
+
 from placer_py import selection
 
 pytestmark = pytest.mark.invariant

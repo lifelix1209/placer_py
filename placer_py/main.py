@@ -25,7 +25,6 @@ from __future__ import annotations
 import argparse
 import os
 import sys
-from dataclasses import dataclass
 
 from placer_py import __version__
 from placer_py.config import BamRegionScope, FinalReportMode, PipelineConfig
@@ -118,26 +117,40 @@ def _env_bool(value: str) -> bool:
 
 def apply_environment_config(config: PipelineConfig,
                              environ: dict[str, str] | None = None) -> PipelineConfig:
-    """Apply `PLACER_*` overrides. Unparsable values are IGNORED.
+    """Apply `PLACER_*` overrides. Unparsable values are WARNED ABOUT and ignored.
 
     Deliberately forgiving: an environment variable is often set once and
     inherited by unrelated runs, and aborting a whole-genome run over a stale
     `PLACER_BIN_SIZE=abc` would be worse than using the default. A value that
     parses is always applied, so a deliberate override is never silently lost.
+
+    But forgiving is not the same as silent, and it used to be both. A typo'd
+    `PLACER_TSD_BG_P_MAX=0,05` produced no warning and no effect, so a user
+    who thought they had loosened the TSD significance bar got the default
+    and no way to find out. The warning costs one line on stderr and keeps
+    the tolerance.
+
+    Note this only covers variables the table below RECOGNISES. An unknown
+    `PLACER_*` name is still ignored in silence, which is a separate gap:
+    `PLACER_FINAL_FDR_Q` looks like it should work and does not, because the
+    final risk level is a CLI flag only.
     """
     environ = environ if environ is not None else os.environ
+
+    def _apply(name: str, field_name: str, parse) -> None:
+        raw = environ[name]
+        try:
+            setattr(config, field_name, parse(raw))
+        except ValueError:
+            print(f"[PLACER] ignoring {name}={raw!r}: not a valid "
+                  f"{parse.__name__} value; using the default", file=sys.stderr)
+
     for name, field_name in _ENV_INT_FIELDS.items():
         if name in environ:
-            try:
-                setattr(config, field_name, int(environ[name]))
-            except ValueError:
-                pass
+            _apply(name, field_name, int)
     for name, field_name in _ENV_FLOAT_FIELDS.items():
         if name in environ:
-            try:
-                setattr(config, field_name, float(environ[name]))
-            except ValueError:
-                pass
+            _apply(name, field_name, float)
     for name, field_name in _ENV_BOOL_FIELDS.items():
         if name in environ:
             setattr(config, field_name, _env_bool(environ[name]))
@@ -242,8 +255,9 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     from placer_py.bam_io import ReferenceFetcher, make_bam_reader
     from placer_py.pipeline import StageHooks, run_pipeline
     from placer_py.seqtools import build_te_sequence_background
-    from placer_py.tsd import (TsdConfig, detect as detect_tsd,
-                               detect_from_insertion as detect_tsd_from_insertion)
+    from placer_py.tsd import TsdConfig
+    from placer_py.tsd import detect as detect_tsd
+    from placer_py.tsd import detect_from_insertion as detect_tsd_from_insertion
 
     reader = make_bam_reader(config.bam_path, config.bam_threads,
                              config.bam_region_scope)

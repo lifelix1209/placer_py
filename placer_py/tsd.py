@@ -137,7 +137,7 @@ def background_occurrence_fraction(region: str, motif: str,
     budget = max(0, max_mismatches)
     total = 0
     hit = 0
-    for i in range(0, len(region) - len(motif) + 1):
+    for i in range(len(region) - len(motif) + 1):
         total += 1
         window = region[i:i + len(motif)]
         if budget == 0:
