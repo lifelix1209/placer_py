@@ -4,6 +4,12 @@ on:
   push:
   pull_request:
 
+# A second push supersedes the first: nothing here is a deploy, so finishing a
+# run for a commit that is already history is pure queue time.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   # The suite has NO third-party dependency -- not even pytest. Running it with
   # a bare interpreter is what proves that, and it is the reason the repository
@@ -13,6 +19,7 @@ jobs:
   no-dependencies:
     runs-on: ubuntu-latest
     strategy:
+      fail-fast: false
       matrix:
         python-version: ["3.9", "3.12"]
     steps:
@@ -26,15 +33,66 @@ jobs:
   # The same suite under pytest, which is what a contributor runs locally. Both
   # jobs must pass: the runner implements only the pytest surface the suite
   # uses, so a divergence between them means the runner needs extending.
+  #
+  # The matrix is the whole supported range, not just the newest. 3.9 is the
+  # floor `requires-python` promises and the one the `X | Y` annotations depend
+  # on `from __future__ import annotations` for; only running 3.12 would let a
+  # 3.9 break through.
   pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+      # pysam, not the whole `scan` extra: the redesign's suite needs it
+      # transitively (see tests/redesign/conftest.py) and skips without it,
+      # while pyabpoa is a runtime dependency no test exercises.
+      - run: pip install -e '.[dev]' pysam
+      - run: pytest
+
+  lint:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      # pysam, not the whole `scan` extra: the redesign's suite needs it
-      # transitively (see tests/redesign/conftest.py) and skips without it,
-      # while pyabpoa is a runtime dependency no test exercises.
-      - run: pip install -e '.[dev]' pysam
-      - run: pytest -q
+          cache: pip
+      - run: pip install ruff
+      # Configuration and rationale live in pyproject.toml. This is a gate, not
+      # a report: the tree is clean today, so any new finding is new.
+      - run: ruff check --output-format=github .
+
+  # Does the packaging actually work for someone who is not us? Neither job
+  # above answers that: both run from a source checkout with `-e`, so a wheel
+  # that omits a subpackage or an entry point that does not resolve would ship
+  # unnoticed.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check dist/*
+      - name: Install the built wheel into a clean environment
+        run: |
+          python -m venv /tmp/clean
+          /tmp/clean/bin/pip install dist/*.whl
+      - name: The console script must resolve and the package must import
+        run: |
+          /tmp/clean/bin/placer-py --version
+          /tmp/clean/bin/python -m placer_py --version
+          # No third-party dependency: importing the decision layer in an
+          # environment with nothing else installed is the claim `dependencies
+          # = []` makes, and this is where it is checked.
+          /tmp/clean/bin/python -c "import placer_py.finalization, placer_py.policy"
