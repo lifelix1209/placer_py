@@ -156,8 +156,20 @@ def detect(fetch: ReferenceFetcher, chrom: str, left_bp: int, right_bp: int,
     if not chrom:
         return out
 
-    if left_bp > right_bp:
-        left_bp, right_bp = right_bp, left_bp
+    # NO NORMALISING SWAP HERE, and that is the whole correctness of this
+    # function. The sign of `right_bp - left_bp` is the ONLY thing separating
+    # the two geometries below:
+    #
+    #   right_bp < left_bp  -- the breakpoints OVERLAP, and the overlap is the
+    #                          target-site duplication (the DUP branch);
+    #   right_bp > left_bp  -- the breakpoints leave a GAP, which is a small
+    #                          deletion (the DEL branch).
+    #
+    # An unconditional `if left_bp > right_bp: swap` used to stand here. It
+    # made `right_bp - left_bp` non-negative always, so every genuine TSD was
+    # reported as a DELETION of the same length, and the DUP branch could fire
+    # only when the REFERENCE itself carried a tandem repeat -- never for a
+    # novel insertion, which is the case this detector exists for.
     left_bp = max(0, left_bp)
     right_bp = max(0, right_bp)
 
@@ -214,6 +226,90 @@ def detect(fetch: ReferenceFetcher, chrom: str, left_bp: int, right_bp: int,
             out.mismatches = 0
             out.bg_p = p
             out.significant = p <= bg_p_max
+    return out
+
+
+def detect_from_insertion(fetch: ReferenceFetcher, chrom: str, pos: int,
+                          insert_seq: str,
+                          config: TsdConfig | None = None) -> TsdDetection:
+    """Find the target-site duplication of an insertion placed at ONE position.
+
+    WHY `detect` CANNOT DO THIS. `detect` compares two windows of the
+    REFERENCE, which works when the caller has two breakpoints that overlap.
+    A CIGAR `I` operation gives one position and a sequence -- the aligner
+    collapsed both breakpoints onto the same coordinate -- so there is no
+    overlap left to measure and `detect` has nothing to compare. That is the
+    dominant shape of insertion evidence in long-read data, so without this
+    the detector is unreachable for most real calls.
+
+    WHERE THE EVIDENCE ACTUALLY IS. The duplication is in the READ, not the
+    reference: the sample carries the target site twice and the reference once.
+    Whichever way the aligner broke the tie, one copy ends up inside the
+    inserted sequence and the other stays in the aligned flank, so
+
+        S[-tau:] == ref[pos - tau : pos]     the insert was placed AFTER the
+                                             first copy, and carries the second
+        S[:tau]  == ref[pos : pos + tau]     the insert was placed BEFORE it,
+                                             and carries the first
+
+    are the two placements of the same event. Both are tried; the longer
+    match wins, and ties go to the 3' form, which is the one TPRT produces.
+
+    The two-pass exact-then-tolerant discipline, the length-scaled budget and
+    the requirement that the background p-value use the SAME budget are all
+    inherited from `detect` -- see its docstring for why the last one matters.
+    """
+    cfg = config or TsdConfig()
+    out = TsdDetection()
+    if not chrom or not insert_seq or pos < 0:
+        return out
+
+    min_len = max(1, cfg.tsd_min_len)
+    max_len = max(min_len, cfg.tsd_max_len)
+    flank = max(10, cfg.tsd_flank_window)
+    bg_p_max = min(max(cfg.tsd_bg_p_max, 0.0), 1.0)
+    mismatch_rate = min(max(cfg.tsd_max_mismatch_rate, 0.0), 1.0)
+    mismatch_cap = max(0, cfg.tsd_max_mismatches)
+
+    insert = insert_seq.upper()
+    passes = 2 if (mismatch_rate > 0.0 and mismatch_cap > 0) else 1
+
+    # Hoisted out of the length loop: every window below is a slice of one of
+    # these two, so the loop costs no I/O at all. The previous shape of this
+    # search re-fetched per length, which is up to 2*(max_len-min_len+1) calls
+    # into the reference for a single detection.
+    upstream = fetch(chrom, max(0, pos - max_len), pos)
+    downstream = fetch(chrom, pos, pos + max_len)
+
+    for current_pass in range(passes):
+        for length in range(max_len, min_len - 1, -1):
+            if length > len(insert):
+                continue
+            budget = (0 if current_pass == 0
+                      else tsd_mismatch_budget(length, mismatch_rate, mismatch_cap))
+            if current_pass == 1 and budget == 0:
+                continue              # already covered exactly by pass 0
+
+            for candidate, flank_seq in (
+                    (insert[-length:], upstream[len(upstream) - length:]
+                     if len(upstream) >= length else ""),
+                    (insert[:length], downstream[:length])):
+                if len(flank_seq) != length or not has_only_acgt(flank_seq):
+                    continue
+                if not has_only_acgt(candidate):
+                    continue
+                mismatches = mismatch_count_within(candidate, flank_seq, budget)
+                if mismatches > budget:
+                    continue
+                bg_region = fetch(chrom, max(0, pos - flank), pos + flank)
+                p = background_occurrence_fraction(bg_region, flank_seq, budget)
+                out.type = "DUP" if p <= bg_p_max else "UNCERTAIN"
+                out.length = length
+                out.sequence = flank_seq
+                out.mismatches = mismatches
+                out.bg_p = p
+                out.significant = p <= bg_p_max
+                return out
     return out
 
 

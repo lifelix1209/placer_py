@@ -87,8 +87,14 @@ class StageHooks:
     align_insert: Callable[[str], TEAlignmentEvidence] = lambda seq: TEAlignmentEvidence()
     #: event strings -> one consensus sequence.
     consensus_fn: Callable[[list[str]], str] = consensus_module.single_sequence_consensus
-    #: (chrom, bp_left, bp_right) -> a TSD detection, or None.
-    detect_tsd: Callable[[str, int, int], object] | None = None
+    #: (chrom, bp_left, bp_right, insert_seq) -> a TSD detection, or None.
+    #:
+    #: `insert_seq` is not redundant with the breakpoints. When the evidence
+    #: is a CIGAR `I` the aligner collapses both breakpoints onto one
+    #: coordinate, so bp_left == bp_right and the reference alone carries no
+    #: trace of the duplication -- it exists only in the read. The detector
+    #: needs the inserted bases to find it.
+    detect_tsd: Callable[[str, int, int, str], object] | None = None
 
 
 def _bin_index_for(read: AlignedRead, bin_size: int) -> int:
@@ -355,7 +361,8 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.gq = genotype.gq
 
     if hooks.detect_tsd is not None:
-        detection = hooks.detect_tsd(component.chrom, evidence.bp_left, evidence.bp_right)
+        detection = hooks.detect_tsd(component.chrom, evidence.bp_left,
+                                     evidence.bp_right, segmentation.insert_seq)
         if detection is not None:
             # The detector's own field names, which differ from the call's --
             # `type`/`length`/`sequence` there, `tsd_*` here. Mapped explicitly

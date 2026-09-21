@@ -242,7 +242,8 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     from placer_py.bam_io import ReferenceFetcher, make_bam_reader
     from placer_py.pipeline import StageHooks, run_pipeline
     from placer_py.seqtools import build_te_sequence_background
-    from placer_py.tsd import TsdConfig, detect as detect_tsd
+    from placer_py.tsd import (TsdConfig, detect as detect_tsd,
+                               detect_from_insertion as detect_tsd_from_insertion)
 
     reader = make_bam_reader(config.bam_path, config.bam_threads,
                              config.bam_region_scope)
@@ -279,10 +280,24 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
                            tsd_max_mismatch_rate=config.tsd_max_mismatch_rate,
                            tsd_max_mismatches=config.tsd_max_mismatches)
 
-    def detect(chrom: str, bp_left: int, bp_right: int):
+    def detect(chrom: str, bp_left: int, bp_right: int, insert_seq: str):
+        """Pick the detector the evidence can actually support.
+
+        Distinct breakpoints mean the caller resolved both edges of the event,
+        and their overlap (or gap) is measurable in the reference -- that is
+        `detect`. Equal breakpoints mean the aligner emitted a single CIGAR
+        `I`, so the reference carries no trace of the duplication and the only
+        place left to look is the inserted sequence itself.
+        """
         if not config.tsd_enable:
             return None
-        return detect_tsd(reference.fetch_window, chrom, bp_left, bp_right, tsd_config)
+        if bp_left != bp_right:
+            return detect_tsd(reference.fetch_window, chrom, bp_left, bp_right,
+                              tsd_config)
+        if insert_seq:
+            return detect_tsd_from_insertion(reference.fetch_window, chrom,
+                                             bp_left, insert_seq, tsd_config)
+        return None
 
     hooks = StageHooks(fetch_reference=reference.fetch_window,
                        align_insert=align_insert,
