@@ -9,3 +9,11 @@ build/
 dist/
 venv/
 examples/data/
+
+# samtools caches remote BAM/CRAM indexes into the CWD
+*.bai
+*.bam
+*.crai
+*.cram
+*.fai
+*.gzi
