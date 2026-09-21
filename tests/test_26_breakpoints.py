@@ -414,3 +414,102 @@ def test_resolving_bounds_takes_the_single_best_hypothesis():
     reads = [read(f"r{i}", 1000) for i in range(4)]
     assert call_or_skip(B.resolve_event_breakpoint_bounds, component(anchor=1500),
                         reads, [], 1500, 1500) == (1500, 1500)
+
+
+# ------------------------------------------- the banded DP, against a spec
+
+
+def _textbook_banded_levenshtein(lhs: str, rhs: str, max_edits: int):
+    """The obvious implementation of what `edit_identity_if_at_least` computes.
+
+    Deliberately written for clarity, not speed: a fresh full-width row per
+    iteration, `min` of the three moves, no early exit. This is the
+    specification the optimised version in `placer_py/breakpoints.py` must
+    agree with EXACTLY.
+    """
+    n, m = len(lhs), len(rhs)
+    if n <= 0 or m <= 0 or max_edits < 0:
+        return None
+    if abs(n - m) > max_edits:
+        return None
+    infinity = max_edits + 1
+    previous = [infinity] * (m + 1)
+    for j in range(0, min(m, max_edits) + 1):
+        previous[j] = j
+    for i in range(1, n + 1):
+        current = [infinity] * (m + 1)
+        if i <= max_edits:
+            current[0] = i
+        j_lo, j_hi = max(1, i - max_edits), min(m, i + max_edits)
+        if j_lo > j_hi:
+            return None
+        char = lhs[i - 1]
+        for j in range(j_lo, j_hi + 1):
+            current[j] = min(previous[j - 1] + (0 if char == rhs[j - 1] else 1),
+                             previous[j] + 1,
+                             current[j - 1] + 1)
+        previous = current
+    distance = previous[m]
+    if distance > max_edits:
+        return None
+    return min(1.0, max(0.0, 1.0 - (distance / max(n, m))))
+
+
+def test_the_optimised_dp_agrees_with_the_textbook_one():
+    """A differential test, because this function is 69% of a real run.
+
+    Measured on a 200 kb slice of ultra-long ONT: 821,575 calls, 214 s of
+    461 s in its own frame plus 101 s in 1.27e9 calls to `min`. That made it
+    worth rewriting -- two reused buffers instead of a row allocation per i,
+    comparisons instead of `min`, rolling locals instead of list indexing, and
+    an early exit once a row's minimum passes the budget.
+
+    Every one of those is supposed to be exact, and none of them is obviously
+    exact, which is what this test is for. The buffer reuse in particular is
+    only safe because of which cells each row reads; get the `curr[j_hi+1]`
+    reset wrong and a stale value from two rows back leaks into the band,
+    which would show up here as a wrong distance rather than a crash.
+    """
+    import random
+
+    rng = random.Random(4242)
+    checked = 0
+    for _ in range(600):
+        lhs = "".join(rng.choice("ACGT") for _ in range(rng.randint(1, 40)))
+        if rng.random() < 0.3:
+            rhs = "".join(rng.choice("ACGT") for _ in range(rng.randint(1, 40)))
+        else:
+            edited = list(lhs)
+            for _ in range(rng.randint(0, 6)):
+                at = rng.randrange(len(edited))
+                roll = rng.random()
+                if roll < 0.5:
+                    edited[at] = rng.choice("ACGT")
+                elif roll < 0.75:
+                    edited.insert(at, rng.choice("ACGT"))
+                elif len(edited) > 1:
+                    edited.pop(at)
+            rhs = "".join(edited)
+        for max_edits in (0, 1, 2, 3, 5, 12, max(len(lhs), len(rhs))):
+            actual = call_or_skip(B.edit_identity_if_at_least, lhs, rhs, max_edits)
+            expected = _textbook_banded_levenshtein(lhs, rhs, max_edits)
+            assert actual == expected, (lhs, rhs, max_edits, actual, expected)
+            checked += 1
+    assert checked > 4000, checked
+
+
+def test_the_early_exit_cannot_reject_a_match_that_exists():
+    """The row minimum is non-decreasing, so the early exit is sound.
+
+    Pinned separately from the differential test because it is the one change
+    that could silently cost RECALL rather than produce a wrong number: a
+    rejection is reported as None, which the caller reads as "this placement
+    does not match", and a caller cannot tell that apart from a real no.
+    """
+    identical = "ACGTACGTACGTACGTACGTAAGGCCTT"
+    assert call_or_skip(B.edit_identity_if_at_least, identical, identical, 0) == 1.0
+    # A single substitution at the very END, so every earlier row is clean and
+    # the budget is only consumed on the last one.
+    tail_mismatch = identical[:-1] + ("A" if identical[-1] != "A" else "C")
+    assert call_or_skip(B.edit_identity_if_at_least, identical, tail_mismatch, 1) is not None
+    assert call_or_skip(B.edit_identity_if_at_least, identical, tail_mismatch, 0) is None
