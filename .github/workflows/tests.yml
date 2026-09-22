@@ -69,6 +69,26 @@ jobs:
       # a report: the tree is clean today, so any new finding is new.
       - run: ruff check --output-format=github .
 
+  # Types. A separate job from `lint` so the two report independently, and
+  # because this one needs a dependency installed while ruff needs none.
+  types:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      # pysam, so the BAM handles are checked against the real `AlignmentFile`
+      # instead of against `Any` -- that is where the two findings worth having
+      # were. `pyabpoa` is handled by `ignore_missing_imports` in
+      # pyproject.toml instead: it is optional, imported lazily on purpose, and
+      # has no stubs.
+      - run: pip install mypy pysam
+      # Configuration, and the list of what is deliberately not enabled, live
+      # in pyproject.toml. A gate, not a report: the tree is clean today.
+      - run: mypy
+
   # Does the packaging actually work for someone who is not us? Neither job
   # above answers that: both run from a source checkout with `-e`, so a wheel
   # that omits a subpackage or an entry point that does not resolve would ship
@@ -96,3 +116,9 @@ jobs:
           # environment with nothing else installed is the claim `dependencies
           # = []` makes, and this is where it is checked.
           /tmp/clean/bin/python -c "import placer_py.finalization, placer_py.policy"
+      - name: The typing marker must survive into the installed package
+        # `py.typed` present in the source tree and absent from the wheel marks
+        # nothing at all: a downstream checker reads the INSTALLED package, and
+        # without the marker it treats every import from here as `Any`.
+        run: |
+          /tmp/clean/bin/python -c "import placer_py, pathlib; p = pathlib.Path(placer_py.__file__).parent / 'py.typed'; assert p.is_file(), f'py.typed missing from the installed package at {p}'"

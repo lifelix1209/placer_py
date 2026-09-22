@@ -35,7 +35,9 @@ def explain_candidate(
         "artifact": 0.9 * ref_conflict + 0.6 * low_complexity_penalty - 0.4 * insert_support,
     }
     probs = _softmax(scores)
-    label = max(probs, key=probs.get)
+    # `probs[k]`, not `probs.get`: `dict.get` is typed as returning
+    # `float | None`, so the key function claims it can hand `max` a None.
+    label = max(probs, key=lambda name: probs[name])
     return TeExplanation(
         candidate_id=candidate.candidate_id,
         label=label,

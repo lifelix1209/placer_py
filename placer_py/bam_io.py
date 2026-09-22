@@ -27,7 +27,13 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
+
+if TYPE_CHECKING:  # pragma: no cover - for the checker, never at runtime
+    # Named so the handle annotations below can be real types. Importing
+    # it for real would defeat the lazy imports in the two constructors,
+    # which exist so the decision layer needs no compiled dependency.
+    import pysam
 
 from placer_py.alignment import AlignedRead, read_from_pysam
 from placer_py.config import BamRegionScope
@@ -81,9 +87,13 @@ class BamStreamReader:
         self.region_scope = normalize_region_scope(region_scope or BamRegionScope())
         self.stats = BamReadStats()
         self._pysam = pysam
-        self._stream = pysam.AlignmentFile(bam_path, "rb",
-                                           threads=max(1, decompression_threads))
-        self._fetch = None
+        # Optional because `close()` sets both to None, which is what
+        # `is_valid()` and `can_fetch()` are reading. Saying so is the
+        # point: without it the annotation claims a handle that is always
+        # open, and every method below reads it as if that were true.
+        self._stream: pysam.AlignmentFile | None = pysam.AlignmentFile(
+            bam_path, "rb", threads=max(1, decompression_threads))
+        self._fetch: pysam.AlignmentFile | None = None
         try:
             if self._stream.has_index():
                 self._fetch = pysam.AlignmentFile(bam_path, "rb",
@@ -91,22 +101,35 @@ class BamStreamReader:
         except (ValueError, OSError):
             self._fetch = None
 
+    def _open_stream(self) -> pysam.AlignmentFile:
+        """The stream handle, or a named error instead of an anonymous one.
+
+        Reaching any of the four methods below after `close()` used to raise
+        `AttributeError: 'NoneType' object has no attribute 'nreferences'`,
+        which says nothing about what the caller did wrong.
+        """
+        if self._stream is None:
+            raise ValueError("BamStreamReader used after close()")
+        return self._stream
+
     # ------------------------------------------------------------- metadata
     def is_valid(self) -> bool:
         return self._stream is not None
 
     def chromosome_count(self) -> int:
-        return self._stream.nreferences
+        return self._open_stream().nreferences
 
     def chromosome_name(self, tid: int) -> str:
-        if tid < 0 or tid >= self._stream.nreferences:
+        stream = self._open_stream()
+        if tid < 0 or tid >= stream.nreferences:
             return ""
-        return self._stream.get_reference_name(tid)
+        return stream.get_reference_name(tid)
 
     def chromosome_length(self, tid: int) -> int:
-        if tid < 0 or tid >= self._stream.nreferences:
+        stream = self._open_stream()
+        if tid < 0 or tid >= stream.nreferences:
             return 0
-        return self._stream.lengths[tid]
+        return stream.lengths[tid]
 
     def can_fetch(self) -> bool:
         return self._fetch is not None
@@ -130,11 +153,12 @@ class BamStreamReader:
         callback is kept because it can ABORT the scan by returning False, which
         a generator's consumer cannot do from outside.
         """
-        source = (self._stream.fetch(self.region_scope.chrom,
-                                     self.region_scope.start,
-                                     self.region_scope.end if self.region_scope.end > 0 else None)
+        stream = self._open_stream()
+        source = (stream.fetch(self.region_scope.chrom,
+                               self.region_scope.start,
+                               self.region_scope.end if self.region_scope.end > 0 else None)
                   if (self.region_scope.enabled and self.can_fetch())
-                  else self._stream.fetch(until_eof=True))
+                  else stream.fetch(until_eof=True))
         processed = 0
         last_progress = 0
         for record in source:
@@ -192,7 +216,9 @@ class ReferenceFetcher:
     def __init__(self, fasta_path: str) -> None:
         import pysam  # noqa: F401
 
-        self._fasta = pysam.FastaFile(fasta_path)
+        # Optional for the same reason as the BAM handles: `close()` sets
+        # it to None and `fetch_window` already checks for that.
+        self._fasta: pysam.FastaFile | None = pysam.FastaFile(fasta_path)
 
     def can_fetch_reference(self) -> bool:
         return self._fasta is not None

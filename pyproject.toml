@@ -49,10 +49,17 @@ placer-py = "placer_py.main:main"
 # BLAST+ (blastn, makeblastdb) is also needed for the TE alignment, and is not
 # a Python package: it has to be on PATH, or `te_blastn_path` set.
 scan = ["pysam>=0.22", "pyabpoa>=1.4"]
-dev = ["pytest>=7.4"]
+dev = ["pytest>=7.4", "ruff>=0.6", "mypy>=1.11"]
 
 [tool.setuptools.packages.find]
 include = ["placer_py*"]
+
+# `py.typed` has to be listed or it is not in the wheel, and a marker that
+# ships only in the source tree marks nothing: without it in the installed
+# package, a downstream mypy or pyright treats every `placer_py` import as
+# `Any` and none of the annotations below are visible to anyone but us.
+[tool.setuptools.package-data]
+placer_py = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -79,6 +86,47 @@ markers = [
     "regression: pins a bug that was found and fixed, so it cannot come back",
     "contract: pins the ledger schema, i.e. the seam between the two languages",
 ]
+
+[tool.mypy]
+# 3.9 is the floor `requires-python` promises, so that is what the annotations
+# are checked against -- a 3.10-only stdlib signature would otherwise pass here
+# and fail for a user on the version this package claims to support.
+python_version = "3.9"
+files = ["placer_py"]
+
+# What is ON is the set that was already clean, or was made clean in the commit
+# that adopted mypy: the gate starts green, so any finding is new. The first
+# run found 44, of which the ones worth naming were two annotations that lied
+# about None (`bam_io`'s handles, which `close()` sets to None, and
+# `csv.DictReader` columns that can be missing), one variable holding two
+# different record types in one function, twice, and five attribute reads on a
+# value typed `object`.
+warn_unused_ignores = true
+warn_redundant_casts = true
+warn_unreachable = true
+warn_no_return = true
+strict_equality = true
+
+# DELIBERATELY OFF:
+#
+#   disallow_untyped_defs  61 findings. Annotation coverage is ~94% and the
+#                          gaps cluster in one place -- 21 of them in
+#                          `policy.py`, all from the same `te_alignment`
+#                          parameter left unannotated to avoid a circular
+#                          import. A Protocol fixes that cluster; until then
+#                          this flag is 61 lines of noise hiding one cause.
+#   no_implicit_reexport   22 findings, all of them the re-exports this
+#                          codebase makes on purpose -- `alignment.py` re-
+#                          exports the CIGAR and flag constants from `reads.py`
+#                          so there is one definition of each, and says so at
+#                          the import.
+
+[[tool.mypy.overrides]]
+# No stubs and no py.typed, and it is an optional dependency: `consensus.py`
+# imports it lazily precisely so the decision layer does not need it. Note the
+# error only appears on a COLD cache, which is what CI always has.
+module = ["pyabpoa"]
+ignore_missing_imports = true
 
 [tool.ruff]
 # 100, not 88. The codebase is hand-wrapped to ~79 (p95 of every line in the

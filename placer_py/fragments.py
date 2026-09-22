@@ -685,8 +685,12 @@ def _sa_reliability(sa: NormalizedAln,
             best_iou = iou
             best_start_diff = abs(supp.qstart - sa.qstart)
             best_end_diff = abs(supp.qend - sa.qend)
+    # Both endpoint diffs are set in the same branch, so the `is not None`
+    # on one of them and not the other was an asymmetry rather than a
+    # guard: whichever invariant made one safe made the other safe too.
     return (best_iou >= SPLIT_SA_SUPP_MATCH_IOU
             and best_start_diff is not None
+            and best_end_diff is not None
             and best_start_diff <= SPLIT_SA_SUPP_MATCH_ENDPOINT_BP
             and best_end_diff <= SPLIT_SA_SUPP_MATCH_ENDPOINT_BP)
 

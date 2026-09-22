@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import os
 import sys
+from collections.abc import Mapping
 
 from placer_py import __version__
 from placer_py.config import BamRegionScope, FinalReportMode, PipelineConfig
@@ -116,7 +117,7 @@ def _env_bool(value: str) -> bool:
 
 
 def apply_environment_config(config: PipelineConfig,
-                             environ: dict[str, str] | None = None) -> PipelineConfig:
+                             environ: Mapping[str, str] | None = None) -> PipelineConfig:
     """Apply `PLACER_*` overrides. Unparsable values are WARNED ABOUT and ignored.
 
     Deliberately forgiving: an environment variable is often set once and

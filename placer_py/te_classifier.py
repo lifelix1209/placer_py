@@ -540,8 +540,12 @@ def covered_fraction_from_intervals(length: int,
     current_start = -1
     current_end = -1
     for raw_start, raw_end in sorted(intervals):
-        start = _clamp(raw_start, 0, length)
-        end = _clamp(raw_end, 0, length)
+        # `int`, because `clamp` is float-typed for the probability
+        # arithmetic it was written for and these are base offsets. The
+        # arguments are already integral, so this converts nothing -- it
+        # stops a coverage count in bases from becoming a float.
+        start = int(_clamp(raw_start, 0, length))
+        end = int(_clamp(raw_end, 0, length))
         if end <= start:
             continue
         if current_start < 0:

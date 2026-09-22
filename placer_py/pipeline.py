@@ -44,7 +44,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Protocol
 
 from placer_py import breakpoints as bp_module
 from placer_py import call_selection as selection_module
@@ -69,6 +69,21 @@ LOCAL_EVENT_FETCH_SLACK_BP = 1000
 LOCAL_INTERVAL_MERGE_GAP_BP = 128
 
 
+class TsdDetection(Protocol):
+    """What the pipeline reads off a TSD detection.
+
+    `placer_py.tsd.TsdDetection` satisfies it; so does any record with these
+    five fields, which is the point -- a caller can supply its own detector
+    without this module importing one.
+    """
+
+    type: str
+    length: int
+    sequence: str
+    bg_p: float
+    mismatches: int
+
+
 @dataclass
 class StageHooks:
     """The four external dependencies, injected rather than imported.
@@ -90,12 +105,19 @@ class StageHooks:
     consensus_fn: Callable[[list[str]], str] = consensus_module.single_sequence_consensus
     #: (chrom, bp_left, bp_right, insert_seq) -> a TSD detection, or None.
     #:
+    #: Typed by what this module READS off the result (see `TsdDetection`)
+    #: rather than as `object`, which is what it was: five attribute reads
+    #: on a value the checker knew nothing about. A Protocol keeps the
+    #: reason `object` was there -- importing `placer_py.tsd` for its
+    #: dataclass would put the reference-fetching half of the tool in front
+    #: of a pipeline that takes its reference as a callable.
+    #:
     #: `insert_seq` is not redundant with the breakpoints. When the evidence
     #: is a CIGAR `I` the aligner collapses both breakpoints onto one
     #: coordinate, so bp_left == bp_right and the reference alone carries no
     #: trace of the duplication -- it exists only in the read. The detector
     #: needs the inserted bases to find it.
-    detect_tsd: Callable[[str, int, int, str], object] | None = None
+    detect_tsd: Callable[[str, int, int, str], TsdDetection | None] | None = None
 
 
 def _bin_index_for(read: AlignedRead, bin_size: int) -> int:

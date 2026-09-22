@@ -435,12 +435,16 @@ def build_density_windows(evidence: list[EvidencePoint], bin_start: int,
         if not merged_windows or window.start > (merged_windows[-1].end + WINDOW_MERGE_GAP):
             merged_windows.append(window)
             continue
-        back = merged_windows[-1]
-        total_weight = back.peak_weight + window.peak_weight
+        # Not `back`: that name is bound earlier in this same function to a
+        # DensityPeak, and reusing it for a CandidateWindow put two record
+        # types under one name in one scope.
+        back_window = merged_windows[-1]
+        total_weight = back_window.peak_weight + window.peak_weight
         if total_weight > 0.0:
-            back.center = round(((back.peak_weight * back.center)
-                                 + (window.peak_weight * window.center)) / total_weight)
-        back.start = min(back.start, window.start)
-        back.end = max(back.end, window.end)
-        back.peak_weight = max(back.peak_weight, window.peak_weight)
+            back_window.center = round(
+                ((back_window.peak_weight * back_window.center)
+                 + (window.peak_weight * window.center)) / total_weight)
+        back_window.start = min(back_window.start, window.start)
+        back_window.end = max(back_window.end, window.end)
+        back_window.peak_weight = max(back_window.peak_weight, window.peak_weight)
     return merged_windows

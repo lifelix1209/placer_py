@@ -41,6 +41,25 @@ file passes only if the two runners agree about what a decorator means. What is
 for the zero-dependency run to become a subset, so extend the runner or find
 another way to write the test.
 
+## Linting and types
+
+```bash
+pip install -e '.[dev]'    # pytest, ruff, mypy
+ruff check .
+mypy
+```
+
+Both are gates in CI, and both are clean today, so a finding is something the
+change introduced. Which rules are on — and which are deliberately off, with
+the count of findings each would produce and why that count is noise rather
+than signal — is in `pyproject.toml` next to the settings themselves.
+
+`placer_py/py.typed` is what makes the annotations visible downstream. Without
+it a consumer's own mypy treats every import from this package as `Any`,
+however well annotated it is; the packaging job checks it survives into the
+installed wheel, because a marker present only in the source tree marks
+nothing.
+
 ## Writing a test
 
 The suite has four kinds, and the marker says which argument the test is

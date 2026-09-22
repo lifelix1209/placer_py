@@ -35,17 +35,26 @@ class TeAlignmentRecord:
     mapq: int
 
 
-def _to_float(value: str, default: float = 0.0) -> float:
+# `str | None`, because `csv.DictReader` yields None for a column the row is
+# too short to have. Both already returned the default for it, via the
+# `TypeError` arm; the annotation was the only thing claiming it could not
+# happen, and the None case is now a statement rather than a side effect of
+# exception handling.
+def _to_float(value: str | None, default: float = 0.0) -> float:
+    if value is None:
+        return default
     try:
         return float(value)
-    except (TypeError, ValueError):
+    except ValueError:
         return default
 
 
-def _to_int(value: str, default: int = 0) -> int:
+def _to_int(value: str | None, default: int = 0) -> int:
+    if value is None:
+        return default
     try:
         return int(float(value))
-    except (TypeError, ValueError):
+    except ValueError:
         return default
 
 

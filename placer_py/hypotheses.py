@@ -315,19 +315,20 @@ def compute_breakpoint_position_posterior(candidates: list[BreakpointCandidate]
     """
     summary = BreakpointPosteriorSummary()
     signals: list[tuple[int, float]] = []
-    lo = None
-    hi = None
     for bp in candidates:
         if bp.pos < 0:
             continue
         signals.append((bp.pos, _signal_sigma(bp.class_mask)))
-        lo = bp.pos if lo is None else min(lo, bp.pos)
-        hi = bp.pos if hi is None else max(hi, bp.pos)
     if len(signals) < 2:
         return summary
 
-    grid_lo = lo - POSTERIOR_GRID_PAD_BP
-    grid_hi = hi + POSTERIOR_GRID_PAD_BP
+    # Taken from `signals` rather than tracked as running `lo`/`hi` in the
+    # loop above. Same values, but the reason they cannot be None is now
+    # structural -- the early return proves the list is non-empty -- rather
+    # than a correlation between two variables that a reader (or a type
+    # checker) has to notice.
+    grid_lo = min(pos for pos, _ in signals) - POSTERIOR_GRID_PAD_BP
+    grid_hi = max(pos for pos, _ in signals) + POSTERIOR_GRID_PAD_BP
     if (grid_hi - grid_lo) > POSTERIOR_GRID_MAX_SPAN_BP:
         grid_hi = grid_lo + POSTERIOR_GRID_MAX_SPAN_BP
     n = grid_hi - grid_lo + 1
@@ -526,13 +527,17 @@ def build_expensive_stage_shortlist(candidates: list[HypothesisValidatorEvidence
         already_selected = False
         spatially_distinct = True
         for selected in out:
-            incumbent = selected.validator.summary
-            if (incumbent.original_index == summary.original_index
-                    or (incumbent.bp_left == summary.bp_left
-                        and incumbent.bp_right == summary.bp_right)):
+            # `incumbent` is bound earlier in this function to a
+            # HypothesisValidatorEvidence; this is its summary, so it gets
+            # its own name rather than shadowing with a second type.
+            incumbent_summary = selected.validator.summary
+            if (incumbent_summary.original_index == summary.original_index
+                    or (incumbent_summary.bp_left == summary.bp_left
+                        and incumbent_summary.bp_right == summary.bp_right)):
                 already_selected = True
                 break
-            incumbent_center = incumbent.bp_left + ((incumbent.bp_right - incumbent.bp_left) // 2)
+            incumbent_center = incumbent_summary.bp_left + (
+                (incumbent_summary.bp_right - incumbent_summary.bp_left) // 2)
             if abs(summary.bp_left - incumbent_center) < RESCUE_PRECISE_ANCHOR_MIN_DISTANCE_BP:
                 spatially_distinct = False
                 break

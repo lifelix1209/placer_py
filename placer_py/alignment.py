@@ -24,6 +24,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
+from typing import Any
 
 from placer_py.reads import (  # noqa: F401  (re-exported: one definition of each)
     CIGAR_D,
@@ -95,7 +96,13 @@ class AlignedRead:
     mapq: int = 0
     cigar: list[tuple[int, int]] = field(default_factory=list)
     seq: str = ""
-    tags: dict[str, object] = field(default_factory=dict)
+    #: `Any`, not `object`: pysam hands back whatever the tag's type code
+    #: says -- str, int, float or an array -- and the three accessors below
+    #: coerce defensively rather than trusting it. Typed as `object` the
+    #: coercions do not type-check at all (`int()` does not accept
+    #: `object`), which is a checker complaining about the annotation
+    #: rather than about the code.
+    tags: dict[str, Any] = field(default_factory=dict)
 
     @property
     def seq_len(self) -> int:
