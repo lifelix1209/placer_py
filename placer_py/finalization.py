@@ -51,11 +51,14 @@ from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 DEFAULT_FINAL_CONFORMAL_FDR = 0.10
 #: Two calls closer than this are the same locus for de-duplication.
 FINAL_CALL_DEDUP_DISTANCE_BP = 50
-#: The prior on a real low-AF insertion's alt fraction, and the error rate the
-#: artifact alternative is scored at. Same numbers as the decision policy's.
-ALT_FRACTION_PRIOR_ALPHA = 1.0
-ALT_FRACTION_PRIOR_BETA = 9.0
-ARTIFACT_ERROR_RATE = 0.02
+#: One definition, in `placer_py/policy.py`. The per-locus policy and
+#: the whole-run finalization score the same low-AF alternative against
+#: the same error process, so two copies could only ever drift apart.
+from placer_py.policy import (  # noqa: E402
+    ALT_FRACTION_PRIOR_ALPHA,
+    ALT_FRACTION_PRIOR_BETA,
+    ARTIFACT_ERROR_RATE,
+)
 
 _INF = float("inf")
 

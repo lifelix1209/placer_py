@@ -38,7 +38,10 @@ from dataclasses import dataclass, field
 
 from placer_py import supports
 from placer_py.alignment import median_i32
-from placer_py.breakpoints import breakpoint_hypothesis_support_weight
+from placer_py.breakpoints import (
+    RESCUE_PRECISE_ANCHOR_MIN_DISTANCE_BP,
+    breakpoint_hypothesis_support_weight,
+)
 from placer_py.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SOFT_CLIP,
@@ -376,9 +379,6 @@ def compute_breakpoint_position_posterior(candidates: list[BreakpointCandidate]
 #: their support, to count as distinct.
 SHORTLIST_SPATIAL_DISTINCT_BP = 60
 SHORTLIST_SUPPORT_DISTINCT_JACCARD = 0.5
-#: A rescued single-read precise hypothesis must be this far from everything
-#: already shortlisted.
-RESCUE_PRECISE_ANCHOR_MIN_DISTANCE_BP = 500
 
 
 @dataclass

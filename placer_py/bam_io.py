@@ -32,9 +32,8 @@ from typing import Callable
 from placer_py.alignment import AlignedRead, read_from_pysam
 from placer_py.config import BamRegionScope
 
-#: SAM flags filtered at the source.
-FLAG_UNMAP = 0x4
-FLAG_SECONDARY = 0x100
+#: One definition, in `reads.py`, which `alignment.py` also re-exports.
+from placer_py.reads import FLAG_SECONDARY, FLAG_UNMAP  # noqa: F401
 
 
 def normalize_region_scope(scope: BamRegionScope) -> BamRegionScope:
