@@ -84,6 +84,14 @@ For the record, these look like behaviour changes and are not:
   consumed, not what is computed.
 - **The abPOA memory budget** (`consensus.py`). It changes how many event
   strings reach the aligner on inputs that previously exhausted memory, so on
-  those it is a change from "no result" to "a result from fewer reads" — and
-  the count is recorded on `EventConsensus.poa_reads_dropped_for_memory`. On
-  every input that completed before, the budget is not binding.
+  those it is a change from "no result" to "a result from fewer reads". When
+  it binds, `final_qc` carries `EVENT_CONSENSUS_POA_MEMORY_CAPPED` and
+  `EventConsensus.poa_reads_dropped_for_memory` holds the count.
+
+  Measured on 21:18,800,000-19,600,000 of HG002 ONT-UL: peak memory 4.58 GB
+  to 420 MB with CPU unchanged (1006 s to 980 s), the same five calls at the
+  same positions with the same genotypes and TE families, and recall against
+  the GIAB TE truth unchanged at 2/3. The only numeric movement is in the
+  dependency calibration — sigma 110.164 to 110.245, a 0.08% shift — which is
+  the consensus being built from fewer reads at some loci, exactly the trade
+  the budget makes.
