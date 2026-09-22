@@ -222,7 +222,7 @@ python3 tools/run_tests_without_pytest.py test_04    # one module
 ```
 
 ```
-total: 654 passed, 0 failed, 0 skipped, 7 xfail (pinned known issues)
+total: 694 passed, 0 failed, 0 skipped, 7 xfail (known issues)
 ```
 
 | module | status |

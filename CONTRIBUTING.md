@@ -31,6 +31,16 @@ Both must pass. The zero-dependency runner implements only the pytest surface
 the suite uses, so if they disagree the runner needs extending — that is a bug
 in `tools/run_tests_without_pytest.py`, not a reason to skip it.
 
+That surface is `fixture` (including `scope="session"` and yield-fixtures),
+`parametrize`, `mark.<name>`, `mark.xfail(strict=…)`, `skip`, `fail`, `raises`,
+`approx` and module-level `pytestmark`, and it is pinned by
+`tests/test_34_runner_parity.py` rather than by a sentence — every test in that
+file passes only if the two runners agree about what a decorator means. What is
+**not** implemented is pytest's builtin fixtures (`tmp_path`, `monkeypatch`,
+`capsys`), test classes and plugins; a test that needs one of those is asking
+for the zero-dependency run to become a subset, so extend the runner or find
+another way to write the test.
+
 ## Writing a test
 
 The suite has four kinds, and the marker says which argument the test is
