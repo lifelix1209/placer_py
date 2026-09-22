@@ -105,6 +105,37 @@ def single_sequence_consensus(sequences: list[str]) -> str:
         "callable to build_event_consensus")
 
 
+#: Bytes of peak abPOA memory per (sequence * base^2). MEASURED, and the
+#: measurement is why it is 6 rather than 2.
+#:
+#: Over 8-24 sequences of 1-12 kb, abPOA 1.5.7 sits at 1.5-2.6 by this ratio.
+#: But the ratio is worst where n is SMALL and L is large -- 3 sequences of
+#: 10 kb peaks at 5.9, because a large part of the cost is the first pairwise
+#: alignment and does not amortise over n. A constant fitted to the
+#: comfortable middle underestimates exactly the case the budget exists to
+#: catch, so this is the worst ratio observed, not the average.
+#:
+#: n = 1 is the exception in the other direction and is not modelled: one
+#: sequence needs no alignment at all, so 18 kb costs 19 MB rather than the
+#: ~2 GB this formula would predict. Overestimating there is harmless -- the
+#: budget already cannot return less than 1.
+POA_BYTES_PER_READ_BASE_SQUARED = 6.0
+
+
+def poa_reads_within_budget(longest_bp: int, budget_bytes: int) -> int:
+    """How many sequences of this length abPOA can align inside the budget.
+
+    At least 1 always: one sequence needs no alignment, so the consensus is
+    that sequence and the cost is its own length. Returning 0 would mean
+    refusing to report an event whose reads are simply long, which is a
+    different and worse failure than reporting it uncorrected.
+    """
+    if longest_bp <= 0:
+        return 1
+    per_read = POA_BYTES_PER_READ_BASE_SQUARED * longest_bp * longest_bp
+    return max(1, int(budget_bytes // per_read))
+
+
 def pyabpoa_consensus(sequences: list[str]) -> str:
     """abPOA through its Python binding -- the same library the C++ links.
 
@@ -373,6 +404,19 @@ def build_event_consensus(local_records: list[AlignedRead],
     event_strings.sort(key=lambda s: (-len(s), s))
     if len(event_strings) > config.event_consensus_poa_max_reads:
         event_strings = event_strings[:config.event_consensus_poa_max_reads]
+
+    # A MEMORY BUDGET, because the read cap above cannot be one. abPOA is
+    # quadratic in sequence length, so a cap on the NUMBER of sequences leaves
+    # peak memory free to vary by four orders of magnitude between a 300 bp
+    # Alu and a 20 kb event string -- and on ultra-long ONT it does. Dropping
+    # the least informative strings is the only lever that does not change
+    # what the consensus means.
+    budget = max(1, config.event_consensus_poa_memory_budget_mb) * 1024 * 1024
+    longest = len(event_strings[0])
+    affordable = poa_reads_within_budget(longest, budget)
+    consensus.poa_reads_dropped_for_memory = max(0, len(event_strings) - affordable)
+    if consensus.poa_reads_dropped_for_memory:
+        event_strings = event_strings[:affordable]
 
     consensus.consensus_seq = upper_acgt(consensus_fn(event_strings))
     consensus.consensus_len = len(consensus.consensus_seq)

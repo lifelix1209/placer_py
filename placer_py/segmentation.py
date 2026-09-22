@@ -100,6 +100,12 @@ class EventConsensus:
     left_anchor_input_reads: int = 0
     right_anchor_input_reads: int = 0
     used_full_context: bool = False
+    #: Event strings withheld from abPOA to stay inside the memory budget.
+    #: Non-zero means the consensus is built from fewer reads than were
+    #: available, which is a real loss of accuracy -- recorded rather than
+    #: silent, because `consensus.py` exists on the principle that a quietly
+    #: worse consensus is the most damaging thing this stage can produce.
+    poa_reads_dropped_for_memory: int = 0
     qc_pass: bool = False
     qc_reason: str = "NO_EVENT_CONSENSUS"
 

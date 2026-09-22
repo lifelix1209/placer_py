@@ -126,6 +126,21 @@ class PipelineConfig:
     # ------------------------------------------------------------- consensus
     event_consensus_poa_min_reads: int = 2
     event_consensus_poa_max_reads: int = 48
+    #: Ceiling on abPOA's peak memory, in MiB. NOT a biological parameter.
+    #:
+    #: Partial-order alignment costs roughly `C * n * L^2` bytes, and C was
+    #: measured rather than assumed: over 8-24 sequences of 1-12 kb, abPOA
+    #: 1.5.7 peaks at 1.5-2.6 bytes per (sequence * base^2), stable across the
+    #: range. So 24 reads of an 18 kb event string is ~6 GB, which is what
+    #: made an 800 kb region of ultra-long ONT peak at 4.6 GB and thrash.
+    #:
+    #: `event_consensus_poa_max_reads` alone cannot bound this because it
+    #: fixes n while L varies by two orders of magnitude between an Alu and a
+    #: mis-assembled megabase insertion. The budget converts to a read cap at
+    #: the observed L, so the same setting behaves the same on any read-length
+    #: distribution -- which is the property that matters for a caller meant
+    #: to run on ONT, HiFi and a non-human genome without retuning.
+    event_consensus_poa_memory_budget_mb: int = 1024
 
     # ------------------------------------------------------------ execution
     enable_parallel: bool = False

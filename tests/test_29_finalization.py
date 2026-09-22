@@ -772,3 +772,51 @@ def test_a_promoted_call_never_dominates_a_non_promoted_one():
                  best_te_query_coverage=0.5, cross_family_margin=0.1, ref_span_reads=1)
     kept = call_or_skip(F.remove_pareto_dominated_final_calls, [plain, promoted])
     assert any(c.final_qc == "PASS_TE_CLOSED" for c in kept)
+
+
+# ------------------------------------------- the abPOA memory budget
+
+
+def test_the_poa_budget_scales_reads_down_as_the_event_grows():
+    """Quadratic cost means a read cap cannot be a memory cap.
+
+    `event_consensus_poa_max_reads` fixes n while L varies by two orders of
+    magnitude between an Alu and a mis-assembled multi-kb insertion, and abPOA
+    costs roughly n * L^2. Measured: 24 sequences of 18 kb peaks near 6 GB,
+    which is what made an 800 kb region of ultra-long ONT peak at 4.6 GB and
+    spend 1975 s of wall clock on 1006 s of CPU.
+    """
+    from placer_py.consensus import poa_reads_within_budget
+
+    budget = 1024 * 1024 * 1024
+    counts = [poa_reads_within_budget(length, budget)
+              for length in (1000, 2000, 4000, 6000, 10000, 18000)]
+    assert counts == sorted(counts, reverse=True), counts
+    assert counts[0] > counts[-1], counts
+    # A 300 bp Alu must not be constrained at all -- the budget exists for the
+    # long tail, and squeezing the common case would cost recall for nothing.
+    assert poa_reads_within_budget(300, budget) > 48
+
+
+def test_the_poa_budget_never_returns_zero_reads():
+    """One sequence needs no alignment, so it always fits.
+
+    Returning 0 would mean refusing to report an event because its reads are
+    long, which is a worse failure than reporting it from a single uncorrected
+    read -- and at n=1 the measured cost of an 18 kb string is 19 MB, not the
+    ~2 GB the quadratic would predict.
+    """
+    from placer_py.consensus import poa_reads_within_budget
+
+    for length in (10_000, 100_000, 1_000_000):
+        assert poa_reads_within_budget(length, 1024 * 1024) == 1
+    assert poa_reads_within_budget(0, 1024) == 1
+
+
+def test_dropping_reads_for_memory_is_recorded_rather_than_silent():
+    """`consensus.py` exists on the principle that a quietly worse consensus
+    is the most damaging thing this stage can produce, so the count of
+    withheld strings is carried on the result."""
+    from placer_py.segmentation import EventConsensus
+
+    assert EventConsensus().poa_reads_dropped_for_memory == 0
