@@ -37,6 +37,10 @@ THE ONE THING THAT CAN BREAK IT is the sigma estimate itself, which is why
 `dependency.calibration_rows` excludes nothing. sigma is a MEAN dominated by its
 right tail; select its sample using the score being calibrated and the tail
 goes, along with the whole correction.
+
+NOT ON THE CALLING PATH, and that is deliberate rather than neglect --
+see `docs/off-pipeline-modules.md` for which of the four unimported
+modules this is and why deleting it would lose something.
 """
 
 from __future__ import annotations

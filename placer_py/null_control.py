@@ -15,6 +15,10 @@ It alternates outward, left then right, at multiples of `shift_step`, and stops
 when neither direction fits inside the window. Alternating rather than
 scanning one side first keeps the controls balanced around the locus, so a
 coverage or composition gradient across the window does not bias them.
+
+NOT ON THE CALLING PATH, and that is deliberate rather than neglect --
+see `docs/off-pipeline-modules.md` for which of the four unimported
+modules this is and why deleting it would lose something.
 """
 
 from __future__ import annotations

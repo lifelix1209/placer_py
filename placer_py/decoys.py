@@ -71,6 +71,10 @@ THE CONSTRUCTION, AND ITS LIMITATION -- stated because my first version was wron
     coincidence test rather than the sequence it was computed from. It has to be
     generated in the evidence-extraction layer, which is why `shifted_decoys`
     below takes a callback rather than doing it here.
+
+NOT ON THE CALLING PATH, and that is deliberate rather than neglect --
+see `docs/off-pipeline-modules.md` for which of the four unimported
+modules this is and why deleting it would lose something.
 """
 
 from __future__ import annotations

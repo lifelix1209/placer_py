@@ -66,6 +66,10 @@ The poly(A) and the T-tract are two views of ONE physical event (the tail
 annealing to the nicked strand), so they are combined into a single term rather
 than multiplied as if independent. Multiplying them would double count, and the
 mechanism is what tells you so.
+
+NOT ON THE CALLING PATH, and that is deliberate rather than neglect --
+see `docs/off-pipeline-modules.md` for which of the four unimported
+modules this is and why deleting it would lose something.
 """
 
 from __future__ import annotations

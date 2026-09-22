@@ -555,10 +555,11 @@ questions, each of which has evidence attached rather than an opinion:
   TE truth set from GIAB Tier1, with development and holdout regions labelled
   in the manifest. A change that needs the holdout to justify it is a fit,
   not a fix.
-- **Five unimported modules** — `tprt.py`, `integrate.py`, `selection.py`,
-  `decoys.py` and `null_control.py` are reachable only from tests. Two of
-  them duplicate logic that `finalization.py` reimplements inline, so each
-  needs a unify-or-delete decision rather than a sweep.
+- **Four unimported modules** — `tprt.py`, `integrate.py`, `decoys.py` and
+  `null_control.py` are reachable only from tests, and every one of them is
+  deliberate: see `docs/off-pipeline-modules.md` for which is which.
+  `selection.py` was the fifth and was the only genuine duplicate; it is now
+  imported by `finalization.py` and the inline copy is gone.
 - **`placer_py/redesign/`** — a second implementation kept alongside the
   port. It holds the only TE-hit orientation in the repository and the only
   flank-evidence collector, both of which `tprt.py` would need.
