@@ -44,7 +44,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from placer_py import mathx, supports
+from placer_py import mathx, selection, supports
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
 #: The target risk. One number for the whole run.
@@ -1217,33 +1217,27 @@ def apply_event_ebh_selection(calls: list[FinalCall], target_fdr: float) -> None
     if not calls:
         return
 
-    evalues: list[tuple[float, int]] = []
-    for i, call in enumerate(calls):
-        candidates = (event_mechanistic_e_value(call),
-                      low_allele_fraction_event_e_value(call),
-                      ref_unopposed_bilateral_partial_anchor_e_value(call))
-        total = sum(c for c in candidates if c > 0.0 and math.isfinite(c))
-        evalue = total / E_VALUE_CONSTRUCTIONS
-        evalues.append((evalue if (evalue > 0.0 and math.isfinite(evalue)) else 0.0, i))
+    # `placer_py/selection.py` is where these two steps are defined, argued
+    # for and tested. This loop used to reimplement both inline -- identically,
+    # as 48,000 differential comparisons confirm, but with its own copy of
+    # E_VALUE_CONSTRUCTIONS and its own chance to drift.
+    evalues = []
+    for call in calls:
+        combined = selection.combine_e_values((
+            event_mechanistic_e_value(call),
+            low_allele_fraction_event_e_value(call),
+            ref_unopposed_bilateral_partial_anchor_e_value(call)))
+        evalues.append(combined if (combined > 0.0 and math.isfinite(combined)) else 0.0)
 
-    evalues.sort(key=lambda item: (-item[0], item[1]))
-    q = min(1.0, max(0.0, target_fdr))
-    m = float(len(evalues))
-    selected_prefix = 0
-    for rank in range(1, len(evalues) + 1):
-        if q > 0.0 and evalues[rank - 1][0] >= (m / (q * rank)):
-            selected_prefix = rank
-
-    for rank in range(selected_prefix):
-        evalue, index = evalues[rank]
+    for index in selection.ebh_select(evalues, max(0.0, target_fdr)):
         call = calls[index]
-        call.ebh_e_value = evalue
+        call.ebh_e_value = evalues[index]
         call.ebh_selected = True
         # Do not clobber a conformal certificate: either route is sufficient,
         # and keeping the conformal QC preserves its diagnostics.
         if not final_call_has_reportable_conformal_certificate(call):
             call.conformal_qc = "PASS_EVENT_EBH"
-            call.conformal_by_threshold = evalue
+            call.conformal_by_threshold = evalues[index]
 
 
 def apply_event_bayesian_fdr_fallback(calls: list[FinalCall], target_fdr: float) -> None:

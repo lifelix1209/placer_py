@@ -135,18 +135,34 @@ UNAVAILABLE when the TE library is missing or BLAST returns no hit, while the
 insert sequence and its length are present. Those loci previously scored zero
 structure evidence and now score the shadow path's.
 
-**Impact measured** The example dataset is byte-identical (every alignment
-there is populated). The direction of the change is clear and is NOT yet
-validated on real data: giving structure evidence to loci with no TE
-alignment RAISES their TE evidence, which makes the TE gate more permissive.
-Concretely, a scenario that used to abstain to `TE_AMBIGUOUS` at identity
-0.98 / coverage 0.95 now passes the gate — correctly, since that is a strong
-alignment, but the same shift applies to weak ones.
+**Impact measured — and the direction I predicted was WRONG.** The commit
+that made this change said it "raises their TE evidence and makes the gate
+more permissive". Measured on 21:18,800,000-19,600,000 of HG002 ONT-UL, it
+does the opposite: across all 340 ledger rows with no TE family,
+`mechanistic_lower_log_bf_te_vs_artifact` moves by **-2.62 nats**, i.e. those
+loci are rejected as artifacts more strongly, not less.
 
-**Open** Re-measure precision and recall on the GIAB development slice before
-trusting this. The abstention property itself still holds and is still tested,
-now provoked by a genuinely uncertain alignment (coverage 0.30, LOW
-confidence) rather than by the zeroing artefact.
+The mechanism is consistent once seen. The shadow path computes real
+structure evidence from `"N" * insert_len` with no annotation, and for a
+structureless insert that evidence is NEGATIVE, where the old zeroed version
+contributed exactly 0. The same path is positive for genuine TE-like
+structure — which is why a strong alignment that used to abstain now passes
+the gate. One mechanism, both signs, and only the sign on structureless
+inserts was mispredicted.
+
+So this is a precision improvement on the loci it touches, not a risk.
+
+Recall and precision on the development slice are unchanged: the same five
+calls at the same positions, 2/3 recall against the GIAB TE truth, family
+agreement 2/2, one unexplained call. Every final call there has a populated
+alignment (`family_status=COMMITTED`), so the fix does not reach them — the
++0.0007 nats they do move is the dependency calibration responding to a
+separate change, not this one.
+
+**Caveat** Three TE truths in confident regions is a small sample. This
+closes the question of whether the fix DEGRADES anything on the development
+slice; it does not establish the size of the precision gain. That needs the
+holdout, and the holdout has not been cut.
 
 **Tests** `tests/test_24_policy.py::test_a_failed_gate_abstains_rather_than_rejecting`
 (scenario changed, property unchanged); the eight golden certificates in
