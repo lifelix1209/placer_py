@@ -36,6 +36,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from placer_py import supports
 from placer_py.alignment import median_i32
 from placer_py.breakpoints import breakpoint_hypothesis_support_weight
 from placer_py.clustering import (
@@ -121,20 +122,9 @@ def infer_event_length_from_alt_support(lengths: list[int]) -> int:
     return median_i32(lengths)
 
 
-def support_jaccard(lhs: list[str], rhs: list[str]) -> float:
-    """Jaccard over two SORTED support lists, by merge-walk."""
-    i = j = intersect = 0
-    while i < len(lhs) and j < len(rhs):
-        if lhs[i] == rhs[j]:
-            intersect += 1
-            i += 1
-            j += 1
-        elif lhs[i] < rhs[j]:
-            i += 1
-        else:
-            j += 1
-    union = len(lhs) + len(rhs) - intersect
-    return (intersect / union) if union > 0 else 0.0
+#: Re-exported from `placer_py/supports.py`; `finalization.py` had the same
+#: merge-walk, factored into two functions instead of inlined.
+support_jaccard = supports.jaccard
 
 
 def better_summary_representative(lhs: HypothesisSummary,

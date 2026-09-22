@@ -44,7 +44,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from placer_py import mathx
+from placer_py import mathx, supports
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
 #: The target risk. One number for the whole run.
@@ -606,26 +606,11 @@ def normalized_support_qnames(values: list[str]) -> list[str]:
     return sorted(set(values))
 
 
-def sorted_support_intersection_size(lhs: list[str], rhs: list[str]) -> int:
-    """Merge-walk over two SORTED lists. O(n+m) rather than O(n*m)."""
-    i = j = intersect = 0
-    while i < len(lhs) and j < len(rhs):
-        if lhs[i] == rhs[j]:
-            intersect += 1
-            i += 1
-            j += 1
-        elif lhs[i] < rhs[j]:
-            i += 1
-        else:
-            j += 1
-    return intersect
-
-
-def sorted_support_jaccard(lhs: list[str], rhs: list[str]) -> float:
-    """Jaccard over support sets: |A n B| / |A u B|."""
-    intersect = sorted_support_intersection_size(lhs, rhs)
-    union = len(lhs) + len(rhs) - intersect
-    return (intersect / union) if union > 0 else 0.0
+#: Re-exported from `placer_py/supports.py`, which `hypotheses.py` shares --
+#: it had the same merge-walk inlined, and neither module can import the
+#: other without inverting the pipeline.
+sorted_support_intersection_size = supports.intersection_size
+sorted_support_jaccard = supports.jaccard
 
 
 def ledger_rows_share_support_edge(lhs: EvidenceLedgerRow,

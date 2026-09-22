@@ -33,6 +33,7 @@ many things and an insertion is not.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 
 # CIGAR operation codes, as in htslib's bam_cigar_op.
@@ -73,18 +74,24 @@ def is_match_like(op: int) -> bool:
     return op in (CIGAR_M, CIGAR_EQ, CIGAR_X)
 
 
-def _first_non_hard_clip(cigar: list[tuple[int, int]]) -> int:
+def find_first_non_hard_clip(cigar: Sequence[tuple[int, int]]) -> int:
     for i, (op, _) in enumerate(cigar):
         if op != CIGAR_H:
             return i
     return -1
 
 
-def _last_non_hard_clip(cigar: list[tuple[int, int]]) -> int:
+def find_last_non_hard_clip(cigar: Sequence[tuple[int, int]]) -> int:
     for i in range(len(cigar) - 1, -1, -1):
         if cigar[i][0] != CIGAR_H:
             return i
     return -1
+
+
+#: The private spellings this module used before `alignment.py` grew an
+#: identical pair. Kept so its own call sites read unchanged.
+_first_non_hard_clip = find_first_non_hard_clip
+_last_non_hard_clip = find_last_non_hard_clip
 
 
 def summarize_cigar(cigar: list[tuple[int, int]]) -> CigarSummary:

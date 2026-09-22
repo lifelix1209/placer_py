@@ -38,6 +38,8 @@ from placer_py.reads import (  # noqa: F401  (re-exported: one definition of eac
     FLAG_SECONDARY,
     FLAG_SUPPLEMENTARY,
     FLAG_UNMAP,
+    find_first_non_hard_clip,
+    find_last_non_hard_clip,
     is_match_like,
 )
 
@@ -173,20 +175,6 @@ def read_from_pysam(record) -> AlignedRead:
         seq=record.query_sequence or "",
         tags=tags,
     )
-
-
-def find_first_non_hard_clip(cigar: Sequence[tuple[int, int]]) -> int:
-    for i, (op, _) in enumerate(cigar):
-        if op != CIGAR_H:
-            return i
-    return -1
-
-
-def find_last_non_hard_clip(cigar: Sequence[tuple[int, int]]) -> int:
-    for i in range(len(cigar) - 1, -1, -1):
-        if cigar[i][0] != CIGAR_H:
-            return i
-    return -1
 
 
 def compute_ref_end(read: AlignedRead) -> int:
