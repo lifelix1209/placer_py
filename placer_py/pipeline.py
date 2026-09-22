@@ -180,6 +180,19 @@ def _summary_ledger_row(component: ComponentCall, summary: hyp_module.Hypothesis
     return row
 
 
+#: Appended to `final_qc` when the abPOA memory budget withheld event
+#: strings. The consensus is then built from fewer reads than were available,
+#: which is a real loss of accuracy -- and one that is invisible in every
+#: other column, since a thinner consensus still looks like a consensus.
+POA_MEMORY_CAPPED_QC = "EVENT_CONSENSUS_POA_MEMORY_CAPPED"
+
+
+def _with_poa_cap_token(qc: str, consensus: seg_module.EventConsensus) -> str:
+    if consensus.poa_reads_dropped_for_memory <= 0:
+        return qc
+    return bp_module.append_qc_token(qc, POA_MEMORY_CAPPED_QC)
+
+
 def _evaluated_ledger_row(component: ComponentCall,
                           evidence: events_module.EventReadEvidence,
                           consensus: seg_module.EventConsensus,
@@ -211,7 +224,7 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.family = te_alignment.best_family or "NA"
     row.subfamily = te_alignment.best_subfamily or "NA"
     row.family_alignment_resolved = bool(getattr(te_alignment, "pass_", False))
-    row.final_qc = joint.final_qc
+    row.final_qc = _with_poa_cap_token(joint.final_qc, consensus)
     row.posterior_qc = joint.posterior_qc
     row.lfdr_qc = joint.lfdr_qc
     row.candidate_retention_reason = "EVALUATED"
@@ -386,7 +399,7 @@ def _final_call_from_evaluation(component: ComponentCall,
             call.tsd_bg_p = detection.bg_p
             call.tsd_mismatches = detection.mismatches
 
-    call.final_qc = joint.final_qc
+    call.final_qc = _with_poa_cap_token(joint.final_qc, consensus)
     call.best_explanation = joint.best_explanation
     call.explanation_residual = joint.explanation_residual
     call.explanation_path = joint.explanation_path

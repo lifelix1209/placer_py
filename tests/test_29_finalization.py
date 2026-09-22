@@ -820,3 +820,24 @@ def test_dropping_reads_for_memory_is_recorded_rather_than_silent():
     from placer_py.segmentation import EventConsensus
 
     assert EventConsensus().poa_reads_dropped_for_memory == 0
+
+
+def test_a_memory_capped_consensus_is_visible_in_the_output():
+    """A thinner consensus still looks like a consensus.
+
+    The dropped-read count lives on `EventConsensus`, which never reaches a
+    file -- so on its own it records nothing a user can see. The QC token is
+    what makes the degradation legible in `final_qc`, which both the ledger
+    and the call files carry.
+    """
+    from placer_py import pipeline as pipeline_module
+    from placer_py.segmentation import EventConsensus
+
+    intact = EventConsensus()
+    assert pipeline_module._with_poa_cap_token("PASS_TE_CLOSED", intact) == "PASS_TE_CLOSED"
+
+    thinned = EventConsensus()
+    thinned.poa_reads_dropped_for_memory = 7
+    tagged = pipeline_module._with_poa_cap_token("PASS_TE_CLOSED", thinned)
+    assert pipeline_module.POA_MEMORY_CAPPED_QC in tagged
+    assert tagged.startswith("PASS_TE_CLOSED"), tagged
