@@ -9,10 +9,25 @@ same input so their outputs can be diffed.
 This module is implemented rather than stubbed, because a contract that is
 itself unwritten cannot constrain anything.
 
-Column meanings live in the C++ `EvidenceLedgerRow` (include/pipeline.h) and in
-the README's output section. What is pinned HERE is narrower and more useful for
-a port: which columns the decision layer actually READS, and with what dtype.
-Anything not listed is diagnostic output that the port may ignore.
+Column meanings live in the C++ `EvidenceLedgerRow` (include/pipeline.h).
+(This used to cite "the README's output section" as well; the README has never
+had one.) What is pinned HERE is narrower and more useful for a port: which
+columns the decision layer actually READS, and with what dtype. Anything not
+listed is diagnostic output that the port may ignore.
+
+THIS IS A READER CONTRACT, NOT A WRITER ONE, and the distinction is worth
+stating because `check_header` invites the confusion. It answers "can the
+decision layer consume this ledger?" for a ledger produced ELSEWHERE -- the
+C++, or an older version of this tool. It does NOT describe the ledger
+`placer_py/outputs.py` writes, and running it against
+`outputs.EVIDENCE_LEDGER_COLUMNS` reports thirteen missing columns, which is
+correct rather than a bug: those are fields of the C++ row that the Python
+`EvidenceLedgerRow` spells differently or does not carry, and the decision
+layer reads them from the call rather than the ledger.
+
+The writer contract lives in `tests/test_00_contract.py`, which pins every
+emitted column to a field of the dataclass it is rendered from, or to an
+explicitly declared derivation or rename.
 """
 
 from __future__ import annotations

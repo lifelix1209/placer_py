@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from placer_py import schema
+from placer_py import outputs, schema
 
 pytestmark = pytest.mark.contract
 
@@ -92,3 +92,86 @@ def test_a_and_t_are_not_conflated_in_the_polya_contract():
     """
     assert "polya_len" in schema.MISSING_FOR_TPRT
     assert "te_strand" in schema.MISSING_FOR_TPRT
+
+
+# ------------------------------------------- the WRITER contract
+
+
+#: Ledger columns that are not fields of `EvidenceLedgerRow`, with the reason.
+#: Anything not listed here must be a field, or the header and the row have
+#: drifted apart with nothing to notice.
+DERIVED_LEDGER_COLUMNS = {
+    # A count of `support_qnames`, which is itself only written on request.
+    "support_qname_count",
+}
+
+#: The same for the call file, where several columns are deliberately spelled
+#: differently from the field they come from -- the C++ header names, kept so
+#: a downstream script written against the C++ output still parses.
+RENAMED_CALL_COLUMNS = {
+    "te",              # <- te_name
+    "family_status",   # <- family_alignment_resolved, as a token
+    "gt",              # <- genotype
+    "qc",              # <- final_qc
+    "consensus_len",   # <- event_consensus_len
+}
+
+
+def test_every_ledger_column_is_a_field_or_a_declared_derivation():
+    """The header is hand-written; the row is generated from a dataclass.
+
+    Nothing tied the two together. `EVIDENCE_LEDGER_COLUMNS` is a literal
+    tuple of 59 names and `EvidenceLedgerRow` has 66 fields, so renaming a
+    field, or adding a column without a field, drifts silently -- the file
+    still has the right number of columns and the wrong contents under one of
+    them.
+
+    This is the WRITER contract, and it is a different thing from
+    `LEDGER_COLUMNS` above: that one pins which columns the decision layer
+    READS out of a ledger the C++ produced.
+    """
+    import dataclasses
+
+    from placer_py.ledger import EvidenceLedgerRow
+
+    fields = {f.name for f in dataclasses.fields(EvidenceLedgerRow)}
+    unexplained = [c for c in outputs.EVIDENCE_LEDGER_COLUMNS
+                   if c not in fields and c not in DERIVED_LEDGER_COLUMNS]
+    assert not unexplained, (
+        f"ledger columns with no field and no declared derivation: {unexplained}")
+
+
+def test_every_call_column_is_a_field_or_a_declared_rename():
+    import dataclasses
+
+    from placer_py.ledger import FinalCall
+
+    fields = {f.name for f in dataclasses.fields(FinalCall)}
+    unexplained = [c for c in outputs.FINAL_CALL_COLUMNS
+                   if c not in fields and c not in RENAMED_CALL_COLUMNS]
+    assert not unexplained, (
+        f"call columns with no field and no declared rename: {unexplained}")
+
+
+def test_the_header_and_the_row_stay_the_same_length():
+    """Including under every combination of the two optional columns.
+
+    A header built by one function and a row by another is exactly where an
+    off-by-one lands, and a TSV with a shifted column is far worse than one
+    that fails to parse: every value is present and every value is under the
+    wrong name.
+    """
+    from placer_py.ledger import EvidenceLedgerRow, FinalCall
+
+    row = EvidenceLedgerRow()
+    for insert_seq in (False, True):
+        for qnames in (False, True):
+            assert (len(outputs.evidence_ledger_row(row, insert_seq, qnames))
+                    == len(outputs.evidence_ledger_header(insert_seq, qnames))), (
+                f"ledger, insert_seq={insert_seq} qnames={qnames}")
+
+    call = FinalCall()
+    for insert_seq in (False, True):
+        assert (len(outputs.final_call_row(call, insert_seq))
+                == len(outputs.final_call_header(insert_seq))), (
+            f"call, insert_seq={insert_seq}")
