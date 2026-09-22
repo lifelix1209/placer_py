@@ -38,6 +38,8 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 
+from placer_py import mathx
+
 
 class TeAnnotationStatus(str, Enum):
     UNAVAILABLE = "UNAVAILABLE"
@@ -93,12 +95,10 @@ TRANS_BASELINE_ENTROPY = 0.55
 TRANS_OPEN_LOG_ODDS = -1.6
 
 
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
+#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: these copies disagreed on -- see its docstring.
+_clamp01 = mathx.clamp01
+_clamp = mathx.clamp
 
 
 def _logistic(value: float) -> float:

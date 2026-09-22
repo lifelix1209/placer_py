@@ -45,8 +45,9 @@ class GenotypeInput:
     alt_observed_lengths: list[int] = field(default_factory=list)
 
 
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
+#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: these copies disagreed on -- see its docstring.
+_clamp = mathx.clamp
 
 
 def _safe_log(p: float) -> float:

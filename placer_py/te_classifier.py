@@ -40,6 +40,7 @@ import subprocess
 import tempfile
 from dataclasses import dataclass, field
 
+from placer_py import mathx
 from placer_py.config import PipelineConfig
 from placer_py.fragments import InsertionFragment, InsertionFragmentSource
 from placer_py.seqtools import (
@@ -207,8 +208,9 @@ class FragmentTEHit:
     total_kmers: int = 0
 
 
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return lo if value < lo else (hi if value > hi else value)
+#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: these copies disagreed on -- see its docstring.
+_clamp = mathx.clamp
 
 
 class TeKmerQuickClassifier:

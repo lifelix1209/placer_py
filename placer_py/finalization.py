@@ -220,8 +220,9 @@ def heterozygous_balance_log_evidence(alt: int, ref: int) -> float:
     return balance * count_signal
 
 
-def _clamp01(value: float) -> float:
-    return min(1.0, max(0.0, value))
+#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: these copies disagreed on -- see its docstring.
+_clamp01 = mathx.clamp01
 
 
 # ---------------------------------------------------------------------------

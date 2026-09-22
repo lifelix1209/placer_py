@@ -35,6 +35,8 @@ import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
+from placer_py import mathx
+
 
 @dataclass
 class PenaltySide:
@@ -52,8 +54,9 @@ class PenaltyEstimate:
     estimated: bool = False
 
 
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
+#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: these copies disagreed on -- see its docstring.
+_clamp = mathx.clamp
 
 
 def empirical_bernstein_upper(values: Sequence[float], log_inv_alpha: float,

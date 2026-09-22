@@ -341,11 +341,16 @@ class JointDecisionResult:
 # Small numeric helpers.
 # --------------------------------------------------------------------------
 def clamp_score(value: float, lo: float = -3.0, hi: float = 3.0) -> float:
-    return lo if value < lo else (hi if value > hi else value)
+    """`mathx.clamp` with the policy layer's default evidence bounds.
+
+    Kept as a wrapper rather than an alias because the +/-3.0 defaults are
+    used at most of its 29 call sites and are part of what the name means
+    here -- a score bound, not a general clamp.
+    """
+    return mathx.clamp(value, lo, hi)
 
 
-def _clamp01(value: float) -> float:
-    return clamp_score(value, 0.0, 1.0)
+_clamp01 = mathx.clamp01
 
 
 def count_signal(count: int, scale: float) -> float:

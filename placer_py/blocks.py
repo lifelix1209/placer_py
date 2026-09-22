@@ -35,6 +35,8 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from placer_py import mathx
+
 from . import structure as structure_module
 
 
@@ -76,12 +78,10 @@ DEFAULT_PRIOR = {
 }
 
 
-def _clamp01(value: float) -> float:
-    return max(0.0, min(1.0, value))
-
-
-def _clamp(value: float, lo: float, hi: float) -> float:
-    return max(lo, min(hi, value))
+#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: these copies disagreed on -- see its docstring.
+_clamp01 = mathx.clamp01
+_clamp = mathx.clamp
 
 
 def _positive(value: int) -> int:
