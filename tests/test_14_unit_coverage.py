@@ -158,8 +158,12 @@ def test_calibration_rows_keeps_every_certificated_row():
 def test_log_choose_count_matches_the_binomial_coefficient():
     close(call_or_skip(genotype.log_choose_count, 10, 3),
           math.log(120.0), "C(10,3) = 120")
-    assert call_or_skip(genotype.log_choose_count, 3, 10) == -1e300
-    assert call_or_skip(genotype.log_choose_count, -1, 0) == -1e300
+    # DELIBERATE DIVERGENCE: -inf, not the C++'s -1e300. See
+    # tests/EXPECTED_DIVERGENCE.md -- the three copies of this function
+    # disagreed, and -1e300 survives an isfinite() guard that an impossible
+    # count should not.
+    assert call_or_skip(genotype.log_choose_count, 3, 10) == -math.inf
+    assert call_or_skip(genotype.log_choose_count, -1, 0) == -math.inf
 
 
 def test_length_concordance_factor_discounts_length_discordant_alt_reads():

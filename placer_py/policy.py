@@ -54,6 +54,7 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 from placer_py import blocks as blocks_module
+from placer_py import mathx
 from placer_py import structure as structure_module
 from placer_py.explanation import (
     EventExplanation,
@@ -386,28 +387,11 @@ def logsumexp3(a: float, b: float, c: float) -> float:
     return logsumexp_values((a, b, c))
 
 
-def log_choose_count(n: int, k: int) -> float:
-    if k < 0 or n < 0 or k > n:
-        return _LOG_ZERO
-    return math.lgamma(n + 1.0) - math.lgamma(k + 1.0) - math.lgamma(n - k + 1.0)
-
-
-def beta_binomial_log_pmf(alt: int, total: int, alpha: float, beta: float) -> float:
-    if alt < 0 or total < 0 or alt > total or alpha <= 0.0 or beta <= 0.0:
-        return _LOG_ZERO
-    return (log_choose_count(total, alt)
-            + math.lgamma(alt + alpha) + math.lgamma(total - alt + beta)
-            - math.lgamma(total + alpha + beta)
-            + math.lgamma(alpha + beta) - math.lgamma(alpha) - math.lgamma(beta))
-
-
-def binomial_log_pmf(alt: int, total: int, p: float) -> float:
-    if alt < 0 or total < 0 or alt > total:
-        return _LOG_ZERO
-    clamped = clamp_score(p, 1e-6, 1.0 - 1e-6)
-    return (log_choose_count(total, alt) + alt * math.log(clamped)
-            + (total - alt) * math.log1p(-clamped))
-
+#: Re-exported: the suite names these directly and the C++ has them in this
+#: translation unit. Bodies in `placer_py/mathx.py`.
+log_choose_count = mathx.log_choose
+beta_binomial_log_pmf = mathx.beta_binomial_log_pmf
+binomial_log_pmf = mathx.binomial_log_pmf
 
 #: Prior on the alt fraction of a real low-AF insertion: Beta(1, 9), i.e. a
 #: mean of 0.1. Deliberately generous to mosaics and to a het whose alt reads

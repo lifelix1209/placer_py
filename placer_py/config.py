@@ -140,7 +140,13 @@ class PipelineConfig:
     #: the observed L, so the same setting behaves the same on any read-length
     #: distribution -- which is the property that matters for a caller meant
     #: to run on ONT, HiFi and a non-human genome without retuning.
-    event_consensus_poa_memory_budget_mb: int = 1024
+    #:
+    #: 4 GiB rather than 1: the budget is a guard against the pathological
+    #: tail, not a place to economise. Dropping event strings costs real
+    #: consensus accuracy, so the default buys back the common cases -- a
+    #: 6 kb full-length L1 gets ~19 reads here against 4 at 1 GiB -- and
+    #: still floors the 18 kb strings that were the actual problem.
+    event_consensus_poa_memory_budget_mb: int = 4096
 
     # ------------------------------------------------------------ execution
     enable_parallel: bool = False

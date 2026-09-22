@@ -44,6 +44,7 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from placer_py import mathx
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
 #: The target risk. One number for the whole run.
@@ -185,26 +186,11 @@ def combine_independent_local_fdr(lhs: float, rhs: float) -> float:
 # Count models. Same formulas as the decision policy's, re-derived here because
 # the C++ redefines them in this translation unit.
 # ---------------------------------------------------------------------------
-def log_choose_count(n: int, k: int) -> float:
-    if k < 0 or n < 0 or k > n:
-        return -_INF
-    return math.lgamma(n + 1.0) - math.lgamma(k + 1.0) - math.lgamma(n - k + 1.0)
-
-
-def beta_binomial_log_pmf(alt: int, total: int, alpha: float, beta: float) -> float:
-    if alt < 0 or total < 0 or alt > total or alpha <= 0.0 or beta <= 0.0:
-        return -_INF
-    return (log_choose_count(total, alt) + math.lgamma(alt + alpha)
-            + math.lgamma(total - alt + beta) - math.lgamma(total + alpha + beta)
-            + math.lgamma(alpha + beta) - math.lgamma(alpha) - math.lgamma(beta))
-
-
-def binomial_log_pmf(alt: int, total: int, p: float) -> float:
-    if alt < 0 or total < 0 or alt > total:
-        return -_INF
-    clamped = min(1.0 - 1e-6, max(1e-6, p))
-    return (log_choose_count(total, alt) + alt * math.log(clamped)
-            + (total - alt) * math.log1p(-clamped))
+#: Re-exported: the suite names these directly and the C++ has them in this
+#: translation unit. Bodies in `placer_py/mathx.py`.
+log_choose_count = mathx.log_choose
+beta_binomial_log_pmf = mathx.beta_binomial_log_pmf
+binomial_log_pmf = mathx.binomial_log_pmf
 
 
 def low_allele_fraction_event_log_bf(alt: int, ref: int) -> float:

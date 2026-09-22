@@ -13,6 +13,8 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
+from placer_py import mathx
+
 #: Genotype priors, applied as log terms to the three likelihoods.
 PRIOR_HOM_REF = 0.25
 PRIOR_HET = 0.50
@@ -61,40 +63,13 @@ def _logsumexp3(a: float, b: float, c: float) -> float:
     return m + math.log(math.exp(a - m) + math.exp(b - m) + math.exp(c - m))
 
 
-def log_choose_count(n: int, k: int) -> float:
-    if k < 0 or n < 0 or k > n:
-        return -1e300
-    return math.lgamma(n + 1.0) - math.lgamma(k + 1.0) - math.lgamma(n - k + 1.0)
-
-
-def beta_binomial_log_pmf(alt: int, total: int, alpha: float,
-                          beta: float) -> float:
-    """
-    Signature matches the C++: `(alt, total, alpha, beta)`, NOT `(k, n, mu, rho)`.
-
-    My stub declared the mu/rho form, which reads more naturally but is the wrong
-    port boundary -- the C++ converts mu/rho to alpha/beta inside
-    `genotype_log_likelihood`, and keeping that split means the golden
-    comparison exercises the same two functions the C++ has.
-    """
-    if alt < 0 or total < 0 or alt > total or alpha <= 0.0 or beta <= 0.0:
-        return -1e300
-    return (log_choose_count(total, alt)
-            + math.lgamma(alt + alpha)
-            + math.lgamma(total - alt + beta)
-            - math.lgamma(total + alpha + beta)
-            + math.lgamma(alpha + beta)
-            - math.lgamma(alpha)
-            - math.lgamma(beta))
-
-
-def binomial_log_pmf(alt: int, total: int, p: float) -> float:
-    if alt < 0 or total < 0 or alt > total:
-        return -1e300
-    clamped = _clamp(p, 1e-6, 1.0 - 1e-6)
-    return (log_choose_count(total, alt)
-            + alt * math.log(clamped)
-            + (total - alt) * math.log1p(-clamped))
+#: Re-exported so the module's public surface is unchanged -- the suite names
+#: these directly, and the C++ has them in this translation unit. The bodies
+#: now live in `placer_py/mathx.py`; see its docstring for what the three
+#: copies had drifted into.
+log_choose_count = mathx.log_choose
+beta_binomial_log_pmf = mathx.beta_binomial_log_pmf
+binomial_log_pmf = mathx.binomial_log_pmf
 
 
 def _median_int(values: Sequence[int]) -> int:

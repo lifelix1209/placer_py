@@ -79,7 +79,7 @@ def test_the_rho_zero_limit_is_approximate_not_exact():
     more naturally but it is the wrong port boundary -- the conversion lives in
     `genotype_log_likelihood`, and keeping that split means the golden
     comparison exercises the same two functions the C++ has. Calling it with
-    `beta=0.0` returns the -1e300 sentinel, which is correct.
+    `beta=0.0` returns the impossible-outcome sentinel, which is correct.
 
     Second the claim: at `rho <= 1e-9` the C++ does NOT switch to a closed
     binomial form. It sets `kappa = 1e9` and stays in the Beta-binomial, which
@@ -101,9 +101,26 @@ def test_the_rho_zero_limit_is_approximate_not_exact():
 
 
 def test_invalid_parameters_return_the_sentinel():
+    """DELIBERATE DIVERGENCE from the C++: the sentinel is -inf, not -1e300.
+
+    See tests/EXPECTED_DIVERGENCE.md. The three copies of this function did
+    not agree -- `finalization.py` already returned -inf while this module and
+    `policy.py` returned -1e300 -- and `math.isfinite` is the test the
+    finalization stage uses to tell an abstaining line of evidence from a
+    merely unlikely one. -1e300 reads as the second while meaning the first.
+
+    Unifying on -inf changed no output: the example dataset's three files are
+    byte-identical across the change.
+    """
+    import math
+
     for args in ((-1, 10, 1.0, 1.0), (3, 2, 1.0, 1.0), (3, 10, 0.0, 1.0),
                  (3, 10, 1.0, 0.0)):
-        assert call_or_skip(genotype.beta_binomial_log_pmf, *args) == -1e300
+        value = call_or_skip(genotype.beta_binomial_log_pmf, *args)
+        assert value == -math.inf, args
+        assert not math.isfinite(value), (
+            "the point of the change: an impossible outcome must not pass "
+            "an isfinite() guard")
 
 
 def test_overdispersion_estimates_match_the_cpp(oracle):
