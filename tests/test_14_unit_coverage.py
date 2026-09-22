@@ -320,3 +320,51 @@ def test_mechanism_allows_family_separates_cis_from_trans_mobilised():
     for family in ("L1", "ALU", "SVA"):
         assert call_or_skip(tprt.mechanism_allows_family, "en_independent",
                             family)
+
+
+def test_log_sum_exp_of_all_impossible_is_impossible_not_nan():
+    """`log(0 + 0 + 0)` is -inf. It used to be NaN.
+
+    `max(a,b,c)` of three -inf is -inf, and `exp(-inf - -inf)` is `exp(nan)`.
+    The plain three-way log-sum-exp in `genotype.py` and `policy.py` therefore
+    returned NaN for a locus where every hypothesis was impossible -- a
+    silently poisoned normaliser rather than a refusal.
+
+    This became reachable when the count models unified on -inf (previously
+    -1e300 in these two modules, which is finite and normalises fine), so the
+    fix and the change that exposed it belong to the same piece of work.
+    """
+    import math
+
+    from placer_py import genotype as genotype_module
+    from placer_py import mathx
+    from placer_py import policy as policy_module
+
+    impossible = -math.inf
+    assert mathx.log_sum_exp((impossible,) * 3) == impossible
+    assert genotype_module._logsumexp3(impossible, impossible, impossible) == impossible
+    assert policy_module.logsumexp3(impossible, impossible, impossible) == impossible
+    assert policy_module.logsumexp_values([impossible] * 4) == impossible
+
+
+def test_the_two_log_sum_exp_semantics_stay_distinct():
+    """Dropping non-finite operands and propagating them are both wanted.
+
+    `finalization.log_sum_exp_pair` reads -inf as "this line of evidence said
+    nothing" and must ignore it; the policy layer reads -inf as "this
+    hypothesis is impossible" and must not. Collapsing them onto one default
+    would silently change one of the two.
+    """
+    import math
+
+    from placer_py import finalization as finalization_module
+    from placer_py import mathx
+    from placer_py import policy as policy_module
+
+    abstained, real = -math.inf, 3.0
+    assert finalization_module.log_sum_exp_pair(abstained, real) == real
+    assert mathx.log_sum_exp((abstained, real), ignore_nonfinite=True) == real
+    # Propagating: -inf contributes exp(-inf) = 0, so the answer is still the
+    # finite operand -- the difference shows when EVERY operand is -inf.
+    assert policy_module.logsumexp_pair(abstained, real) == real
+    assert mathx.log_sum_exp((abstained, abstained), ignore_nonfinite=True) == -math.inf

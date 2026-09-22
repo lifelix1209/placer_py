@@ -73,6 +73,39 @@ was never caught.
 
 ---
 
+## 3. `log_sum_exp` of an all-impossible set: NaN → -inf
+
+**Where** `genotype._logsumexp3`, `policy.logsumexp_values` / `logsumexp_pair`
+/ `logsumexp3`, now `placer_py/mathx.log_sum_exp`.
+
+**Was** `max(a,b,c)` of three `-inf` is `-inf`, and `exp(-inf - -inf)` is
+`exp(nan)`. Both modules returned **NaN** for a locus where every hypothesis
+was impossible.
+
+**Now** `-inf`, which is what `log(0 + 0 + 0)` is.
+
+**Why** A NaN normaliser poisons every posterior derived from it, silently.
+This also interacts with divergence 1: it was unreachable in these two
+modules while their sentinel was `-1e300` (finite, and it normalises fine),
+and became reachable the moment the sentinel unified on `-inf`. The fix and
+the change that exposed it belong together.
+
+**Impact measured** None on real input — a scan of `genotype_from_alt_vs_ref`
+over alt, ref in 0..5 produces no NaN either way, because the counts are
+self-consistent by construction and the impossible branch is never taken.
+The example dataset's three output files are byte-identical.
+
+**Note** The two semantics are deliberately kept apart.
+`finalization.log_sum_exp_pair` still DROPS non-finite operands, because
+there `-inf` means "this line of evidence said nothing" rather than "this
+hypothesis is impossible". `mathx.log_sum_exp` takes an explicit
+`ignore_nonfinite` flag so neither can be reached by accident.
+
+**Tests** `tests/test_14_unit_coverage.py::test_log_sum_exp_of_all_impossible_is_impossible_not_nan`,
+`::test_the_two_log_sum_exp_semantics_stay_distinct`.
+
+---
+
 ## Not divergences
 
 For the record, these look like behaviour changes and are not:

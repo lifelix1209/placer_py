@@ -131,8 +131,7 @@ def log_sum_exp_pair(lhs: float, rhs: float) -> float:
         return rhs
     if not math.isfinite(rhs):
         return lhs
-    top = max(lhs, rhs)
-    return top + math.log(math.exp(lhs - top) + math.exp(rhs - top))
+    return mathx.log_sum_exp((lhs, rhs))
 
 
 def odds_to_local_fdr(log_odds: float) -> float:

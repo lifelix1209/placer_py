@@ -378,18 +378,20 @@ def beta_feature_loglike(x: float, mean: float, strength: float) -> float:
                        + ((1.0 - bounded_mean) * math.log(1.0 - bounded_x)))
 
 
-def logsumexp_values(values) -> float:
-    top = max(values)
-    return top + math.log(sum(math.exp(value - top) for value in values))
+#: PROPAGATING form. In the policy layer `-inf` is an impossible hypothesis,
+#: not a line of evidence that abstained, so it must reach the normaliser --
+#: the opposite of `finalization.log_sum_exp_pair`. Both semantics are wanted
+#: and `mathx.log_sum_exp` keeps them one function with an explicit flag, so
+#: a caller cannot get the other one by accident.
+logsumexp_values = mathx.log_sum_exp
 
 
 def logsumexp_pair(lhs: float, rhs: float) -> float:
-    top = max(lhs, rhs)
-    return top + math.log(math.exp(lhs - top) + math.exp(rhs - top))
+    return mathx.log_sum_exp((lhs, rhs))
 
 
 def logsumexp3(a: float, b: float, c: float) -> float:
-    return logsumexp_values((a, b, c))
+    return mathx.log_sum_exp((a, b, c))
 
 
 #: Re-exported: the suite names these directly and the C++ has them in this

@@ -60,8 +60,9 @@ def _phred_from_error_probability(p_error: float) -> float:
 
 
 def _logsumexp3(a: float, b: float, c: float) -> float:
-    m = max(a, b, c)
-    return m + math.log(math.exp(a - m) + math.exp(b - m) + math.exp(c - m))
+    """PROPAGATING form: `-inf` here means an impossible genotype, not an
+    abstention, so it must reach the normaliser rather than be dropped."""
+    return mathx.log_sum_exp((a, b, c))
 
 
 #: Re-exported so the module's public surface is unchanged -- the suite names
