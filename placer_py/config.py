@@ -105,7 +105,9 @@ class PipelineConfig:
     tsd_bg_p_max: float = 0.05
     #: Exact flank equality is tried over the whole length range FIRST; the
     #: mismatch budget is a retry, not a relaxation of the primary search. Set
-    #: either to 0 to require exact TSDs, as releases before 0.0.5 did.
+    #: either to 0 to require exact TSDs, as PLACER releases before 0.0.5
+    #: did -- the C++ project's version, not this package's. placer-py has
+    #: never had a 0.0.5; it was extracted at 0.1.0.
     tsd_max_mismatch_rate: float = 0.10
     tsd_max_mismatches: int = 2
 

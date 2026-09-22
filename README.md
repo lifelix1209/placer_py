@@ -183,13 +183,18 @@ tools/
 ## Installing
 
 ```bash
-pip install -e .            # the decision layer: numpy only
+pip install -e .            # the decision layer: no dependencies at all
 pip install -e '.[scan]'    # + pysam and pyabpoa, to run from a BAM
-pip install -e '.[dev]'     # + pytest
+pip install -e '.[dev]'     # + pytest, ruff, mypy, pre-commit
 ```
 
 BLAST+ (`blastn`, `makeblastdb`) is also needed for the TE alignment and is not
 a Python package — put it on `PATH`, or set `te_blastn_path` in the config.
+
+Nothing is published yet: `0.1.0` is the version this package was extracted at,
+not a release. [`CHANGELOG.md`](CHANGELOG.md) is what has changed since, and
+[`tests/EXPECTED_DIVERGENCE.md`](tests/EXPECTED_DIVERGENCE.md) is what those
+changes cost numerically.
 
 ## Running the whole pipeline
 

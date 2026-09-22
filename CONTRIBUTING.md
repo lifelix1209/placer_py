@@ -44,9 +44,10 @@ another way to write the test.
 ## Linting and types
 
 ```bash
-pip install -e '.[dev]'    # pytest, ruff, mypy
+pip install -e '.[dev]'    # pytest, ruff, mypy, pre-commit
 ruff check .
 mypy
+pre-commit install         # optional: both of the above, before each commit
 ```
 
 Both are gates in CI, and both are clean today, so a finding is something the

@@ -1,0 +1,53 @@
+# The same gates as CI, run before the commit rather than after the push.
+#
+# WHAT IS NOT HERE: the test suite. It takes ~65 seconds, most of it one
+# module synthesising a 20 kb reference, and a pre-commit hook that slow gets
+# disabled rather than obeyed. Run `python3 tools/run_tests_without_pytest.py`
+# yourself; CI runs both suites on every push.
+#
+#   pip install pre-commit && pre-commit install
+#   pre-commit run --all-files        # the first time, to see the tree is clean
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      # The tree satisfies all four today, so each is a gate rather than a
+      # reformatting event: no file has trailing whitespace, every file ends
+      # in exactly one newline, and both YAML and TOML parse.
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-toml
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: [--fix=lf]
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.16.8
+    hooks:
+      # `ruff check` only. NOT `ruff format`: the line length is 100 while the
+      # code is hand-wrapped to ~79, and the module docstrings are deliberately
+      # shaped prose -- see the rationale in pyproject.toml, which is also why
+      # E501 is off. A formatter here would reflow paragraphs that carry the
+      # argument for the code beneath them.
+      # `ruff-check`, not the `ruff` alias, which pre-commit now reports as
+      # legacy.
+      - id: ruff-check
+        args: [--fix, --exit-non-zero-on-fix]
+
+  - repo: local
+    hooks:
+      # Not `mirrors-mypy`: that passes the changed filenames, and mypy on a
+      # subset of this package infers different types than mypy on all of it.
+      # `pass_filenames: false` runs the project configuration in
+      # pyproject.toml, which is the same invocation CI uses.
+      #
+      # `language: system` means the hook uses the mypy from the environment --
+      # `pip install -e '.[dev]'` provides it, along with the pysam that lets
+      # the BAM handles be checked against the real types.
+      - id: mypy
+        name: mypy
+        entry: mypy
+        language: system
+        types: [python]
+        pass_filenames: false
