@@ -12,6 +12,8 @@ import pytest
 from conftest import call_or_skip, close
 
 from placer_py import blocks
+from placer_py import policy as P
+from placer_py.te_classifier import TEAlignmentEvidence
 
 pytestmark = pytest.mark.golden
 
@@ -28,34 +30,35 @@ FIELDS = (
 
 
 def _ex(alt, split, indel, lclip, rclip, ref, af, gq):
-    return dict(alt_struct_reads=alt, alt_split_reads=split,
-                alt_indel_reads=indel, alt_left_clip_reads=lclip,
-                alt_right_clip_reads=rclip, ref_span_reads=ref, af=af, gq=gq,
-                score=2.0)
+    return P.EventExistenceEvidence(
+        alt_struct_reads=alt, alt_split_reads=split, alt_indel_reads=indel,
+        alt_left_clip_reads=lclip, alt_right_clip_reads=rclip,
+        ref_span_reads=ref, af=af, gq=gq)
 
 
 def _seg(pair_valid, left, right, insert_len):
-    return dict(has_consensus=True, has_insert_seq=True, has_left_flank=left,
-                has_right_flank=right, pair_valid=pair_valid,
-                insert_len=insert_len, score=1.5,
-                qc="PASS_EVENT_SEGMENTATION")
+    return P.EventSegmentationEvidence(
+        has_insert_seq=True, has_left_flank=left, has_right_flank=right,
+        pair_valid=pair_valid, insert_len=insert_len)
 
 
 def _te(identity, coverage, margin, qc, model, model_score, confidence,
         residual):
-    return dict(pass_=True, best_family="L1", best_subfamily="L1HS",
-                best_identity=identity, best_query_coverage=coverage,
-                cross_family_margin=margin, qc_reason=qc,
-                sequence_model_label=model, sequence_model_score=model_score,
-                annotation_confidence=confidence,
-                annotation_residual_fraction=residual,
-                annotation_masked_fraction=0.0, second_score=0.0)
+    return TEAlignmentEvidence(
+        pass_=True, best_family="L1", best_subfamily="L1HS",
+        best_identity=identity, best_query_coverage=coverage,
+        cross_family_margin=margin, qc_reason=qc,
+        sequence_model_label=model, sequence_model_score=model_score,
+        annotation_confidence=confidence,
+        annotation_residual_fraction=residual,
+        annotation_masked_fraction=0.0, second_score=0.0)
 
 
 def _bd(geometry, canonical, consistent, btype, blen):
-    return dict(geometry_defined=geometry, canonical_pass=canonical,
-                evidence_consistent=consistent, boundary_type=btype,
-                boundary_len=blen, score=1.0, qc="PASS_BOUNDARY_TSD")
+    return P.BoundaryEvidence(
+        geometry_defined=geometry, canonical_pass=canonical,
+        evidence_consistent=consistent, boundary_type=btype,
+        boundary_len=blen)
 
 
 #: All eight scenarios from tools/dump_oracle.cpp, mirrored by hand.

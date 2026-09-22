@@ -282,12 +282,12 @@ def test_the_two_definitions_of_one_sided_pass_disagree_and_both_are_kept():
     seg = P.EventSegmentationEvidence(has_insert_seq=True, has_left_flank=True,
                                       has_right_flank=False, pair_valid=True)
     assert P.is_one_sided_segmentation_pass(seg)
-    assert not blocks._is_one_sided_segmentation_pass(seg.__dict__)
+    assert not blocks._is_one_sided_segmentation_pass(seg)
 
     invalid = P.EventSegmentationEvidence(has_insert_seq=True, has_left_flank=True,
                                           has_right_flank=False, pair_valid=False)
     assert not P.is_one_sided_segmentation_pass(invalid)
-    assert blocks._is_one_sided_segmentation_pass(invalid.__dict__)
+    assert blocks._is_one_sided_segmentation_pass(invalid)
 
 
 def test_a_one_sided_pass_is_floored_rather_than_left_negative():
@@ -543,8 +543,31 @@ def test_a_failed_gate_abstains_rather_than_rejecting():
     Precision-first. A TE-like event that fails the risk gate becomes
     `TE_AMBIGUOUS` and is RETAINED as TE-evidence -- it is not reclassified as
     reference or artifact, and it stays visible to whoever wants to look.
+
+    THE SCENARIO CHANGED and the property did not. This used to call `_joint()`
+    with a strong alignment (identity 0.98, coverage 0.95) and still abstain,
+    which was never right on the merits -- it abstained only because
+    `blocks._structure_explanation` was handed a default-constructed
+    explanation and returned zero structure evidence. Once that branch was
+    fixed to fall back to the shadow path as the C++ does, a strong alignment
+    correctly passes the gate. The abstention is now provoked the way it
+    should be: a partial alignment (coverage 0.30) with LOW annotation
+    confidence, which is genuinely uncertain about the element's identity
+    while the event itself is well supported.
+
+    Note the allele fraction stays dominant (18 alt / 2 ref). That is what
+    keeps this on the TE-evidence path rather than the structural one -- the
+    regime guard in `should_emit_structural_event_call` refuses to downgrade
+    a high-AF TE-like event, so it stays TE_AMBIGUOUS instead of becoming
+    PASS_STRUCTURAL_INSERTION.
     """
-    result = _joint()
+    uncertain_identity = te_pass(
+        best_family="L1", best_subfamily="L1HS", best_identity=0.88,
+        best_query_coverage=0.30, cross_family_margin=0.02,
+        annotation_confidence="LOW", sequence_model_score=0.2)
+    result = _joint(
+        existence=some_existence(alt_struct_reads=18, ref_span_reads=2, gq=60),
+        te=uncertain_identity)
     assert not result.emit_te_call
     assert result.emit_evidence_te_call
     assert result.final_qc == "TE_AMBIGUOUS"

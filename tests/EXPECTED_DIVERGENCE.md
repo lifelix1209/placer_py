@@ -106,6 +106,54 @@ hypothesis is impossible". `mathx.log_sum_exp` takes an explicit
 
 ---
 
+## 4. Structure evidence when the TE alignment explains nothing
+
+**Where** `blocks._structure_explanation`.
+
+**Was** The branch read `if supplied is not None: return supplied`, and
+`policy._as_dict` copied `record.__dict__`, so the key was ALWAYS present and
+always carried a `SequenceExplanation` — default-constructed when nothing had
+been explained. Production therefore took the supplied branch every time and
+got structure evidence of exactly **0** whenever the TE alignment produced no
+explanation.
+
+**Now** The branch tests `status is not UNAVAILABLE`, which is what
+"populated" means for this type, and falls back to the shadow path
+(`explain_te_sequence_structure("N" * insert_len, ...)`) otherwise.
+
+**Why** Both the module's own docstring ("the C++ uses
+`te_sequence_explanation` when populated and otherwise falls back to
+`explain_te_alignment_shadow`") and the golden certificates say the shadow
+path is right. The golden test reproduced the C++ values precisely *because*
+its hand-built dicts omitted the key and hit the shadow path — so production
+and its own golden test had been exercising different branches, and the test
+was the one that matched the C++.
+
+**Reachable in production** Yes, and this is the part that needs real data.
+`build_insert_alignment_evidence_from_blast_hits` leaves the status
+UNAVAILABLE when the TE library is missing or BLAST returns no hit, while the
+insert sequence and its length are present. Those loci previously scored zero
+structure evidence and now score the shadow path's.
+
+**Impact measured** The example dataset is byte-identical (every alignment
+there is populated). The direction of the change is clear and is NOT yet
+validated on real data: giving structure evidence to loci with no TE
+alignment RAISES their TE evidence, which makes the TE gate more permissive.
+Concretely, a scenario that used to abstain to `TE_AMBIGUOUS` at identity
+0.98 / coverage 0.95 now passes the gate — correctly, since that is a strong
+alignment, but the same shift applies to weak ones.
+
+**Open** Re-measure precision and recall on the GIAB development slice before
+trusting this. The abstention property itself still holds and is still tested,
+now provoked by a genuinely uncertain alignment (coverage 0.30, LOW
+confidence) rather than by the zeroing artefact.
+
+**Tests** `tests/test_24_policy.py::test_a_failed_gate_abstains_rather_than_rejecting`
+(scenario changed, property unchanged); the eight golden certificates in
+`tests/test_01_blocks.py` now pass with records rather than dicts.
+
+---
+
 ## Not divergences
 
 For the record, these look like behaviour changes and are not:

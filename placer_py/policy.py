@@ -1527,22 +1527,6 @@ def context_conditioned_prior(artifact_context_signal: float) -> dict:
     }
 
 
-def _as_dict(record) -> dict:
-    """The bridge to `placer_py.blocks`, which takes dicts.
-
-    `blocks.py` was written against the ledger rows, which arrive as dicts, so
-    it reads its inputs with `.get`. Rather than rewrite it to take these
-    dataclasses -- and revalidate eight golden certificates for a signature
-    change -- the records are converted here.
-    """
-    if isinstance(record, dict):
-        return record
-    out = dict(record.__dict__)
-    if "pass_" in out:
-        out.setdefault("pass", out["pass_"])
-    return out
-
-
 # --------------------------------------------------------------------------
 # The joint decision.
 # --------------------------------------------------------------------------
@@ -1580,9 +1564,8 @@ def evaluate_joint_hypotheses(existence: EventExistenceEvidence,
     latent_lfdr = evaluate_latent_mechanism_lfdr(existence, segmentation, te_alignment,
                                                  boundary, clip_insert_concordance)
     certificate = blocks_module.build_certificate(
-        _as_dict(existence), _as_dict(segmentation), _as_dict(te_alignment),
-        _as_dict(boundary),
-        _as_dict(clip_insert_concordance) if clip_insert_concordance else None)
+        existence, segmentation, te_alignment, boundary,
+        clip_insert_concordance)
     te_structure = te_structure_explanation_for_decision(segmentation, te_alignment)
     robust_mechanistic = blocks_module.evaluate_robust_lfdr(
         certificate, context_conditioned_prior(certificate.artifact_context_signal),

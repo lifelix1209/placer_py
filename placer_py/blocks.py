@@ -34,10 +34,24 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 from placer_py import mathx
 
 from . import structure as structure_module
+from .structure import TeAnnotationStatus
+
+if TYPE_CHECKING:  # pragma: no cover - imports for annotations only
+    # `policy` imports this module, so these cannot be imported at runtime.
+    # `from __future__ import annotations` makes every annotation a string, so
+    # the guard costs nothing and the types are still checkable.
+    from placer_py.policy import (
+        BoundaryEvidence,
+        ClipInsertConcordanceEvidence,
+        EventExistenceEvidence,
+        EventSegmentationEvidence,
+    )
+    from placer_py.te_classifier import TEAlignmentEvidence
 
 
 @dataclass
@@ -101,27 +115,28 @@ def count_signal(count: int, scale: float) -> float:
     return _clamp01(1.0 - math.exp(-count / max(scale, 1e-6)))
 
 
-def _is_one_sided_segmentation_pass(segmentation: dict) -> bool:
-    return bool(segmentation.get("has_insert_seq")
-                and not segmentation.get("pair_valid")
-                and (bool(segmentation.get("has_left_flank"))
-                     != bool(segmentation.get("has_right_flank"))))
+def _is_one_sided_segmentation_pass(segmentation: EventSegmentationEvidence) -> bool:
+    return bool(segmentation.has_insert_seq
+                and not segmentation.pair_valid
+                and (bool(segmentation.has_left_flank)
+                     != bool(segmentation.has_right_flank)))
 
 
-def mechanistic_read_signal(existence: dict,
-                            clip_insert_concordance: dict | None) -> float:
-    alt = _positive(existence.get("alt_struct_reads", 0))
+def mechanistic_read_signal(existence: EventExistenceEvidence,
+                            clip_insert_concordance: ClipInsertConcordanceEvidence | None
+                            ) -> float:
+    alt = _positive(existence.alt_struct_reads)
     mechanistic_reads = (
-        _positive(existence.get("alt_split_reads", 0))
-        + _positive(existence.get("alt_indel_reads", 0))
-        + min(_positive(existence.get("alt_left_clip_reads", 0)),
-              _positive(existence.get("alt_right_clip_reads", 0))))
-    if clip_insert_concordance is not None and clip_insert_concordance.get("pass"):
+        _positive(existence.alt_split_reads)
+        + _positive(existence.alt_indel_reads)
+        + min(_positive(existence.alt_left_clip_reads),
+              _positive(existence.alt_right_clip_reads)))
+    if clip_insert_concordance is not None and clip_insert_concordance.pass_:
         mechanistic_reads += _positive(
-            clip_insert_concordance.get("full_insert_reads", 0))
+            clip_insert_concordance.full_insert_reads)
         mechanistic_reads += min(
-            _positive(clip_insert_concordance.get("left_clip_reads", 0)),
-            _positive(clip_insert_concordance.get("right_clip_reads", 0)))
+            _positive(clip_insert_concordance.left_clip_reads),
+            _positive(clip_insert_concordance.right_clip_reads))
     if alt <= 0 or mechanistic_reads <= 0:
         return 0.0
     count_part = count_signal(mechanistic_reads, 4.0)
@@ -129,9 +144,10 @@ def mechanistic_read_signal(existence: dict,
     return math.sqrt(count_part * fraction_part)
 
 
-def ref_conflict_signal(existence: dict, segmentation: dict) -> float:
-    alt = _positive(existence.get("alt_struct_reads", 0))
-    ref = _positive(existence.get("ref_span_reads", 0))
+def ref_conflict_signal(existence: EventExistenceEvidence,
+                        segmentation: EventSegmentationEvidence) -> float:
+    alt = _positive(existence.alt_struct_reads)
+    ref = _positive(existence.ref_span_reads)
     signal = (ref / (alt + ref)) if (alt + ref) > 0 else 0.0
     signal = max(signal, 0.60 * count_signal(ref, 8.0))
     if _is_one_sided_segmentation_pass(segmentation) and ref > 0:
@@ -139,22 +155,23 @@ def ref_conflict_signal(existence: dict, segmentation: dict) -> float:
     return _clamp01(signal)
 
 
-def event_signal(existence: dict, independent_signal: float) -> float:
-    support = count_signal(_positive(existence.get("alt_struct_reads", 0)), 8.0)
-    quality = _clamp01(float(existence.get("gq", 0)) / 60.0)
+def event_signal(existence: EventExistenceEvidence,
+                 independent_signal: float) -> float:
+    support = count_signal(_positive(existence.alt_struct_reads), 8.0)
+    quality = _clamp01(float(existence.gq) / 60.0)
     return _clamp01((0.45 * support)
                     + (0.30 * independent_signal)
                     + (0.15 * quality)
-                    + (0.10 * _clamp01(float(existence.get("af", 0.0)))))
+                    + (0.10 * _clamp01(float(existence.af))))
 
 
-def sequence_signal(te: dict) -> float:
-    qc = te.get("qc_reason", "")
-    if not te.get("pass_", te.get("pass", False)) and qc != "TE_ALIGNMENT_LOW_IDENTITY":
+def sequence_signal(te: TEAlignmentEvidence) -> float:
+    qc = te.qc_reason
+    if not te.pass_ and qc != "TE_ALIGNMENT_LOW_IDENTITY":
         return 0.0
-    signal = ((0.48 * _clamp01(float(te.get("best_identity", 0.0))))
-              + (0.32 * _clamp01(float(te.get("best_query_coverage", 0.0))))
-              + (0.20 * _clamp01(float(te.get("cross_family_margin", 0.0)) * 4.0)))
+    signal = ((0.48 * _clamp01(float(te.best_identity)))
+              + (0.32 * _clamp01(float(te.best_query_coverage)))
+              + (0.20 * _clamp01(float(te.cross_family_margin) * 4.0)))
     if qc == "PASS_INSERT_TE_ALIGNMENT":
         signal += 0.15
     elif qc == "PASS_INSERT_TE_ALIGNMENT_FAMILY_ONLY":
@@ -164,44 +181,45 @@ def sequence_signal(te: dict) -> float:
     elif qc == "TE_ALIGNMENT_LOW_IDENTITY":
         signal -= 0.25
 
-    label = te.get("sequence_model_label", "")
+    label = te.sequence_model_label
     if label == "TE_MODEL_IN_DISTRIBUTION":
-        signal += 0.12 + (0.10 * _clamp01(float(te.get("sequence_model_score", 0.0))))
+        signal += 0.12 + (0.10 * _clamp01(float(te.sequence_model_score)))
     elif label == "TE_MODEL_EDGE":
         signal -= 0.10
     elif label == "TE_MODEL_OUTLIER":
         signal -= 0.45
 
-    confidence = te.get("annotation_confidence", "")
+    confidence = te.annotation_confidence
     if confidence == "HIGH":
         signal += 0.08
     elif confidence == "LOW":
         signal -= 0.12
 
-    signal -= 0.20 * _clamp01(float(te.get("annotation_residual_fraction", 0.0)))
+    signal -= 0.20 * _clamp01(float(te.annotation_residual_fraction))
     return _clamp01(signal)
 
 
-def boundary_signal(segmentation: dict, boundary: dict) -> float:
-    if not segmentation.get("has_insert_seq"):
+def boundary_signal(segmentation: EventSegmentationEvidence,
+                    boundary: BoundaryEvidence) -> float:
+    if not segmentation.has_insert_seq:
         return 0.0
     signal = 0.20
-    if (segmentation.get("pair_valid") and segmentation.get("has_left_flank")
-            and segmentation.get("has_right_flank")):
+    if (segmentation.pair_valid and segmentation.has_left_flank
+            and segmentation.has_right_flank):
         signal += 0.35
-    elif segmentation.get("pair_valid"):
+    elif segmentation.pair_valid:
         signal += 0.20
     elif _is_one_sided_segmentation_pass(segmentation):
         signal += 0.10
-    if bool(segmentation.get("has_left_flank")) != bool(segmentation.get("has_right_flank")):
+    if bool(segmentation.has_left_flank) != bool(segmentation.has_right_flank):
         signal += 0.05
-    if boundary.get("geometry_defined") and boundary.get("canonical_pass"):
+    if boundary.geometry_defined and boundary.canonical_pass:
         signal += 0.35
-    elif boundary.get("geometry_defined") and boundary.get("evidence_consistent"):
+    elif boundary.geometry_defined and boundary.evidence_consistent:
         signal += 0.22
-    elif not boundary.get("geometry_defined"):
+    elif not boundary.geometry_defined:
         signal -= 0.10
-    btype = boundary.get("boundary_type", "")
+    btype = boundary.boundary_type
     if btype == "TSD":
         signal += 0.15
     elif btype in ("BLUNT", "SMALL_DEL"):
@@ -209,27 +227,28 @@ def boundary_signal(segmentation: dict, boundary: dict) -> float:
     return _clamp01(signal)
 
 
-def artifact_context_signal(segmentation: dict, te: dict, boundary: dict,
+def artifact_context_signal(segmentation: EventSegmentationEvidence,
+                            te: TEAlignmentEvidence, boundary: BoundaryEvidence,
                             ref_conflict: float) -> float:
     signal = 0.80 * ref_conflict
-    if not segmentation.get("has_insert_seq"):
+    if not segmentation.has_insert_seq:
         signal = max(signal, 1.0)
-    label = te.get("sequence_model_label", "")
+    label = te.sequence_model_label
     if label == "TE_MODEL_OUTLIER":
         signal = max(signal, 0.90)
     elif label == "TE_MODEL_EDGE":
         signal = max(signal, 0.45)
-    if (boundary.get("geometry_defined") and not boundary.get("canonical_pass")
-            and not boundary.get("evidence_consistent")):
+    if (boundary.geometry_defined and not boundary.canonical_pass
+            and not boundary.evidence_consistent):
         signal = max(signal, 0.55)
-    if te.get("annotation_confidence") == "LOW":
+    if te.annotation_confidence == "LOW":
         signal = max(signal, 0.35)
     return _clamp01(signal)
 
 
-def _structure_ambiguity_width(segmentation: dict,
+def _structure_ambiguity_width(segmentation: EventSegmentationEvidence,
                                explanation) -> float:
-    insert_len = int(segmentation.get("insert_len", 0))
+    insert_len = int(segmentation.insert_len)
     residual_fraction = (
         _clamp(max(0, explanation.unexplained_high_complexity_bp) / insert_len,
                0.0, 1.0) if insert_len > 0 else 1.0)
@@ -238,7 +257,8 @@ def _structure_ambiguity_width(segmentation: dict,
             + (0.30 * residual_fraction))
 
 
-def _structure_explanation(segmentation: dict, te: dict):
+def _structure_explanation(segmentation: EventSegmentationEvidence,
+                           te: TEAlignmentEvidence):
     """
     The C++ uses `te_alignment.te_sequence_explanation` when populated and
     otherwise falls back to `explain_te_alignment_shadow`.
@@ -261,25 +281,36 @@ def _structure_explanation(segmentation: dict, te: dict):
     `0.35 + 0.25*0.35` of model support plus the poly(A) and transduction states
     that an empty sequence leaves at their open-odds logistics.
     """
-    supplied = te.get("te_sequence_explanation")
-    if supplied is not None:
+    # "POPULATED" IS A STATUS, NOT A NULL CHECK, and the difference used to
+    # split production from its own golden test. `_as_dict` copied
+    # `record.__dict__`, so the key was always present and always carried a
+    # default-constructed SequenceExplanation -- the supplied branch was taken
+    # in production even when nothing had been explained, giving structure
+    # evidence of exactly 0. The golden test built its dicts by hand without
+    # the key, got None, and took the shadow path -- which is the path whose
+    # numbers match the C++. So the two disagreed about which branch the C++
+    # was being compared against, and the test was right.
+    supplied = te.te_sequence_explanation
+    if supplied is not None and supplied.status is not TeAnnotationStatus.UNAVAILABLE:
         return supplied
-    insert_len = max(0, int(segmentation.get("insert_len", 0)))
+    insert_len = max(0, int(segmentation.insert_len))
     return structure_module.explain_te_sequence_structure(
-        "N" * insert_len, te.get("qc_reason", ""),
-        te.get("best_family", "UNKNOWN"), te.get("best_subfamily", "UNKNOWN"),
-        float(te.get("best_identity", 0.0)),
-        float(te.get("best_query_coverage", 0.0)),
-        float(te.get("annotation_residual_fraction", 0.0)),
-        float(te.get("annotation_masked_fraction", 0.0)),
-        float(te.get("cross_family_margin", 0.0)),
-        float(te.get("second_score", 0.0)),
+        "N" * insert_len, te.qc_reason,
+        te.best_family, te.best_subfamily,
+        float(te.best_identity),
+        float(te.best_query_coverage),
+        float(te.annotation_residual_fraction),
+        float(te.annotation_masked_fraction),
+        float(te.cross_family_margin),
+        float(te.second_score),
         "TE_MODEL_UNAVAILABLE", 0.0)
 
 
-def build_certificate(existence: dict, segmentation: dict, te_alignment: dict,
-                      boundary: dict,
-                      clip_insert_concordance: dict | None = None
+def build_certificate(existence: EventExistenceEvidence,
+                      segmentation: EventSegmentationEvidence,
+                      te_alignment: TEAlignmentEvidence,
+                      boundary: BoundaryEvidence,
+                      clip_insert_concordance: ClipInsertConcordanceEvidence | None = None
                       ) -> Certificate:
     """Port of `placer::build_mechanistic_evidence_certificate`."""
     cert = Certificate()

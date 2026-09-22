@@ -18,6 +18,7 @@ import pytest
 from conftest import call_or_skip, close
 
 from placer_py import blocks, dependency, genotype, integrate, structure, tprt
+from placer_py import policy as P
 
 pytestmark = pytest.mark.invariant
 
@@ -42,35 +43,42 @@ def test_mechanistic_read_signal_needs_both_count_and_fraction():
     carries a mechanistic signature; the count guards against a locus with one
     read that happens to be entirely mechanistic.
     """
-    existence = dict(alt_struct_reads=10, alt_split_reads=5, alt_indel_reads=3,
-                     alt_left_clip_reads=2, alt_right_clip_reads=2)
-    full = call_or_skip(blocks.mechanistic_read_signal, existence, None)
+    def existence(**kw):
+        return P.EventExistenceEvidence(**kw)
+
+    full = call_or_skip(blocks.mechanistic_read_signal,
+                        existence(alt_struct_reads=10, alt_split_reads=5,
+                                  alt_indel_reads=3, alt_left_clip_reads=2,
+                                  alt_right_clip_reads=2), None)
     assert 0.0 < full <= 1.0
 
     no_alt = call_or_skip(blocks.mechanistic_read_signal,
-                          dict(existence, alt_struct_reads=0), None)
+                          existence(alt_struct_reads=0, alt_split_reads=5,
+                                    alt_indel_reads=3, alt_left_clip_reads=2,
+                                    alt_right_clip_reads=2), None)
     assert no_alt == 0.0
     no_mech = call_or_skip(blocks.mechanistic_read_signal,
-                           dict(alt_struct_reads=10, alt_split_reads=0,
-                                alt_indel_reads=0, alt_left_clip_reads=0,
-                                alt_right_clip_reads=0), None)
+                           existence(alt_struct_reads=10, alt_split_reads=0,
+                                     alt_indel_reads=0, alt_left_clip_reads=0,
+                                     alt_right_clip_reads=0), None)
     assert no_mech == 0.0
     # Clip reads count only as a MATCHED pair -- one-sided clipping is not a
     # mechanistic signature on its own.
     one_sided = call_or_skip(blocks.mechanistic_read_signal,
-                             dict(alt_struct_reads=10, alt_split_reads=0,
-                                  alt_indel_reads=0, alt_left_clip_reads=8,
-                                  alt_right_clip_reads=0), None)
+                             existence(alt_struct_reads=10, alt_split_reads=0,
+                                       alt_indel_reads=0, alt_left_clip_reads=8,
+                                       alt_right_clip_reads=0), None)
     assert one_sided == 0.0
 
 
 def test_clip_insert_concordance_only_counts_when_it_passes():
-    existence = dict(alt_struct_reads=10, alt_split_reads=2, alt_indel_reads=0,
-                     alt_left_clip_reads=0, alt_right_clip_reads=0)
-    failing = {"pass": False, "full_insert_reads": 6, "left_clip_reads": 3,
-               "right_clip_reads": 3}
-    passing = {"pass": True, "full_insert_reads": 6, "left_clip_reads": 3,
-               "right_clip_reads": 3}
+    existence = P.EventExistenceEvidence(
+        alt_struct_reads=10, alt_split_reads=2, alt_indel_reads=0,
+        alt_left_clip_reads=0, alt_right_clip_reads=0)
+    failing = P.ClipInsertConcordanceEvidence(
+        pass_=False, full_insert_reads=6, left_clip_reads=3, right_clip_reads=3)
+    passing = P.ClipInsertConcordanceEvidence(
+        pass_=True, full_insert_reads=6, left_clip_reads=3, right_clip_reads=3)
     assert call_or_skip(blocks.mechanistic_read_signal, existence, passing) > \
         call_or_skip(blocks.mechanistic_read_signal, existence, failing)
 
@@ -80,32 +88,34 @@ def test_event_signal_weights_sum_to_one():
     that maxes every input reaches exactly 1 and the weights are a convex
     combination rather than an arbitrary scale."""
     maxed = call_or_skip(blocks.event_signal,
-                         dict(alt_struct_reads=10_000, gq=60, af=1.0), 1.0)
+                         P.EventExistenceEvidence(alt_struct_reads=10_000,
+                                                  gq=60, af=1.0), 1.0)
     close(maxed, 1.0, "event_signal with every input maxed")
     floor = call_or_skip(blocks.event_signal,
-                         dict(alt_struct_reads=0, gq=0, af=0.0), 0.0)
+                         P.EventExistenceEvidence(alt_struct_reads=0, gq=0,
+                                                  af=0.0), 0.0)
     assert floor == 0.0
 
 
 def test_boundary_signal_rewards_a_tsd_and_closed_geometry():
-    seg = dict(has_insert_seq=True, pair_valid=True, has_left_flank=True,
-               has_right_flank=True)
-    tsd = call_or_skip(blocks.boundary_signal, seg,
-                       dict(geometry_defined=True, canonical_pass=True,
-                            evidence_consistent=True, boundary_type="TSD"))
-    blunt = call_or_skip(blocks.boundary_signal, seg,
-                         dict(geometry_defined=True, canonical_pass=True,
-                              evidence_consistent=True, boundary_type="BLUNT"))
+    def boundary(btype, defined=True, canonical=True, consistent=True):
+        return P.BoundaryEvidence(geometry_defined=defined,
+                                  canonical_pass=canonical,
+                                  evidence_consistent=consistent,
+                                  boundary_type=btype)
+
+    seg = P.EventSegmentationEvidence(
+        has_insert_seq=True, pair_valid=True, has_left_flank=True,
+        has_right_flank=True)
+    tsd = call_or_skip(blocks.boundary_signal, seg, boundary("TSD"))
+    blunt = call_or_skip(blocks.boundary_signal, seg, boundary("BLUNT"))
     undefined = call_or_skip(blocks.boundary_signal, seg,
-                             dict(geometry_defined=False, canonical_pass=False,
-                                  evidence_consistent=False,
-                                  boundary_type="NONE"))
+                             boundary("NONE", False, False, False))
     assert tsd > blunt > undefined
     # No insert sequence means no boundary evidence at all.
-    assert call_or_skip(blocks.boundary_signal, dict(has_insert_seq=False),
-                        dict(geometry_defined=True, canonical_pass=True,
-                             evidence_consistent=True,
-                             boundary_type="TSD")) == 0.0
+    assert call_or_skip(blocks.boundary_signal,
+                        P.EventSegmentationEvidence(has_insert_seq=False),
+                        boundary("TSD")) == 0.0
 
 
 def test_serialize_blocks_round_trips_the_names():
