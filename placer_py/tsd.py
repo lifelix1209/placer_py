@@ -2,7 +2,7 @@
 Target-site duplication detection.
 
 Ported from `src/component/tsd_detector.cpp`, pinned by
-`tests/test_20_tsd.py`.
+`tests/test_33_tsd.py`.
 
 NO GOLDEN VECTORS FOR THIS ONE, and the reason matters. `TSDDetector::detect`
 reads the reference through a faidx handle, so it cannot be linked into the

@@ -2,7 +2,7 @@
 Finalization: from a ledger of candidates to a set of calls, with a risk level.
 
 Ported from `src/pipeline/pipeline_finalization_stage.inc` -- the largest single
-unit in the C++ -- and pinned by `tests/test_31_finalization.py`.
+unit in the C++ -- and pinned by `tests/test_29_finalization.py`.
 
 WHAT THIS STAGE IS FOR. Everything before it works on ONE locus at a time.
 Finalization is the only stage that sees the whole run, and that is what it is

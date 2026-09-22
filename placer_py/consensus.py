@@ -3,7 +3,7 @@ One sequence for the event: event strings per read, and their consensus.
 
 Ported from `src/pipeline/pipeline_consensus_stage.inc` and the event-string
 helpers of `src/pipeline/pipeline_event_helpers.inc`, pinned by
-`tests/test_29_consensus.py`.
+`tests/test_28_events.py` and `tests/test_29_finalization.py`.
 
 WHAT AN "EVENT STRING" IS. Not the fragment, and not the read: it is
 `left_flank + insert + right_flank`, cut from ONE read, with up to 80 bp of

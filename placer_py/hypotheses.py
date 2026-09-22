@@ -2,7 +2,7 @@
 Ranking breakpoint hypotheses, and the breakpoint-position posterior.
 
 Ported from `src/pipeline/pipeline_hypothesis_emission_stage.inc`, pinned by
-`tests/test_31_hypotheses.py`.
+`tests/test_31_outputs.py`.
 
 WHAT THIS STAGE DOES. `placer_py/breakpoints.py` enumerates candidate
 breakpoints; this one evaluates each against the reads, collapses the ones that

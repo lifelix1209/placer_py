@@ -113,7 +113,10 @@ def te_body_loglr(te_core_fraction: float, identity: float, core_len: float) -> 
     return (2.5 * core * length_factor) + (1.5 * (ident - 0.7))
 
 
-# Calibrated against the D2/TLDR reference (see scripts/calibrate_mechanistic_vs_tldr.py):
+# Calibrated against the D2/TLDR reference. THE CALIBRATION SCRIPT IS GONE:
+# this cited scripts/calibrate_mechanistic_vs_tldr.py, which has never existed
+# in this repository, so the provenance of the two constants below cannot be
+# reproduced or rechecked from here.
 # hp_score >= 3500 with coverage >= 0.80 yields ~0.94 precision vs TLDR-detected
 # TE loci (~0.88 vs the strict TLDR PASS subset).
 DEFAULT_HP_MIN = 3500.0

@@ -534,19 +534,31 @@ git diff -- PLACER_py/tests/oracle/cpp_reference.json
 Headers only; nothing links against htslib. A non-empty diff means the contract
 moved — decide whether that was intended before committing.
 
-## Suggested order of work
+## Where the work is now
 
-1. `genotype.py` — self-contained, 14 golden cases, no dependencies on the rest.
-2. `dependency.py` — the highest-value tests are already written, including all
-   three regressions.
-3. `selection.py` — e-BH and the combination rule; the FDR simulation is the
-   real check.
-4. `blocks.py` and `structure.py` — the largest surface and the least
-   interesting, since both are slated for replacement. Port them *unchanged*
-   anyway: a migration that changes behaviour cannot be validated by diffing
-   against the thing it replaces.
-5. `tprt.py` — only after the scanner emits `MISSING_FOR_TPRT`.
+The porting order this section used to give — genotype, dependency,
+selection, then blocks and structure, then tprt — is done. The migration is
+complete, and leaving a to-do list that reads as if it were not was the most
+misleading paragraph in this file.
 
-Steps 4 and 5 are where the temptation to improve things while porting is
-strongest, and where it costs the most: doing both at once means debugging two
-changes with no ground truth for either.
+What replaces it is not a list of modules to port but a set of open
+questions, each of which has evidence attached rather than an opinion:
+
+- **`tests/EXPECTED_DIVERGENCE.md`** — the frozen C++ vectors are now a
+  characterisation, not a definition. Every deliberate departure is recorded
+  there with what moved, by how much, and how it was measured. One entry is
+  marked **Open**: fixing `blocks._structure_explanation` to fall back to the
+  shadow path (as the C++ does, and as the golden vectors confirm) raises the
+  TE evidence of loci with no TE alignment, and the precision effect of that
+  has not yet been measured on real data.
+- **`tools/make_giab_eval.py`** — cuts an HG002 ONT-UL evaluation slice and a
+  TE truth set from GIAB Tier1, with development and holdout regions labelled
+  in the manifest. A change that needs the holdout to justify it is a fit,
+  not a fix.
+- **Five unimported modules** — `tprt.py`, `integrate.py`, `selection.py`,
+  `decoys.py` and `null_control.py` are reachable only from tests. Two of
+  them duplicate logic that `finalization.py` reimplements inline, so each
+  needs a unify-or-delete decision rather than a sweep.
+- **`placer_py/redesign/`** — a second implementation kept alongside the
+  port. It holds the only TE-hit orientation in the repository and the only
+  flank-evidence collector, both of which `tprt.py` would need.

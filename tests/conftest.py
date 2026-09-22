@@ -1,21 +1,28 @@
 """
-Shared fixtures and the skip mechanism that makes an unfinished port readable.
+Shared fixtures, and the skip mechanism left over from the migration.
 
 HOW THIS SUITE IS MEANT TO BE USED
 
-Nothing in `placer_py` is implemented yet. If every golden test simply failed,
-the suite would be uniformly red on day one, which hides real errors and tells
-you nothing about progress. So a function that raises `NotImplementedError` turns
-into a SKIP carrying its own name, and the remaining migration surface is read
-off the suite directly:
+THE PORT IS COMPLETE and this file used to open by saying the opposite --
+"Nothing in `placer_py` is implemented yet" -- which was true when it was
+written and has not been for a long time. `run_tests_without_pytest.py`
+reports `0 skipped (unported)` on every run, so the migration surface it was
+built to measure is empty.
 
-    pytest -r s            # every skip is one unported function
-    pytest -q              # green means "nothing that IS implemented is wrong"
+`call_or_skip` stays anyway, and not out of sentiment: it turns a
+`NotImplementedError` into a SKIP carrying its own name, so a function
+removed or stubbed during a refactor shows up as a named gap rather than as
+a wall of red that hides whatever else broke in the same commit. The
+invariant to watch is now the opposite of the original one --
 
-The moment a function is implemented, its golden test stops skipping and becomes
-a hard equality assertion against the C++ value. No test needs editing for that
-transition, which is the property that makes this a contract rather than a
-checklist.
+    pytest -r s            # any skip is a REGRESSION, not remaining work
+
+-- because there is no remaining work for it to mean.
+
+WHAT THE GOLDEN TESTS MEAN NOW is no longer "the C++ is correct". See
+`tests/EXPECTED_DIVERGENCE.md`: the frozen vectors are a characterisation, a
+failure is either an accident or a deliberate improvement, and the second
+kind has to be written down in the same commit.
 
 One file runs fully today regardless: `test_09_oracle_selfconsistency.py`. It
 checks the golden data's INTERNAL relationships, so it constrains the C++ as

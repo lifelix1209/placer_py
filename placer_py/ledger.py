@@ -2,7 +2,7 @@
 The two records finalization works on: a ledger row and a final call.
 
 Ported from `struct EvidenceLedgerRow` and `struct FinalCall` in
-`include/pipeline.h`, pinned by `tests/test_30_ledger.py`.
+`include/pipeline.h`, pinned by `tests/test_31_outputs.py`.
 
 WHY THERE ARE TWO, and the distinction matters for reading any PLACER output.
 
