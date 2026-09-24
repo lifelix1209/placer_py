@@ -217,10 +217,14 @@ def test_the_dependency_bound_is_measured_from_the_runs_own_ledger():
     assert result.dependency_penalty_cap_log > 0.0
 
 
-def test_the_run_writes_three_files_even_when_two_are_empty():
+def test_the_run_writes_five_files_even_when_three_are_empty():
     """
     A missing `structural_calls.tsv` is ambiguous between "none were set aside"
-    and "the run died before writing it".
+    and "the run died before writing it". The same argument is why an empty run
+    still produces a VCF with a full header and a CSV with its header row.
+
+    The exact key set is asserted so that adding an output is a deliberate,
+    visible change rather than something that can be slipped in.
     """
     import tempfile
 
@@ -228,7 +232,7 @@ def test_the_run_writes_three_files_even_when_two_are_empty():
     with tempfile.TemporaryDirectory() as output_dir:
         paths = call_or_skip(M.write_outputs, result, output_dir)
         assert set(paths) == {"scientific_txt", "structural_calls_tsv",
-                              "evidence_ledger_tsv"}
+                              "evidence_ledger_tsv", "calls_vcf", "calls_csv"}
         for path in paths.values():
             with open(path) as handle:
                 assert handle.read()

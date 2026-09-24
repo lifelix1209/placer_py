@@ -20,17 +20,26 @@ from __future__ import annotations
 
 import os
 
-from placer_py.report import tsv
+from placer_py.report import csv_table, tsv, vcf
+from placer_py.report.context import ReportContext
 
 
 def write_outputs(result, output_dir: str, include_insert_seq: bool = False,
-                  include_support_qnames: bool = False) -> dict[str, str]:
-    """Write the three TSV/TXT files and return their paths."""
+                  include_support_qnames: bool = False,
+                  context: ReportContext | None = None) -> dict[str, str]:
+    """Write the five output files and return their paths.
+
+    `context` carries the contig list, the sample name and the anchor bases the
+    VCF needs. Omitting it still produces a valid VCF -- contig-less and
+    `N`-anchored -- which is what lets this be exercised without a BAM.
+    """
     os.makedirs(output_dir, exist_ok=True)
     paths = {
         "scientific_txt": os.path.join(output_dir, "scientific.txt"),
         "structural_calls_tsv": os.path.join(output_dir, "structural_calls.tsv"),
         "evidence_ledger_tsv": os.path.join(output_dir, "evidence_ledger.tsv"),
+        "calls_vcf": os.path.join(output_dir, "calls.vcf"),
+        "calls_csv": os.path.join(output_dir, "calls.csv"),
     }
     with open(paths["scientific_txt"], "w") as handle:
         handle.write(tsv.render_scientific_txt(result, include_insert_seq))
@@ -39,4 +48,9 @@ def write_outputs(result, output_dir: str, include_insert_seq: bool = False,
     with open(paths["evidence_ledger_tsv"], "w") as handle:
         handle.write(tsv.render_evidence_ledger_tsv(result, include_insert_seq,
                                                     include_support_qnames))
+    with open(paths["calls_vcf"], "w") as handle:
+        handle.write(vcf.render_vcf(result, context))
+    with open(paths["calls_csv"], "w") as handle:
+        handle.write(csv_table.render_csv(result, include_insert_seq,
+                                          include_support_qnames))
     return paths

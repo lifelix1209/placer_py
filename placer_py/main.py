@@ -230,6 +230,7 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     from placer_py.io.bam import make_bam_reader
     from placer_py.io.poa import pyabpoa_consensus
     from placer_py.io.reference import ReferenceFetcher
+    from placer_py.io.report_context import build_report_context
     from placer_py.io.te_library import align_insert_sequences, load_te_library
     from placer_py.pipeline import run_pipeline
     from placer_py.seqtools import build_te_sequence_background
@@ -298,17 +299,24 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     try:
         result = run_pipeline(reader.stream(), reader.chromosome_name,
                               reader.fetch, config, hooks)
+        # BUILT BEFORE THE HANDLES CLOSE, and that is the only reason it is
+        # inside the `try`: the contig list comes from the BAM header and the
+        # VCF anchor bases come from the reference, so both must still be open.
+        # It is still AFTER the run -- a few thousand single-base fetches at
+        # the end rather than reference I/O inside the bin loop.
+        context = build_report_context(reader, reference.fetch_window,
+                                       config, result)
     finally:
         reader.close()
         reference.close()
 
-    paths = write_outputs(result, output_dir)
-    print(f"[PLACER] wrote scientific.txt path={paths['scientific_txt']}",
-          file=sys.stderr)
-    print(f"[PLACER] wrote evidence_ledger.tsv path={paths['evidence_ledger_tsv']}",
-          file=sys.stderr)
-    print(f"[PLACER] wrote structural_calls.tsv path={paths['structural_calls_tsv']}",
-          file=sys.stderr)
+    paths = write_outputs(result, output_dir, context=context)
+    for key, name in (("scientific_txt", "scientific.txt"),
+                      ("evidence_ledger_tsv", "evidence_ledger.tsv"),
+                      ("structural_calls_tsv", "structural_calls.tsv"),
+                      ("calls_vcf", "calls.vcf"),
+                      ("calls_csv", "calls.csv")):
+        print(f"[PLACER] wrote {name} path={paths[key]}", file=sys.stderr)
     return 0
 
 

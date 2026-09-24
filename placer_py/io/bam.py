@@ -133,6 +133,15 @@ class BamStreamReader:
             return 0
         return stream.lengths[tid]
 
+    def header_dict(self) -> dict:
+        """The BAM header as plain nested dicts and lists.
+
+        Only `@RG SM` is read from it today, for the VCF sample column. Typed
+        as a plain dict rather than a pysam type so nothing downstream of the
+        input stage has to know pysam exists.
+        """
+        return dict(self._open_stream().header.to_dict())
+
     def can_fetch(self) -> bool:
         return self._fetch is not None
 
