@@ -2,8 +2,8 @@
 
 Importing this package pulls in NOTHING. The submodules are deliberately not
 re-exported here, because the decision layer's whole selling point is that it
-runs with no third-party package installed -- and `placer_py.bam_io` needs
-pysam. A package-level `from . import bam_io` would make `import placer_py`
+runs with no third-party package installed -- and `placer_py.io.bam` needs
+pysam. A package-level `from . import io` would make `import placer_py`
 fail in exactly the locked-down environment the design is for.
 
 So import what you need:

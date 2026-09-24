@@ -253,7 +253,8 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     """
     from placer_py import consensus as consensus_module
     from placer_py import te_classifier
-    from placer_py.bam_io import ReferenceFetcher, make_bam_reader
+    from placer_py.io.bam import make_bam_reader
+    from placer_py.io.reference import ReferenceFetcher
     from placer_py.pipeline import StageHooks, run_pipeline
     from placer_py.seqtools import build_te_sequence_background
     from placer_py.tsd import TsdConfig

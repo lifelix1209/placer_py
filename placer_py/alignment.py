@@ -11,8 +11,10 @@ the C++ is a non-owning view over a `bam1_t`, which is why the C++ suite cannot
 test any of this without linking htslib -- and why almost none of it IS tested
 there. Making the read an ordinary value object with the same eight accessors
 means every stage below can be exercised from a literal, so the port's tests can
-pin behaviour the C++ tests never reach. `read_from_pysam` adapts a real BAM
-record onto the same shape, so nothing downstream knows which it is holding.
+pin behaviour the C++ tests never reach. `placer_py/io/pysam_adapter.py` adapts
+a real BAM record onto the same shape, so nothing downstream knows which it is
+holding -- and it lives in the input stage rather than here, so this module
+stays a type the algorithm can own without the package that produces it.
 
 THE SA TAG IS THE SECOND SOURCE OF TRUTH about an insertion, and the parsing
 here is deliberately forgiving: a malformed record is dropped, never raised on.
@@ -162,26 +164,6 @@ class AlignedRead:
 
     def decode_sequence(self) -> str:
         return self.seq
-
-
-def read_from_pysam(record) -> AlignedRead:
-    """Adapt a `pysam.AlignedSegment` onto :class:`AlignedRead`.
-
-    Imported lazily by the caller: the decision layer needs no BAM at all, and
-    making pysam a hard import would put a compiled dependency in front of the
-    part of the pipeline that has none.
-    """
-    tags = dict(record.get_tags() or [])
-    return AlignedRead(
-        qname=record.query_name or "",
-        flag=int(record.flag),
-        tid=int(record.reference_id),
-        pos=int(record.reference_start if record.reference_start is not None else 0),
-        mapq=int(record.mapping_quality),
-        cigar=[(int(op), int(length)) for op, length in (record.cigartuples or [])],
-        seq=record.query_sequence or "",
-        tags=tags,
-    )
 
 
 def compute_ref_end(read: AlignedRead) -> int:

@@ -3,7 +3,8 @@ Reading the BAM: a streaming reader, an indexed fetch, and a region scope.
 
 Ported from `include/bam_io.h`, `src/stream/bam_io.cpp` and
 `src/denovo/indexed_bam_reader.cpp`, pinned by
-`tests/test_31_outputs.py`.
+`tests/test_31_outputs.py`. The reference fetcher that used to share this
+module is now `placer_py/io/reference.py`.
 
 TWO ACCESS PATTERNS, and the pipeline needs both. The scan STREAMS the whole
 file once in order, which is the only affordable way to touch six million reads.
@@ -35,8 +36,9 @@ if TYPE_CHECKING:  # pragma: no cover - for the checker, never at runtime
     # which exist so the decision layer needs no compiled dependency.
     import pysam
 
-from placer_py.alignment import AlignedRead, read_from_pysam
+from placer_py.alignment import AlignedRead
 from placer_py.config import BamRegionScope
+from placer_py.io.pysam_adapter import read_from_pysam
 
 #: One definition, in `reads.py`, which `alignment.py` also re-exports.
 from placer_py.reads import FLAG_SECONDARY, FLAG_UNMAP  # noqa: F401
@@ -203,38 +205,3 @@ class BamStreamReader:
 def make_bam_reader(bam_path: str, decompression_threads: int = 2,
                     region_scope: BamRegionScope | None = None) -> BamStreamReader:
     return BamStreamReader(bam_path, decompression_threads, region_scope)
-
-
-class ReferenceFetcher:
-    """Reference sequence by interval, for the TSD detector and segmentation.
-
-    Uppercased on the way out, because every consumer compares against
-    uppercased read bases and a reference with soft-masked (lower-case) repeats
-    would otherwise mismatch at exactly the loci this caller is about.
-    """
-
-    def __init__(self, fasta_path: str) -> None:
-        import pysam  # noqa: F401
-
-        # Optional for the same reason as the BAM handles: `close()` sets
-        # it to None and `fetch_window` already checks for that.
-        self._fasta: pysam.FastaFile | None = pysam.FastaFile(fasta_path)
-
-    def can_fetch_reference(self) -> bool:
-        return self._fasta is not None
-
-    def fetch_window(self, chrom: str, start: int, end: int) -> str:
-        if self._fasta is None or not chrom or end <= start:
-            return ""
-        try:
-            return self._fasta.fetch(chrom, max(0, start), end).upper()
-        except (KeyError, ValueError):
-            # An unknown contig or an out-of-range interval is a MISSING window,
-            # not an error: the caller's own `if not window` branch reports it
-            # as REFERENCE_WINDOW_FETCH_FAILED, which is the right verdict.
-            return ""
-
-    def close(self) -> None:
-        if self._fasta is not None:
-            self._fasta.close()
-            self._fasta = None

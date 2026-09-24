@@ -754,7 +754,7 @@ def run_denovo_cli(argv: list[str]) -> int:
     scanner = None
     if not config.dry_run:
         from placer_py import te_classifier
-        from placer_py.bam_io import make_bam_reader
+        from placer_py.io.bam import make_bam_reader
 
         with open(config.te_fasta_path) as handle:
             entries = te_classifier.load_te_entries_from_fasta(handle.read())
