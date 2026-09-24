@@ -12,7 +12,6 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import finalization as F
 from placer_py import hypotheses as H
 from placer_py import main as M
 from placer_py import outputs as O
@@ -24,6 +23,7 @@ from placer_py.clustering import (
     ComponentCall,
 )
 from placer_py.config import FinalReportMode, PipelineConfig
+from placer_py.core import result as R
 from placer_py.events import EventReadEvidence
 from placer_py.ledger import EvidenceLedgerRow, FinalCall
 
@@ -285,7 +285,7 @@ def test_the_optional_columns_go_where_the_header_says():
 def test_the_two_call_files_carry_the_identical_schema():
     """So the two can be concatenated or diffed without reshaping -- the
     structural calls are SELECTED calls, not rejects."""
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     result.final_calls = [FinalCall(chrom="chr1", pos=1000)]
     result.structural_calls = [FinalCall(chrom="chr1", pos=2000)]
     scientific = O.render_scientific_txt(result).splitlines()
@@ -328,7 +328,7 @@ def test_the_family_status_column_reports_abstention_separately_from_the_label()
 def test_the_summary_reports_what_the_e_values_were_calibrated_against():
     """A file reporting selections without reporting the calibration cannot be
     audited."""
-    result = F.PipelineResult(estimated_dependency_sigma=2.5,
+    result = R.PipelineResult(estimated_dependency_sigma=2.5,
                               dependency_penalty_null_count=1060)
     text = O.render_scientific_txt(result)
     assert "estimated_dependency_sigma\t2.5" in text
@@ -337,13 +337,13 @@ def test_the_summary_reports_what_the_e_values_were_calibrated_against():
 
 def test_the_scientific_summary_ends_at_a_blank_line():
     """Which is how a reader skips it without knowing its length."""
-    lines = O.render_scientific_txt(F.PipelineResult()).splitlines()
+    lines = O.render_scientific_txt(R.PipelineResult()).splitlines()
     blank = lines.index("")
     assert lines[blank + 1].startswith("#chrom")
 
 
 def test_the_ledger_has_no_leading_hash_because_it_is_data():
-    text = O.render_evidence_ledger_tsv(F.PipelineResult())
+    text = O.render_evidence_ledger_tsv(R.PipelineResult())
     assert text.startswith("chrom\t")
 
 

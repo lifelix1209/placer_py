@@ -15,6 +15,7 @@ import pytest
 from conftest import call_or_skip, close
 
 from placer_py import finalization as F
+from placer_py.core import result as R
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
 pytestmark = pytest.mark.invariant
@@ -543,7 +544,7 @@ def test_the_penalty_is_applied_to_the_capped_aggregate():
     the uncapped aggregate builds e-values e-BH is entitled to assume and that
     the estimator never certified.
     """
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     result.final_calls = [call(mechanistic_raw_log_bf_te_vs_artifact=1000.0,
                                mechanistic_raw_log_bf_te_vs_non_te=1000.0)]
     result.evidence_ledger = [row(mechanistic_raw_log_bf_te_vs_artifact=-1.0,
@@ -556,7 +557,7 @@ def test_the_penalty_is_applied_to_the_capped_aggregate():
 
 # ------------------------------------------------------------- the whole pass
 def _clean_run():
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     result.final_calls = [call(
         final_qc="PASS_TE_CLOSED", posterior_qc="PASS_TE_POSTERIOR",
         lfdr_qc="PASS_TE_LFDR", robust_mechanistic_qc="PASS_TE_LFDR",
@@ -601,7 +602,7 @@ def test_the_te_calibrated_mode_sets_structural_calls_aside_rather_than_erasing_
     They are SELECTED calls, not rejects. Silently discarding them made recall
     benchmarking on the default mode misleading.
     """
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     structural = call(final_qc="PASS_STRUCTURAL_INSERTION",
                       conformal_qc="PASS_EVENT_EBH")
     te = call(final_qc="PASS_TE_CLOSED", posterior_qc="PASS_TE_POSTERIOR",
@@ -613,7 +614,7 @@ def test_the_te_calibrated_mode_sets_structural_calls_aside_rather_than_erasing_
 
 
 def test_legacy_mode_keeps_everything_in_one_list():
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     result.final_calls = [call(final_qc="PASS_STRUCTURAL_INSERTION")]
     F.apply_final_report_mode(result, "Legacy")
     assert len(result.final_calls) == 1
@@ -626,7 +627,7 @@ def test_the_family_label_is_committed_only_after_selection():
     de-duplication or emission -- i.e. let the TE library feed back into
     detection.
     """
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     result.final_calls = [call(final_qc="PASS_TE_CLOSED",
                                sequence_family_commit_eligible=True,
                                sequence_family_candidate="Alu",
@@ -639,7 +640,7 @@ def test_the_family_label_is_committed_only_after_selection():
 
 
 def test_a_structural_call_never_gets_a_family_committed():
-    result = F.PipelineResult()
+    result = R.PipelineResult()
     result.final_calls = [call(final_qc="PASS_STRUCTURAL_INSERTION",
                                sequence_family_commit_eligible=True,
                                sequence_family_candidate="Alu")]
