@@ -59,8 +59,8 @@ from placer_py.alignment import AlignedRead
 from placer_py.clustering import ComponentCall, build_component_calls
 from placer_py.config import PipelineConfig
 from placer_py.finalization import PipelineResult, finalize_final_calls
+from placer_py.io.gate import gate_reads
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
-from placer_py.reads import Gate1SignalConfig, pass_preliminary
 from placer_py.te_classifier import TEAlignmentEvidence
 
 #: How far around a component's seed breakpoints to fetch reads.
@@ -739,26 +739,8 @@ def run_pipeline(reads: Iterable[AlignedRead], chromosome_name: Callable[[int], 
     result = PipelineResult()
     bin_size = max(1, config.bin_size)
 
-    gate_config = Gate1SignalConfig()
-
-    def gated(stream: Iterable[AlignedRead]) -> Iterator[AlignedRead]:
-        """Gate-1 as a filter rather than a materialising pass.
-
-        The counters are incremented here, so they are only final once the
-        stream has been fully consumed -- which it has by the time
-        `finalize_final_calls` runs below.
-        """
-        for read in stream:
-            result.total_reads += 1
-            nm = read.get_int_tag("NM")
-            if not pass_preliminary(read.cigar, read.flag, read.seq_len,
-                                    read.mapq, read.has_sa_tag(), nm,
-                                    gate_config):
-                continue
-            result.gate1_passed += 1
-            yield read
-
-    for tid, bin_index, bin_reads in group_reads_into_bins(gated(reads), bin_size):
+    gated = gate_reads(reads, result)
+    for tid, bin_index, bin_reads in group_reads_into_bins(gated, bin_size):
         process_bin_records(bin_reads, chromosome_name(tid), tid,
                             bin_index * bin_size, (bin_index + 1) * bin_size,
                             config, hooks, result, fetch_local)
