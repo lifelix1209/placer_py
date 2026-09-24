@@ -831,7 +831,7 @@ def test_a_memory_capped_consensus_is_visible_in_the_output():
     what makes the degradation legible in `final_qc`, which both the ledger
     and the call files carry.
     """
-    from placer_py import pipeline as pipeline_module
+    from placer_py.core import bins as pipeline_module
     from placer_py.segmentation import EventConsensus
 
     intact = EventConsensus()

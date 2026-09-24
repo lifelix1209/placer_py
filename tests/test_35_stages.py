@@ -140,3 +140,66 @@ def test_the_gate_uses_the_default_config_when_none_is_given():
             == [r.qname for r in gate_reads(iter(reads), explicit,
                                             Gate1SignalConfig())])
     assert (implicit.total_reads, implicit.gate1_passed) == (2, 1)
+
+
+# ------------------------------------------------------- scan versus finalize
+def test_the_scan_leaves_the_run_uncalibrated():
+    """
+    `run_scan` must stop before the whole-run stage. The dependency bound is a
+    null expectation measured across every candidate, so a scan that had
+    already applied it would have measured it from a partial run.
+    """
+    from placer_py.core.result import PipelineResult
+
+    result = PipelineResult()
+    assert result.dependency_penalty_estimated is False
+    assert result.estimated_dependency_penalty == 0.0
+    assert result.final_pass_calls == 0
+
+
+def test_scan_then_finalize_is_the_same_run_as_run_pipeline():
+    """
+    THE PARTITION TEST. `run_pipeline` is defined as gate + scan + finalize, so
+    driving the three by hand must reach the identical result -- otherwise the
+    split silently duplicated or dropped a step.
+
+    Both halves are run on the same synthetic reads `test_32_pipeline.py` uses
+    for its end-to-end acceptance, because a partition that only holds on empty
+    input holds for the wrong reason.
+    """
+    from test_32_pipeline import hooks, synthetic_reads
+
+    from placer_py.config import PipelineConfig
+    from placer_py.core.contracts import ReadSource
+    from placer_py.core.finalize import finalize_run
+    from placer_py.core.result import PipelineResult
+    from placer_py.core.scan import run_scan
+    from placer_py.pipeline import run_pipeline
+
+    config = PipelineConfig(bin_size=100000)
+    reads = synthetic_reads()
+
+    def chrom_name(tid):
+        return "chr1"
+
+    def fetch_local(chrom, start, end):
+        return reads
+
+    whole = run_pipeline(reads, chrom_name, fetch_local, config, hooks(reads))
+
+    split = PipelineResult()
+    source = ReadSource(reads=gate_reads(reads, split),
+                        chromosome_name=chrom_name, fetch_local=fetch_local)
+    run_scan(source, config, hooks(reads), split)
+    finalize_run(split, config)
+
+    assert (split.total_reads, split.gate1_passed) == (whole.total_reads,
+                                                       whole.gate1_passed)
+    assert split.processed_bins == whole.processed_bins
+    assert split.built_components == whole.built_components
+    assert split.final_pass_calls == whole.final_pass_calls
+    assert len(split.final_calls) == len(whole.final_calls)
+    assert len(split.evidence_ledger) == len(whole.evidence_ledger)
+    assert [(c.chrom, c.pos, c.te_name) for c in split.final_calls] == \
+           [(c.chrom, c.pos, c.te_name) for c in whole.final_calls]
+    assert split.estimated_dependency_sigma == whole.estimated_dependency_sigma

@@ -8,7 +8,8 @@ a synthetic locus -- reads carrying a known insertion against a known reference
 reference index and no BLAST.
 
 That is possible because every external dependency is a callable
-(`placer_py.pipeline.StageHooks`), which is the main structural difference from
+(`placer_py.core.contracts.StageHooks`), which is the main structural
+difference from
 the C++ and the reason this test exists at all: the C++ equivalent would need a
 real BAM, a real indexed FASTA and a real BLAST installation.
 """
@@ -25,7 +26,9 @@ from placer_py import main as M
 from placer_py import outputs as O
 from placer_py.alignment import CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
 from placer_py.config import FinalReportMode, PipelineConfig
-from placer_py.pipeline import StageHooks, group_reads_into_bins, run_pipeline
+from placer_py.core.bins import group_reads_into_bins
+from placer_py.core.contracts import StageHooks
+from placer_py.pipeline import run_pipeline
 from placer_py.te_classifier import FragmentTEHit, TEAlignmentEvidence
 
 pytestmark = pytest.mark.invariant

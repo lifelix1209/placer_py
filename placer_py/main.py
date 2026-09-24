@@ -251,11 +251,12 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
       * a readable TE library -- without it every insert is
         `TE_LIBRARY_UNAVAILABLE`, which is a silent whole-run negative.
     """
+    from placer_py.core.contracts import StageHooks
     from placer_py.io.bam import make_bam_reader
     from placer_py.io.poa import pyabpoa_consensus
     from placer_py.io.reference import ReferenceFetcher
     from placer_py.io.te_library import align_insert_sequences, load_te_library
-    from placer_py.pipeline import StageHooks, run_pipeline
+    from placer_py.pipeline import run_pipeline
     from placer_py.seqtools import build_te_sequence_background
     from placer_py.tsd import TsdConfig
     from placer_py.tsd import detect as detect_tsd
