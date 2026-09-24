@@ -711,15 +711,33 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
         [item.insert_seq_to_align for _, _, prepared, _ in pending for item in prepared],
         hooks)
 
+    # ONE ROW PER OBSERVATION. Neighbouring components of one locus often
+    # triage or evaluate the SAME hypothesis from the same reads, and each used
+    # to append its own copy: 21% of the rows on a 0.9 Mb HG002 slice were
+    # exact duplicates. The ledger is the run's null set -- the dependency
+    # bound, the overdispersion estimate and the conformal controls all count
+    # its rows as separate observations -- so a duplicate is one locus
+    # counted twice. A row is dropped only when EVERY field equals one this
+    # bin already wrote; the call candidates are unaffected, and finalization
+    # already collapses the duplicate calls.
+    bin_rows: list[EvidenceLedgerRow] = []
+
+    def append_row(row: EvidenceLedgerRow) -> None:
+        if any(row == seen for seen in bin_rows):
+            return
+        bin_rows.append(row)
+        result.evidence_ledger.append(row)
+
     next_alignment = iter(alignments)
     for component, summary_rows, prepared, anchors in pending:
-        result.evidence_ledger.extend(summary_rows)
+        for row in summary_rows:
+            append_row(row)
         evaluations: list[tuple[selection_module.ComponentFinalCallCandidate, FinalCall]] = []
         for item in prepared:
             shortlisted = item.shortlisted
             (evidence, consensus, segmentation, te_alignment, joint, genotype,
              seg_evidence) = _finish_shortlisted(item, next(next_alignment), config)
-            result.evidence_ledger.append(_evaluated_ledger_row(
+            append_row(_evaluated_ledger_row(
                 component, evidence, consensus, segmentation, te_alignment, joint,
                 owner_bin_start, owner_bin_end))
 

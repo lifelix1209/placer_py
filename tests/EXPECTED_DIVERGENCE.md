@@ -170,6 +170,102 @@ holdout, and the holdout has not been cut.
 
 ---
 
+## 5-9. The first caller fixes from real data
+
+Five changes made together, each for a failure seen on the development slice
+(HG002 ONT-UL, GRCh37, `21:10,000,001-20,000,000`, 23,104 reads) and none
+tuned against it: the two numbers introduced are the 50 bp structural-variant
+floor the tool already uses and, in (9), the balance a diploid genotype
+predicts. The holdout was not looked at.
+
+**Measured together, on that slice** (before = `4c23fa4`):
+
+| | before | after |
+|---|---|---|
+| TE calls | 12 | 9 |
+| GIAB TE truth recalled (confident regions) | 2/3 | 3/3 |
+| calls at a Tier1 insertion (<= 58 bp away, length within 30%) | 6 | 8 |
+| ... of which the TE label came from a simple repeat or a <= 30 bp match | 3 | 0 |
+| calls whose TE label came from a simple repeat or a <= 30 bp match | 7 | 0 |
+| ledger rows | 5,053 | 4,052 |
+| `dependency_penalty_null_count` | 2,722 | 1,836 |
+
+The one call with no Tier1 record near it (`21:11,004,386`, a 64 bp L1 match
+in the centromere) is in both columns. A fourth L1 appears that the truth file
+labels non-TE -- `21:18,607,133`, 3.2 kb, where the truth's own annotation has
+the defect `tools/make_giab_eval.py` is known to have (single-hit coverage of
+an L1 split across Dfam entries). On `examples/data`, the heterozygous SVA
+(`sva_het`, AF 0.45) is now called; before, only the Alu and the L1 were.
+
+### 5. One ledger row per observation
+
+**Where** `core/bins.py::process_bin_records`. **Was** each component
+appended its own rows, and neighbouring components of one locus often
+triaged or evaluated the same hypothesis from the same reads: 1,104 of 5,053
+rows (21.8%) were exact copies. **Now** a row identical in every field to one
+the bin already wrote is dropped. **Why** the ledger is the run's null set --
+the dependency bound, the overdispersion estimate and the conformal controls
+count its rows as observations -- so a copy is one locus counted twice. 103
+rows that are identical in the TSV but belong to different owner bins remain.
+
+### 6. `insert_len` on cluster-promoted calls
+
+**Where** `core/finalization.py::promoted_call_from_ledger_row`. **Was**
+`insert_seq` copied, `insert_len` left at 0, so a promoted call reported
+length 0 in `scientific.txt` and `calls.csv` while the VCF carried its
+sequence. **Now** set from the sequence.
+
+### 7. A TE hit needs 50 informative aligned bases
+
+**Where** `core/te_classifier.py` (`MIN_ELEMENT_ALIGNED_BP`,
+`informative_aligned_bases`), `core/seqtools.py::simple_repeat_mask`.
+**Was** any BLAST hit named an element. Many consensus sequences contain an
+(AT)n or (AAAG)n stretch, and microsatellite expansions were called as L1,
+LTR66, MER52-int and HERV9N; 16-30 bp matches inside 36-82 bp inserts were
+called as L1, LTR40b and Arthur1. **Now** a hit counts only if at least 50 of
+the insert bases it aligns lie outside simple repeat (exact 1-6 bp arrays of
+>= 12 bp, or dust-style windows); an insert with hits but none that qualify
+gets `TE_ALIGNMENT_UNINFORMATIVE` and can still be a structural call. **Why a
+floor and not a fraction** 18-29% of the Dfam SVA consensus is already
+masked, and a real SVA's VNTR expands well beyond it; a floor leaves a 2 kb
+SVA with ~1,000 informative bases untouched.
+
+**Tried and withdrawn** Discarding HSPs that overlap in the consensus (a
+tandem array aligns there once per unit). It catches the same inserts, but it
+would also discard the expanded VNTR copies of a genuine SVA, the same
+under-coverage that (8) fixes for L1.
+
+### 8. Coverage is the chosen family's
+
+**Where** `core/te_classifier.py::build_insert_alignment_evidence_from_blast_hits`.
+**Was** `best_query_coverage` was the single best subject's. Dfam models L1 as
+`_5end` / `_orf2` / `_3end`, so an inserted L1 aligns to two entries, and
+`21:19,517,300` (3,375 bp) was 78% covered by L1P1_orf2 while L1HS_3end
+explained the other 750 bp at 98.9% identity; the rest read as a
+transduction. **Now** the union over the chosen family's qualifying hits;
+family ranking and identity are unchanged. `te_annotation_intervals` gains
+`family_cov=` when this differs.
+
+### 9. Reference reads a heterozygous insertion predicts are not conflicts
+
+**Where** `core/policy.py::reference_reads_unexplained_by_an_insertion`, used
+by the TE and non-TE explanations. **Was** every reference-spanning read was a
+`read_assignment_conflict` for "an insertion is here". ARTIFACT keeps the same
+reads in a different coordinate and counts split+indel reads as its
+conflicts, so a het insertion with fewer split+indel than reference reads
+could never dominate it on every coordinate, and the Pareto comparator
+abstained. That L1 was `TE_AMBIGUOUS` on 24 conflicts against ARTIFACT's 21,
+with 0 unexplained bases against 1,125. **Now** `max(0, ref - alt)`: only
+reference reads beyond the balance a het insertion predicts. The comparator
+itself, and its golden vectors, are unchanged.
+
+**Tests** `tests/test_23_te_classifier.py` (simple repeats, short hits, the
+split L1, and five fixtures whose inserts were `"ACGT" * n` -- itself a
+tandem repeat -- given non-repetitive sequence; one whose 30 bp Alu hits were
+lengthened to 60), `tests/test_24_policy.py::test_a_heterozygous_insertion_is_not_charged_for_its_reference_reads`.
+
+---
+
 ## Not divergences
 
 For the record, these look like behaviour changes and are not:

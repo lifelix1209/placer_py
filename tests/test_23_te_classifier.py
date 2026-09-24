@@ -36,6 +36,20 @@ def frag(sequence, fragment_id="f0",
                              source=source, length=len(sequence))
 
 
+def insert(n: int) -> str:
+    """An insert of `n` bases with no tandem structure.
+
+    NOT `"ACGT" * k`: that is a period-4 tandem repeat, and the classifier now
+    refuses to name an element from alignments to simple-repeat bases (see
+    `SIMPLE_REPEAT_HIT_FRACTION`). A test about family ranking needs an insert
+    that could actually be an element.
+    """
+    import random
+
+    rng = random.Random(n)
+    return "".join(rng.choice("ACGT") for _ in range(n))
+
+
 def hsp(subject, pident=98.5, length=300, qlen=310, qstart=1, qend=300,
         sstart=1, send=300, bitscore=500.0, evalue=1e-90):
     return T.parse_blast_hsp_line(
@@ -312,8 +326,10 @@ def test_coverage_is_a_union_and_never_exceeds_one():
 def test_identity_is_weighted_by_alignment_length():
     """A 500 bp HSP at 0.95 and a 20 bp HSP at 0.60 are not equally informative
     about the element, and a plain mean would treat them as though they were."""
-    hsps = [hsp("X#Fam/Sub", pident=95.0, length=500, qstart=1, qend=500),
-            hsp("X#Fam/Sub", pident=60.0, length=20, qstart=501, qend=520)]
+    hsps = [hsp("X#Fam/Sub", pident=95.0, length=500, qstart=1, qend=500,
+                sstart=1, send=500),
+            hsp("X#Fam/Sub", pident=60.0, length=20, qstart=501, qend=520,
+                sstart=501, send=520)]
     collapsed = call_or_skip(T.collapse_blast_hsps, hsps, 600)
     close(collapsed[0].identity, (0.95 * 500 + 0.60 * 20) / 520, "weighted identity")
 
@@ -351,11 +367,12 @@ def test_the_family_is_chosen_by_its_best_copy_not_by_the_single_top_hit():
     """
     hits = T.collapse_blast_hsps([
         hsp("L1HS#LINE/L1", pident=99.0, length=300, qstart=1, qend=300),
-        hsp("AluY#SINE/Alu", pident=99.5, length=30, qstart=1, qend=30),
-        hsp("AluSx#SINE/Alu", pident=99.4, length=30, qstart=1, qend=30),
+        # 60 bp, above the 50 informative bases a hit needs to name anything.
+        hsp("AluY#SINE/Alu", pident=99.5, length=60, qstart=1, qend=60),
+        hsp("AluSx#SINE/Alu", pident=99.4, length=60, qstart=1, qend=60),
     ], 310)
     evidence = call_or_skip(T.build_insert_alignment_evidence_from_blast_hits,
-                            "ACGT" * 80, True, hits, 0.04)
+                            insert(320), True, hits, 0.04)
     assert evidence.best_family == "L1"
     assert evidence.second_family == "Alu"
     assert evidence.cross_family_margin > 0.0
@@ -372,7 +389,7 @@ def test_a_near_tie_between_subfamilies_abstains_to_family_only():
         hsp("AluYb8#SINE/Alu", pident=97.9, length=300, qstart=1, qend=300),
     ], 310)
     evidence = T.build_insert_alignment_evidence_from_blast_hits(
-        "ACGT" * 80, True, hits, 0.04)
+        insert(320), True, hits, 0.04)
     assert evidence.qc_reason == "PASS_INSERT_TE_ALIGNMENT_FAMILY_ONLY"
     assert evidence.best_family == "Alu"
     assert evidence.best_subfamily == ""
@@ -385,7 +402,7 @@ def test_a_clear_subfamily_winner_is_named():
         hsp("AluSx#SINE/Alu", pident=70.0, length=100, qstart=1, qend=100),
     ], 310)
     evidence = T.build_insert_alignment_evidence_from_blast_hits(
-        "ACGT" * 80, True, hits, 0.04)
+        insert(320), True, hits, 0.04)
     assert evidence.qc_reason == "PASS_INSERT_TE_ALIGNMENT"
     assert evidence.best_subfamily == "AluYa5"
     assert evidence.annotation_confidence == "HIGH"
@@ -403,7 +420,7 @@ def test_every_pass_tier_sets_pass_because_the_tier_is_about_naming():
         hits = T.collapse_blast_hsps([hsp("AluYa5#SINE/Alu", pident=pident,
                                           length=300, qstart=1, qend=300)], 310)
         evidence = T.build_insert_alignment_evidence_from_blast_hits(
-            "ACGT" * 80, True, hits, 0.04)
+            insert(320), True, hits, 0.04)
         assert evidence.pass_
         assert evidence.annotation_confidence == expect
 
@@ -463,7 +480,7 @@ def test_the_consensus_interval_is_carried_through_for_truncation_geometry():
                                       qlen=1000, qstart=1, qend=1000,
                                       sstart=5001, send=6000)], 1000)
     evidence = T.build_insert_alignment_evidence_from_blast_hits(
-        "ACGT" * 250, True, hits, 0.04)
+        insert(1000), True, hits, 0.04)
     assert (evidence.te_consensus_start, evidence.te_consensus_end) == (5000, 6000)
     assert "q=0-1000" in evidence.annotation_intervals
 
@@ -501,3 +518,110 @@ def test_alignment_without_a_library_reports_unavailable_for_every_insert():
                              ["ACGT" * 80, ""])
     assert [e.qc_reason for e in evidences] == ["TE_LIBRARY_UNAVAILABLE",
                                                 "TE_LIBRARY_UNAVAILABLE"]
+
+
+# ----------------------------------------------------------- simple repeats
+def test_a_hit_on_a_simple_repeat_names_no_element():
+    """
+    Many consensus sequences contain an (AT)n or (AAAG)n stretch, so a
+    microsatellite insert aligns to them -- and the alignment says nothing
+    about which element, if any, was inserted. Measured on HG002 chr21: (AT)n
+    and (AAAG)n expansions were being called as L1, LTR66 and MER52-int.
+    """
+    at_repeat = "AT" * 56
+    hits = T.collapse_blast_hsps([hsp("L1ME4b_3end#LINE/L1", pident=93.0, length=112,
+                                      qlen=112, qstart=1, qend=112,
+                                      sstart=689, send=800)], 112)
+    evidence = T.build_insert_alignment_evidence_from_blast_hits(at_repeat, True, hits, 0.04)
+    assert evidence.qc_reason == "TE_ALIGNMENT_UNINFORMATIVE"
+    assert not evidence.pass_
+    assert evidence.best_family == ""
+
+
+def test_a_real_element_hit_survives_a_simple_repeat_hit_beside_it():
+    """The veto is per hit: an element that aligns through its own sequence
+    still wins when the same insert also matches a repeat elsewhere."""
+    seq = insert(300) + "AT" * 30
+    hits = T.collapse_blast_hsps([
+        hsp("AluY#SINE/Alu", pident=98.0, length=300, qlen=360, qstart=1, qend=300),
+        hsp("L1ME4b_3end#LINE/L1", pident=99.0, length=60, qlen=360, qstart=301,
+            qend=360, sstart=689, send=748, bitscore=900.0),
+    ], 360)
+    evidence = T.build_insert_alignment_evidence_from_blast_hits(seq, True, hits, 0.04)
+    assert evidence.pass_
+    assert evidence.best_family == "Alu"
+
+
+def test_a_short_hit_names_no_element():
+    """Below 50 informative aligned bases a match cannot tell an element from
+    chance. Measured on HG002 chr21: a 16 bp hit inside a 36 bp insert, and an
+    18 bp one inside 72 bp, were calls."""
+    seq = insert(72)
+    hits = T.collapse_blast_hsps([hsp("Arthur1#DNA/hAT", pident=94.4, length=18,
+                                      qlen=72, qstart=49, qend=66,
+                                      sstart=3136, send=3153)], 72)
+    evidence = T.build_insert_alignment_evidence_from_blast_hits(seq, True, hits, 0.04)
+    assert evidence.qc_reason == "TE_ALIGNMENT_UNINFORMATIVE"
+    assert not evidence.pass_
+
+
+def test_an_impure_repeat_array_is_still_a_simple_repeat():
+    """(AAAG)n with a GAAAG or GGAAAG every few units has no exact run long
+    enough for the microsatellite test; the low-complexity window catches it."""
+    from placer_py.core.seqtools import simple_repeat_mask
+
+    impure = "AGAAAGGAAAGAATGGAAAGAAAGGAAGAGAAAGGAAAGAAAGGAAGAAAAAGAAAGAAAGAAAGAAAGAAAG"
+    assert all(simple_repeat_mask(impure))
+
+
+def test_collinear_pieces_of_one_copy_all_count():
+    """The same rule must not penalise one copy that BLAST split in two."""
+    pieces = [hsp("L1HS#LINE/L1", pident=97.0, length=500, qlen=1000, qstart=1,
+                  qend=500, sstart=5001, send=5500),
+              hsp("L1HS#LINE/L1", pident=95.0, length=495, qlen=1000, qstart=506,
+                  qend=1000, sstart=5496, send=6000)]
+    hit = T.collapse_blast_hsps(pieces, 1000)[0]
+    close(hit.query_coverage, 995 / 1000, "both pieces")
+
+
+def test_the_microsatellite_mask_marks_arrays_not_short_runs():
+    from placer_py.core.seqtools import microsatellite_mask
+
+    assert all(microsatellite_mask("AT" * 10))
+    assert all(microsatellite_mask("A" * 12))
+    assert not any(microsatellite_mask("A" * 11))       # under 12 bp
+    assert not any(microsatellite_mask("ACGTTGCA" * 3))  # period 8 > 6
+    mixed = microsatellite_mask("GGCATCTGA" + "AAAG" * 5 + "CTGACCTGA")
+    assert not any(mixed[:8]) and all(mixed[9:29]) and not any(mixed[-8:])
+
+
+def test_one_element_split_across_library_entries_is_covered_as_one():
+    """Dfam models L1 as `_5end`, `_orf2` and `_3end`, so an inserted L1 aligns
+    to two entries over two parts of the insert. The family explains both; a
+    single entry's coverage left the rest looking like a transduction."""
+    seq = insert(3375)
+    hits = T.collapse_blast_hsps([
+        hsp("L1P1_orf2#LINE/L1", pident=97.9, length=2634, qlen=3375, qstart=751,
+            qend=3375, sstart=3294, send=661, bitscore=4483.0),
+        hsp("L1HS_3end#LINE/L1", pident=98.9, length=895, qlen=3375, qstart=10,
+            qend=899, sstart=895, send=1, bitscore=1556.0),
+        hsp("AluY#SINE/Alu", pident=90.0, length=100, qlen=3375, qstart=2000,
+            qend=2099, bitscore=100.0),
+    ], 3375)
+    evidence = T.build_insert_alignment_evidence_from_blast_hits(seq, True, hits, 0.04)
+    assert evidence.best_family == "L1"
+    close(evidence.best_query_coverage, (3375 - 9) / 3375, "both L1 pieces")
+    assert "family_cov=" in evidence.annotation_intervals
+
+
+def test_another_familys_hit_does_not_add_to_the_coverage():
+    seq = insert(1000)
+    hits = T.collapse_blast_hsps([
+        hsp("L1HS_3end#LINE/L1", pident=98.0, length=600, qlen=1000, qstart=1,
+            qend=600, sstart=1, send=600, bitscore=1000.0),
+        hsp("AluY#SINE/Alu", pident=97.0, length=300, qlen=1000, qstart=651,
+            qend=950, bitscore=500.0),
+    ], 1000)
+    evidence = T.build_insert_alignment_evidence_from_blast_hits(seq, True, hits, 0.04)
+    assert evidence.best_family == "L1"
+    close(evidence.best_query_coverage, 0.6, "L1 alone")

@@ -55,6 +55,7 @@ from placer_py.core.seqtools import (
     parse_te_name_parts,
     reverse_complement,
     shannon_entropy_acgt,
+    simple_repeat_mask,
     take_header_token,
     te_kmer_containment,
     te_kmer_jsd_vs_background,
@@ -480,6 +481,9 @@ class BlastSubjectHit:
     query_end: int = -1
     target_start: int = -1
     target_end: int = -1
+    #: Every HSP's query interval, 0-based half-open. Empty for a hit built by
+    #: hand, which is then treated as one interval `[query_start, query_end)`.
+    query_intervals: list[tuple[int, int]] = field(default_factory=list)
 
 
 def parse_blast_hsp_line(line: str) -> BlastHsp | None:
@@ -604,7 +608,8 @@ def collapse_blast_hsps(hsps: list[BlastHsp], query_len: int) -> list[BlastSubje
                                                            acc["query_intervals"]),
             bitscore=acc["bitscore"], best_evalue=acc["best_evalue"],
             query_start=acc["query_start"], query_end=acc["query_end"],
-            target_start=acc["target_start"], target_end=acc["target_end"])
+            target_start=acc["target_start"], target_end=acc["target_end"],
+            query_intervals=sorted(acc["query_intervals"]))
         #: The DISCRIMINATIVE score: a high-identity match over 5% of the insert
         #: and a mediocre one over all of it are both bad in different ways, and
         #: the product refuses to call either good.
@@ -688,6 +693,34 @@ def _finalize_evidence(evidence: TEAlignmentEvidence, insert_seq: str,
     return evidence
 
 
+#: A hit NAMES an element only if at least this many of the insert bases it
+#: aligns are informative -- outside simple repeats (`simple_repeat_mask`).
+#: 50 bp is the structural-variant floor this tool already uses
+#: (`min_final_raw_cigar_insert_len_bp`), not a fitted value: below it the
+#: alignment cannot distinguish one element from a chance match.
+#:
+#: WHY AN ABSOLUTE COUNT AND NOT A FRACTION. Many consensus sequences contain
+#: an (AT)n or (AAAG)n stretch, so a microsatellite insert aligns to them and
+#: says nothing about which element, if any, was inserted; measured on HG002
+#: chr21 10-20 Mb, such expansions were being called as L1, LTR66, MER52-int
+#: and HERV9N, and 16-30 bp hits inside 36-82 bp inserts as L1 and LTR40b. A
+#: fraction would catch the repeats but would also threaten a genuine SVA,
+#: whose VNTR expands far beyond the few units in its Dfam consensus: 18-29% of
+#: the SVA consensus is already masked, and an expanded copy more. A floor on
+#: informative bases leaves a 2 kb SVA with a thousand of them untouched.
+MIN_ELEMENT_ALIGNED_BP = 50
+
+
+def informative_aligned_bases(hit: BlastSubjectHit, mask: list[bool]) -> int:
+    """Insert bases the hit aligns that are NOT simple repeat, counted once."""
+    intervals = hit.query_intervals or [(hit.query_start, hit.query_end)]
+    covered = [False] * len(mask)
+    for start, end in intervals:
+        for i in range(max(0, start), min(len(mask), end)):
+            covered[i] = True
+    return sum(1 for i, c in enumerate(covered) if c and not mask[i])
+
+
 def build_insert_alignment_evidence_from_blast_hits(
         insert_seq: str, has_blast_db: bool, hits: list[BlastSubjectHit],
         subfamily_margin_min: float,
@@ -720,6 +753,22 @@ def build_insert_alignment_evidence_from_blast_hits(
         evidence.qc_reason = "EMPTY_INSERT_SEQUENCE"
         return _finalize_evidence(evidence, insert_seq,
                                   evidence.best_query_coverage, sequence_background)
+    # A HIT WITHOUT ENOUGH INFORMATIVE BASES NAMES NO ELEMENT. Dropped before the family
+    # ranking, so a genuine element hit elsewhere in the insert still wins; if
+    # nothing else is left, the insert is reported as unnamed -- a real
+    # insertion, just not one an element can be read off -- rather than as the
+    # TE whose consensus happened to contain the same repeat or a short match.
+    mask = simple_repeat_mask(insert_seq)
+    element_hits = [hit for hit in hits
+                    if informative_aligned_bases(hit, mask) >= MIN_ELEMENT_ALIGNED_BP]
+    if hits and not element_hits:
+        evidence.qc_reason = "TE_ALIGNMENT_UNINFORMATIVE"
+        evidence.sequence_model_label = "TE_MODEL_OUTLIER"
+        evidence.sequence_model_score = -0.50
+        return _finalize_evidence(evidence, insert_seq,
+                                  evidence.best_query_coverage, sequence_background)
+    hits = element_hits
+
     if not hits:
         evidence.qc_reason = "NO_TE_ALIGNMENT_MATCH"
         evidence.sequence_model_label = "TE_MODEL_OUTLIER"
@@ -752,8 +801,23 @@ def build_insert_alignment_evidence_from_blast_hits(
 
     evidence.best_subfamily = best_hit.name_parts.subfamily
     evidence.best_identity = best_hit.identity
-    evidence.best_query_coverage = best_hit.query_coverage
-    evidence.best_score = best_hit.score
+    # COVERAGE IS THE FAMILY'S, not the single best subject's. A library can
+    # model one element as several entries -- Dfam splits L1 into `_5end`,
+    # `_orf2` and `_3end` -- and an inserted L1 then aligns to two or three of
+    # them, each over its own part of the insert. Taking one entry's coverage
+    # left the rest looking unexplained: measured on HG002 chr21:19,517,300, a
+    # 3,375 bp L1 was 78% "covered" by L1P1_orf2 while L1HS_3end explained the
+    # other 750 bp at 98.9% identity, and the leftover read as a transduction
+    # and made the call abstain. The union is over the chosen family's hits
+    # only, each already required to carry informative bases, so it can only
+    # join pieces the family itself explains. Identity stays the best hit's.
+    family_intervals = [interval for hit in hits
+                        if hit.name_parts.family == best_family
+                        for interval in (hit.query_intervals
+                                         or [(hit.query_start, hit.query_end)])]
+    family_coverage = covered_fraction_from_intervals(len(insert_seq), family_intervals)
+    evidence.best_query_coverage = max(best_hit.query_coverage, family_coverage)
+    evidence.best_score = best_hit.identity * evidence.best_query_coverage
     evidence.te_consensus_start = best_hit.target_start
     evidence.te_consensus_end = best_hit.target_end
     effective_query_coverage = evidence.best_query_coverage
@@ -766,7 +830,9 @@ def build_insert_alignment_evidence_from_blast_hits(
         evidence.annotation_intervals = (
             f"q={best_hit.query_start}-{best_hit.query_end},"
             f"t={best_hit.target_start}-{best_hit.target_end},"
-            f"id={best_hit.identity},cov={best_hit.query_coverage}")
+            f"id={best_hit.identity},cov={best_hit.query_coverage}"
+            + (f",family_cov={evidence.best_query_coverage}"
+               if evidence.best_query_coverage > best_hit.query_coverage else ""))
     evidence.coarse_prefilter_score = best_hit.score
     evidence.coarse_chain_coverage = evidence.best_query_coverage
     evidence.cross_family_margin = max(0.0, evidence.best_score - evidence.second_score)
@@ -849,5 +915,6 @@ def parse_blast_output(text: str, query_lengths: dict[str, int]
             continue
         hsps_by_query.setdefault(hsp.query_id, []).append(hsp)
     return hsps_by_query
+
 
 

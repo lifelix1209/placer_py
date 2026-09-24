@@ -771,3 +771,24 @@ def test_te_sequence_evidence_is_deliberately_permissive():
     assert not P.has_te_sequence_evidence(
         te_pass("NO_TE_ALIGNMENT", pass_=False, best_identity=0.0,
                 best_query_coverage=0.0))
+
+
+# ------------------------------------------- heterozygosity is not a conflict
+def test_a_heterozygous_insertion_is_not_charged_for_its_reference_reads():
+    """
+    A het insertion predicts about as many reference-spanning reads as alt
+    reads; only reference reads beyond that balance contradict it. Charging
+    all of them made the Pareto comparator abstain on a 3.4 kb het L1 on HG002
+    chr21 (27 alt / 24 ref), because ARTIFACT keeps reference reads in a
+    different coordinate and had fewer conflicts on this one.
+    """
+    het = some_existence(alt_struct_reads=27, ref_span_reads=24)
+    assert P.reference_reads_unexplained_by_an_insertion(het) == 0
+    mostly_ref = some_existence(alt_struct_reads=5, ref_span_reads=30)
+    assert P.reference_reads_unexplained_by_an_insertion(mostly_ref) == 25
+
+    te = P.make_te_explanation(het, closed_segmentation(), te_pass(),
+                               make_boundary())
+    non_te = P.make_non_te_explanation(het, closed_segmentation(), te_pass())
+    assert te.residual.read_assignment_conflicts == 0
+    assert non_te.residual.read_assignment_conflicts == 0

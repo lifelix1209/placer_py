@@ -177,6 +177,9 @@ def status_from_qc(qc_reason: str, family: str,
         "PASS_INSERT_TE_ALIGNMENT_UNKNOWN": TeAnnotationStatus.UNKNOWN_TE,
         "TE_ALIGNMENT_LOW_IDENTITY": TeAnnotationStatus.NON_TE_LIKE,
         "TE_ALIGNMENT_LOW_QUERY_COVERAGE": TeAnnotationStatus.NON_TE_LIKE,
+        # Aligned, but through fewer than 50 bases that are not simple repeat
+        # (`te_classifier.MIN_ELEMENT_ALIGNED_BP`): nothing names an element.
+        "TE_ALIGNMENT_UNINFORMATIVE": TeAnnotationStatus.NON_TE_LIKE,
     }
     if qc_reason in table:
         return table[qc_reason]

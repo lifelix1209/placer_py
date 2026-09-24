@@ -38,12 +38,11 @@ unchanged the moment `POLARITY_RESOLVED` flips. `tests/test_36_vcf_csv.py` ties
 those two facts together so the next person cannot turn one on without the
 other.
 
-SVLEN COMES FROM THE ALT, NOT FROM `insert_len`. `placer_py/core/finalization.py`
-sets `insert_seq` on the cluster-promoted path and never sets `insert_len`, so
-a promoted call can carry a kilobase of sequence and report a length of zero.
-That is a live defect in the existing TSVs; the VCF routes around it rather
-than reproducing it, and fixing it properly belongs in the decision layer with
-a measured divergence entry.
+SVLEN COMES FROM THE ALT, NOT FROM `insert_len`. The cluster-promoted path in
+`placer_py/core/finalization.py` once set `insert_seq` without `insert_len`, so
+a promoted call could carry sequence and report a length of zero. That is now
+fixed at the source; the ALT is still the definition here because it is the
+sequence the record actually carries.
 """
 
 from __future__ import annotations
@@ -183,8 +182,7 @@ def vcf_svlen(call: FinalCall, alt_is_symbolic: bool) -> int:
 
     From the ALT when there is one. When there is not, the best surviving
     statement of the length is whichever of the three recorded measures is
-    largest -- they disagree precisely on the promoted path that lost
-    `insert_len`.
+    largest.
     """
     if not alt_is_symbolic:
         return len(call.insert_seq)

@@ -1296,6 +1296,28 @@ def make_reference_explanation(existence: EventExistenceEvidence,
     return out
 
 
+def reference_reads_unexplained_by_an_insertion(existence: EventExistenceEvidence) -> int:
+    """Reference-spanning reads that a DIPLOID insertion here does not predict.
+
+    A heterozygous insertion leaves the other haplotype intact, so it predicts
+    about as many reads spanning the reference as supporting the insert; only
+    reference reads beyond that balance contradict "an insertion is here".
+    Counting every reference read as a conflict -- as this did -- charged a
+    heterozygous insertion for being heterozygous.
+
+    WHY IT MATTERED. The ARTIFACT explanation puts the reference reads in a
+    different coordinate (`reference_counterevidence`) and counts split and
+    indel reads as its conflicts, so a het insertion with fewer split+indel
+    reads than reference reads could never dominate ARTIFACT on every
+    coordinate, and the Pareto comparator abstained however badly ARTIFACT
+    explained the sequence. Measured on HG002 chr21:19,517,300, a 3.4 kb het
+    L1 (27 alt / 24 ref reads, 0 unexplained bases against ARTIFACT's 1,125)
+    was TE_AMBIGUOUS on exactly that coordinate: 24 conflicts against 21.
+    """
+    return max(0, positive_or_zero(existence.ref_span_reads)
+               - positive_or_zero(existence.alt_struct_reads))
+
+
 def make_non_te_explanation(existence: EventExistenceEvidence,
                             segmentation: EventSegmentationEvidence,
                             te_alignment) -> EventExplanation:
@@ -1314,7 +1336,8 @@ def make_non_te_explanation(existence: EventExistenceEvidence,
     out.residual.unexplained_high_complexity_bases = (
         max(0, segmentation.insert_len // (2 if te_pass else 4))
         if segmentation.has_insert_seq else 0)
-    out.residual.read_assignment_conflicts = positive_or_zero(existence.ref_span_reads)
+    out.residual.read_assignment_conflicts = reference_reads_unexplained_by_an_insertion(
+        existence)
     out.residual.label_ambiguity = 1 if te_pass else 0
     out.residual.path_complexity = 1 if segmentation.has_insert_seq else 0
     return out
@@ -1342,7 +1365,8 @@ def make_te_explanation(existence: EventExistenceEvidence,
         0 if interpretable else max(1, segmentation.insert_len))
     out.residual.breakpoint_disagreement_bp = (
         0 if has_closed_te_breakpoints(segmentation, boundary) else 25)
-    out.residual.read_assignment_conflicts = positive_or_zero(existence.ref_span_reads)
+    out.residual.read_assignment_conflicts = reference_reads_unexplained_by_an_insertion(
+        existence)
     out.residual.artifact_evidence = (
         1 if te_alignment.sequence_model_label == "TE_MODEL_EDGE" else 0)
     out.residual.label_ambiguity = 1 if out.family == "UNKNOWN" else 0

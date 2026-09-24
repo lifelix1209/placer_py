@@ -228,16 +228,65 @@ def sequence_tandem_fraction(seq: str) -> float:
     return sum(covered) / n
 
 
-def sequence_low_complexity_fraction(seq: str) -> float:
-    """Fraction of bases in a 16 bp window whose top two bases hold >= 90%.
+#: A microsatellite, for `microsatellite_mask`: a unit of 1-6 bp repeated
+#: exactly, spanning at least this many bases AND at least three copies. The
+#: conventional short-tandem-repeat definition, not a fitted value; it flags
+#: poly(A) tails and (AT)n / (AAAG)n arrays while leaving the short A-rich
+#: stretches inside an Alu, which are under 12 bp, unmarked.
+MICROSATELLITE_MAX_PERIOD = 6
+MICROSATELLITE_MIN_BP = 12
+MICROSATELLITE_MIN_COPIES = 3
 
-    The classic dust-style test, and the one that flags poly(A) tails and
-    two-base microsatellites -- i.e. the two things a TE library will happily
-    match for the wrong reason.
+
+def microsatellite_mask(seq: str) -> list[bool]:
+    """Which bases lie in a short tandem repeat (see the constants above).
+
+    Unlike `sequence_tandem_fraction`, which counts ANY exact repetition of
+    period <= 12 -- two adjacent equal bases qualify, which is why a genuine
+    AluY scores ~0.6 there -- this asks for a real array, so it can be used to
+    say which bases of an insert carry no information about which element it
+    is.
     """
     n = len(seq)
+    covered = [False] * n
+    for period in range(1, MICROSATELLITE_MAX_PERIOD + 1):
+        if period >= n:
+            break
+        min_span = max(MICROSATELLITE_MIN_BP, MICROSATELLITE_MIN_COPIES * period)
+        run = 0
+        run_start = period
+        for i in range(period, n + 1):
+            if i < n and seq[i] in _CODE and seq[i] == seq[i - period]:
+                if run == 0:
+                    run_start = i
+                run += 1
+                continue
+            if run > 0 and run + period >= min_span:
+                for j in range(run_start - period, run_start + run):
+                    covered[j] = True
+            run = 0
+    return covered
+
+
+def simple_repeat_mask(seq: str) -> list[bool]:
+    """Bases that say nothing about WHICH element an insert is.
+
+    The union of the two tests this module already has: exact short tandem
+    arrays (`microsatellite_mask`) and dust-style low-complexity windows
+    (`low_complexity_mask`). The second is what catches IMPURE arrays -- an
+    (AAAG)n interrupted by GAAAG and GGAAAG every few units has no exact run
+    long enough for the first, and is 100% low complexity. On the Dfam
+    consensus sequences themselves the union marks 6-15% of L1, ~21% of Alu
+    (its poly(A)) and 19-29% of SVA.
+    """
+    return [a or b for a, b in zip(microsatellite_mask(seq), low_complexity_mask(seq))]
+
+
+def low_complexity_mask(seq: str) -> list[bool]:
+    """Bases in a 16 bp window whose top two bases hold >= 90%."""
+    n = len(seq)
     if n == 0:
-        return 0.0
+        return []
     window = min(LOW_COMPLEXITY_WINDOW, n)
     covered = [False] * n
     for start in range(n - window + 1):
@@ -255,7 +304,19 @@ def sequence_low_complexity_fraction(seq: str) -> float:
         if (counts[0] + counts[1]) / total >= LOW_COMPLEXITY_TOP2_FRACTION:
             for i in range(start, start + window):
                 covered[i] = True
-    return sum(covered) / n
+    return covered
+
+
+def sequence_low_complexity_fraction(seq: str) -> float:
+    """Fraction of bases in a 16 bp window whose top two bases hold >= 90%.
+
+    The classic dust-style test, and the one that flags poly(A) tails and
+    two-base microsatellites -- i.e. the two things a TE library will happily
+    match for the wrong reason.
+    """
+    if not seq:
+        return 0.0
+    return sum(low_complexity_mask(seq)) / len(seq)
 
 
 @dataclass

@@ -95,6 +95,28 @@ project's numbering, not this package's.)
 
 ### Fixed
 
+Caller fixes from the first real-data runs, each recorded with its measured
+effect in `tests/EXPECTED_DIVERGENCE.md` (5-9). On HG002 chr21:10-20 Mb: TE
+calls 12 -> 9, GIAB TE truth recalled 2/3 -> 3/3, calls labelled from a simple
+repeat or a <= 30 bp match 7 -> 0.
+
+- **Microsatellites were called as transposable elements.** An (AT)n or
+  (AAAG)n expansion aligns to the same repeat inside an L1 or LTR consensus,
+  and was reported as that element; so were 16-30 bp matches inside short
+  inserts. A hit now needs 50 aligned bases outside simple repeat to name an
+  element (`TE_ALIGNMENT_UNINFORMATIVE` otherwise).
+- **Heterozygous insertions could be refused for being heterozygous.** Every
+  reference-spanning read counted as a conflict for "an insertion is here",
+  so a het insertion with more reference than split+indel reads could not win
+  the explanation comparison. Only reference reads beyond the het balance
+  count now. This recovered a 3.4 kb het L1 on HG002 and the het SVA in
+  `examples/data`.
+- **An L1 split across library entries was under-covered.** Dfam models L1 as
+  `_5end`/`_orf2`/`_3end`; coverage is now the chosen family's, not one
+  entry's.
+- **21.8% of evidence-ledger rows were exact duplicates**, counted as separate
+  observations by every whole-run estimate. Each observation is now one row.
+- Cluster-promoted calls reported `insert_len` 0 while carrying a sequence.
 - **TSD detection could not report a duplication at all.** Every detection
   returned `NONE`, so no call carried a target-site duplication — the single
   most mechanistically informative field for a TPRT insertion.

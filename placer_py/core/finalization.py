@@ -2038,6 +2038,10 @@ def promoted_call_from_ledger_row(row: EvidenceLedgerRow) -> FinalCall:
     call.left_flank_align_len = row.left_flank_align_len
     call.right_flank_align_len = row.right_flank_align_len
     call.insert_seq = row.insert_seq
+    # Set with the sequence, as every other call path does. It used to be left
+    # at 0, so a promoted call could carry 100 bp of sequence in the VCF and
+    # report `insert_len 0` in scientific.txt and calls.csv.
+    call.insert_len = len(row.insert_seq)
     call.final_qc = "PASS_TE_IMPRECISE|EVENT_CLUSTER_PROMOTED"
 
     if (not ledger_row_is_final_te(row)
