@@ -17,19 +17,21 @@ thousands of times more expensive per candidate, so the structure here is
 mostly about deciding what NOT to send to them -- which is why
 `placer_py/core/hypotheses.py` is a triage stage rather than an evaluation one.
 
-WHAT IS DELIBERATELY NOT PORTED. The C++ has a parallel executor (a bounded
-work queue over bins with an ordered reducer) and a great deal of per-stage
-timing instrumentation. Neither changes any output: the parallel path exists to
-use more cores and asserts its own equivalence to the streaming path in
-`tests/test_parallel_exact_bin_task_equivalence.cpp`. This port implements the
-STREAMING path only, and says so rather than pretending the parallel one is
-there. The per-bin statistics that ARE observable (component counts, consensus
-calls, genotype calls) are kept because they appear in `scientific.txt`.
+NOTHING HERE READS ANOTHER BIN, and `placer_py/parallel.py` depends on that:
+a bin is a function of the reads that start in it, indexed fetches and the
+stateless hooks, and it only APPENDS to the result. That is what lets the scan
+be cut at bin boundaries, run on several processes and rejoined in genome
+order with byte-identical output. Anything added here that read state left by
+an earlier bin would break `--threads` silently -- `tests/test_38_parallel.py`
+is what would notice. The per-bin statistics that ARE observable (component
+counts, consensus calls, genotype calls) are kept because they appear in
+`scientific.txt`.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
+from dataclasses import dataclass
 from typing import Callable
 
 from placer_py.alignment import AlignedRead
@@ -393,12 +395,41 @@ def _final_call_from_evaluation(component: ComponentCall,
     return call
 
 
-def _evaluate_shortlisted(component: ComponentCall, local_records: list[AlignedRead],
-                          fragments: list[fragments_module.InsertionFragment],
-                          shortlisted: hyp_module.ShortlistedHypothesis,
-                          config: PipelineConfig, hooks: StageHooks,
-                          result: PipelineResult):
-    """The expensive stages, for ONE hypothesis.
+@dataclass
+class _PreparedEvaluation:
+    """One shortlisted hypothesis, taken as far as it can go before TE alignment.
+
+    WHY THE EVALUATION IS CUT HERE. Everything before this point is in-process;
+    the alignment is an external `blastn`, whose fixed start-up cost (~0.8 s of
+    CPU for BLAST+ 2.17, measured on `blastn -version`) is larger than the
+    search itself for an insert of a few hundred bases. Stopping every
+    hypothesis of a bin here hands the aligner all of the bin's inserts at
+    once, so their processes can run side by side -- see `process_bin_records`.
+    """
+
+    component: ComponentCall
+    local_records: list[AlignedRead]
+    fragments: list[fragments_module.InsertionFragment]
+    shortlisted: hyp_module.ShortlistedHypothesis
+    evidence: events_module.EventReadEvidence
+    consensus: seg_module.EventConsensus
+    segmentation: seg_module.EventSegmentation
+    seg_evidence: policy_module.EventSegmentationEvidence
+    existence: policy_module.EventExistenceEvidence
+    genotype: object
+
+    @property
+    def insert_seq_to_align(self) -> str | None:
+        return (self.segmentation.insert_seq if self.seg_evidence.has_insert_seq
+                else None)
+
+
+def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRead],
+                         fragments: list[fragments_module.InsertionFragment],
+                         shortlisted: hyp_module.ShortlistedHypothesis,
+                         config: PipelineConfig, hooks: StageHooks,
+                         result: PipelineResult) -> _PreparedEvaluation:
+    """The expensive stages up to, and not including, the TE alignment.
 
     THE PARTIAL-CONTEXT RETRY is the one control-flow subtlety. A consensus
     built wholesale from full-context reads may fail to segment for a reason
@@ -476,8 +507,23 @@ def _evaluate_shortlisted(component: ComponentCall, local_records: list[AlignedR
         segmentation.right_flank_identity, segmentation.insert_seq,
         segmentation.pass_, segmentation.qc_reason)
 
-    te_alignment = (hooks.align_insert(segmentation.insert_seq)
-                    if seg_evidence.has_insert_seq else TEAlignmentEvidence())
+    return _PreparedEvaluation(
+        component=component, local_records=local_records, fragments=fragments,
+        shortlisted=shortlisted, evidence=evidence, consensus=consensus,
+        segmentation=segmentation, seg_evidence=seg_evidence, existence=existence,
+        genotype=genotype)
+
+
+def _finish_shortlisted(prepared: _PreparedEvaluation, te_alignment: TEAlignmentEvidence,
+                        config: PipelineConfig):
+    """The rest of the expensive stages, once the insert has been aligned."""
+    evidence = prepared.evidence
+    segmentation = prepared.segmentation
+    fragments = prepared.fragments
+    consensus = prepared.consensus
+    seg_evidence = prepared.seg_evidence
+    existence = prepared.existence
+    genotype = prepared.genotype
 
     boundary = policy_module.evaluate_boundary_evidence(
         policy_module.FinalBoundaryInput(
@@ -505,6 +551,24 @@ def _evaluate_shortlisted(component: ComponentCall, local_records: list[AlignedR
                                                     te_alignment, boundary,
                                                     clip_evidence)
     return evidence, consensus, segmentation, te_alignment, joint, genotype, seg_evidence
+
+
+def _align_bin_inserts(insert_seqs: list[str | None],
+                       hooks: StageHooks) -> list[TEAlignmentEvidence]:
+    """One alignment per entry, in order; `None` means "nothing to align".
+
+    Uses the batch hook when there is one -- one request for the whole bin
+    -- and falls back to the per-insert hook otherwise, so a caller that
+    only supplies `align_insert` (every test, and any embedding that predates
+    the batch hook) sees exactly the calls it always saw.
+    """
+    wanted = [seq for seq in insert_seqs if seq is not None]
+    if hooks.align_inserts is not None and wanted:
+        aligned = iter(hooks.align_inserts(wanted))
+        return [next(aligned) if seq is not None else TEAlignmentEvidence()
+                for seq in insert_seqs]
+    return [hooks.align_insert(seq) if seq is not None else TEAlignmentEvidence()
+            for seq in insert_seqs]
 
 
 def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
@@ -553,6 +617,21 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
             interval=interval, records=records,
             read_spans=events_module.read_reference_spans(records)))
 
+    # TWO PASSES OVER THE COMPONENTS, so the bin makes ONE alignment request.
+    #
+    # Pass 1 takes every shortlisted hypothesis of every component up to its TE
+    # alignment and holds it. The bin's inserts are then aligned together, and
+    # pass 2 finishes each hypothesis and appends its ledger rows and calls in
+    # EXACTLY the order the single-pass loop did -- the triaged-away rows of a
+    # component, then its evaluated rows, then its selected calls, component by
+    # component -- because finalization reads the ledger in order and breaks
+    # ties by it.
+    #
+    # Reordering the work is safe because nothing a component computes feeds
+    # the next one: the only shared state touched before the alignment is a
+    # pair of counters on `result`, and addition does not care about order.
+    pending: list[tuple[ComponentCall, list[EvidenceLedgerRow], list[_PreparedEvaluation],
+                        list[selection_module.ComponentFinalCallCandidate]]] = []
     for index, component in enumerate(components):
         projection = cache_module.project_cached_interval_reads(requests[index],
                                                                 cache_entries)
@@ -585,11 +664,12 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
 
         collapsed = hyp_module.collapse_hypothesis_summaries(summaries)
         survivors: list[hyp_module.HypothesisSummary] = []
+        summary_rows: list[EvidenceLedgerRow] = []
         for order, summary in enumerate(collapsed):
             if hyp_module.should_keep_hypothesis_for_expensive_stage(summary, order == 0):
                 survivors.append(summary)
             elif hyp_module.should_record_hypothesis_in_evidence_ledger(summary):
-                result.evidence_ledger.append(_summary_ledger_row(
+                summary_rows.append(_summary_ledger_row(
                     component, summary, "LEDGER_ONLY_PRE_EXPENSIVE_STAGE",
                     owner_bin_start, owner_bin_end))
 
@@ -622,11 +702,23 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
             for hypothesis in all_hypotheses
             if hypothesis.valid and hypothesis.center >= 0]
 
+        prepared = [_prepare_shortlisted(component, local_records, fragments,
+                                         shortlisted, config, hooks, result)
+                    for shortlisted in shortlist]
+        pending.append((component, summary_rows, prepared, anchors))
+
+    alignments = _align_bin_inserts(
+        [item.insert_seq_to_align for _, _, prepared, _ in pending for item in prepared],
+        hooks)
+
+    next_alignment = iter(alignments)
+    for component, summary_rows, prepared, anchors in pending:
+        result.evidence_ledger.extend(summary_rows)
         evaluations: list[tuple[selection_module.ComponentFinalCallCandidate, FinalCall]] = []
-        for shortlisted in shortlist:
+        for item in prepared:
+            shortlisted = item.shortlisted
             (evidence, consensus, segmentation, te_alignment, joint, genotype,
-             seg_evidence) = _evaluate_shortlisted(component, local_records, fragments,
-                                                   shortlisted, config, hooks, result)
+             seg_evidence) = _finish_shortlisted(item, next(next_alignment), config)
             result.evidence_ledger.append(_evaluated_ledger_row(
                 component, evidence, consensus, segmentation, te_alignment, joint,
                 owner_bin_start, owner_bin_end))

@@ -47,3 +47,28 @@ def run_scan(source: ReadSource, config: PipelineConfig, hooks: StageHooks,
                             bin_index * bin_size, (bin_index + 1) * bin_size,
                             config, hooks, result, source.fetch_local)
     return result
+
+
+#: The counters `run_scan` and the gate accumulate. Every other field of
+#: `PipelineResult` is written by finalization, which has not run yet.
+_SCAN_COUNTERS = ("total_reads", "gate1_passed", "processed_bins", "built_components",
+                  "event_consensus_calls", "genotype_calls")
+
+
+def merge_scan_results(into: PipelineResult, part: PipelineResult) -> PipelineResult:
+    """Append one UNFINALIZED scan onto another, as if it had followed it.
+
+    For the parallel scan (`placer_py/parallel.py`): `part` must be the scan of
+    the reads that come after everything already in `into`, and then the
+    merge is exactly what one longer scan would have accumulated -- counters
+    add, lists concatenate in order. It refuses a finalized part, because a
+    part's calibration fields describe that part alone and there is no way to
+    combine them into what the whole run would have measured.
+    """
+    if part.structural_calls or part.final_pass_calls:
+        raise ValueError("merge_scan_results takes unfinalized scans only")
+    for name in _SCAN_COUNTERS:
+        setattr(into, name, getattr(into, name) + getattr(part, name))
+    into.final_calls.extend(part.final_calls)
+    into.evidence_ledger.extend(part.evidence_ledger)
+    return into

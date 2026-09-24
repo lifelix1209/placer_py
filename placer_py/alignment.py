@@ -24,7 +24,9 @@ and the read still carries its CIGAR evidence.
 
 from __future__ import annotations
 
+from array import array
 from collections.abc import Iterable, Sequence
+from contextlib import suppress
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -105,6 +107,18 @@ class AlignedRead:
     #: `object`), which is a checker complaining about the annotation
     #: rather than about the code.
     tags: dict[str, Any] = field(default_factory=dict)
+    #: Facts derived from the read, computed once on first use: the
+    #: `cigar_index`, and the per-argument answers `read_memo` holds for the
+    #: stages that ask the same read the same question many times. Not part
+    #: of the value: excluded from `__init__`, `repr` and equality, so two
+    #: reads with the same fields compare equal whether or not either has
+    #: been queried. Safe only because nothing mutates a read after it is
+    #: built -- every stage treats `AlignedRead` as a value, and a caller that
+    #: edited `cigar` in place would have to reset both to None by hand.
+    _cigar_index: CigarIndex | None = field(default=None, init=False, repr=False,
+                                            compare=False)
+    _memo: dict[tuple[Any, ...], Any] | None = field(default=None, init=False,
+                                                    repr=False, compare=False)
 
     @property
     def seq_len(self) -> int:
@@ -166,6 +180,116 @@ class AlignedRead:
         return self.seq
 
 
+@dataclass
+class CigarIndex:
+    """The facts about one CIGAR that every window asks for, computed once.
+
+    WHY IT EXISTS. An ultra-long ONT read carries tens of thousands of CIGAR
+    operations, and the event stages ask the same read about many windows --
+    one per hypothesis, per component, per bin it is fetched into. Walking the
+    whole CIGAR for each question made `classify_local_event_signal` and
+    `compute_ref_end` a quarter of a real run. One walk builds this, and each
+    window is then a pair of binary searches over `ins_ref_pos`.
+
+    `first`/`last` are the indices `find_first_non_hard_clip` and
+    `find_last_non_hard_clip` return (-1 when there is none), with the op, its
+    length and the reference position at which it starts. `ins_ref_pos` and
+    `ins_len` list every `I` operation in CIGAR order; the positions are
+    therefore non-decreasing, which is what makes them searchable.
+    """
+
+    ref_end: int = 0
+    first: int = -1
+    first_op: int = -1
+    first_len: int = 0
+    first_ref_pos: int = 0
+    last: int = -1
+    last_op: int = -1
+    last_len: int = 0
+    last_ref_pos: int = 0
+    #: `array('q')`, not `list`: a p90 ultra-long ONT read has ~5,000 CIGAR
+    #: operations, about a sixth of them `I`, and every read of a bin keeps
+    #: its index while the bin is processed. Eight bytes an entry instead of
+    #: a pointer plus a boxed int.
+    ins_ref_pos: array = field(default_factory=lambda: array("q"))
+    ins_len: array = field(default_factory=lambda: array("q"))
+    #: The reference position at which each CIGAR operation starts, one entry
+    #: per operation. Non-decreasing, so a window's operations are a
+    #: contiguous run found by binary search (`fragments.anchor_len_from_bam`).
+    op_ref_start: array = field(default_factory=lambda: array("q"))
+    max_soft_clip: int = 0
+    max_insertion: int = 0
+
+
+def _build_cigar_index(read: AlignedRead) -> CigarIndex:
+    index = CigarIndex(ref_end=read.pos)
+    cigar = read.cigar
+    if not cigar:
+        return index
+    first = find_first_non_hard_clip(cigar)
+    last = find_last_non_hard_clip(cigar)
+    index.first = first
+    index.last = last
+    ins_ref_pos = index.ins_ref_pos
+    ins_len = index.ins_len
+    op_ref_start = index.op_ref_start
+    consuming = _CONSUMES_REF_OPS
+    ref_pos = read.pos
+    max_soft_clip = 0
+    max_insertion = 0
+    for i, (op, length) in enumerate(cigar):
+        op_ref_start.append(ref_pos)
+        if i == first:
+            index.first_op, index.first_len, index.first_ref_pos = op, length, ref_pos
+        if i == last:
+            index.last_op, index.last_len, index.last_ref_pos = op, length, ref_pos
+        if op == CIGAR_I:
+            ins_ref_pos.append(ref_pos)
+            ins_len.append(length)
+            if length > max_insertion:
+                max_insertion = length
+        elif op in consuming:
+            ref_pos += length
+        elif op == CIGAR_S and length > max_soft_clip:
+            max_soft_clip = length
+    index.ref_end = ref_pos
+    index.max_soft_clip = max_soft_clip
+    index.max_insertion = max_insertion
+    return index
+
+
+def cigar_index(read: AlignedRead) -> CigarIndex:
+    """The read's `CigarIndex`, built on first use and kept on the read.
+
+    Tolerates a read-like object without the cache slot (a test double, say):
+    it then gets a fresh index every time, which is correct and merely slow.
+    """
+    index = getattr(read, "_cigar_index", None)
+    if index is None:
+        index = _build_cigar_index(read)
+        with suppress(AttributeError):
+            read._cigar_index = index
+    return index
+
+
+def read_memo(read: AlignedRead) -> dict[tuple[Any, ...], Any] | None:
+    """The read's memo table, created on first use; None for a read-like
+    object with no slot for one, whose callers then simply recompute.
+
+    Keys are tuples whose first element names the question, so two stages can
+    never collide. Values must be immutable (tuples, ints): the table is
+    shared by every caller that asks.
+    """
+    memo = getattr(read, "_memo", None)
+    if memo is None:
+        memo = {}
+        try:
+            read._memo = memo
+        except AttributeError:
+            return None
+    return memo
+
+
 def compute_ref_end(read: AlignedRead) -> int:
     """One past the last reference base the alignment covers.
 
@@ -173,13 +297,7 @@ def compute_ref_end(read: AlignedRead) -> int:
     record contributes a zero-length interval and is dropped by the callers'
     own `end > start` checks instead of by an exception.
     """
-    if not read.cigar:
-        return read.pos
-    ref_pos = read.pos
-    for op, length in read.cigar:
-        if consumes_ref(op):
-            ref_pos += length
-    return ref_pos
+    return cigar_index(read).ref_end
 
 
 def median_i32(values: Iterable[int]) -> int:

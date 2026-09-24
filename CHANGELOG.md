@@ -20,6 +20,11 @@ project's numbering, not this package's.)
 
 ### Added
 
+- **`--threads N`** (`-t`): the scan runs on N processes. The genome is cut at
+  bin boundaries, the pieces are scanned independently and rejoined in genome
+  order, and finalization runs once over the whole run, so the output files
+  are byte-identical for any N (`tests/test_38_parallel.py` checks this on a
+  real BAM). 8 processes: 0.9 Mb of HG002 ONT-UL in 21 s.
 - **`calls.vcf`** — VCF 4.2, so the output can be read by `bcftools`, `truvari`,
   `SURVIVOR` and anything else that speaks the format. The inserted sequence is
   written out as the ALT allele rather than a symbolic `<INS:ME:*>`, because the
@@ -48,6 +53,12 @@ project's numbering, not this package's.)
 
 ### Changed
 
+- **Faster on one process, with byte-identical output**: on 0.9 Mb of HG002
+  ONT-UL, CPU 977 s to 73 s and wall 1450-2425 s to 80 s. Peak memory rose
+  from 469 MB to 711 MB (a per-read CIGAR index and a bounded cache of
+  recently fetched reads). See "Speed" in the README for where the time went.
+  `rapidfuzz` joins the `scan` extra; without it the pure-Python edit
+  distance is used and the answer is the same.
 - **The package is now three named stages**: `placer_py/io/` (everything that
   talks to something outside the process — pysam, BLAST, abPOA), `placer_py/
   core/` (everything that decides something) and `placer_py/report/`

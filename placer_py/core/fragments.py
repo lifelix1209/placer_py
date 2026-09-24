@@ -41,6 +41,7 @@ second kind.
 
 from __future__ import annotations
 
+from bisect import bisect_left
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -53,6 +54,7 @@ from placer_py.alignment import (
     CigarStringOp,
     QueryInterval,
     SAEntryWithQuality,
+    cigar_index,
     compute_ref_end,
     consumes_query,
     consumes_query_char,
@@ -63,6 +65,7 @@ from placer_py.alignment import (
     is_match_like,
     parse_cigar_ops,
     parse_sa_tag_z_with_quality,
+    read_memo,
 )
 from placer_py.config import PipelineConfig
 from placer_py.core.clustering import (
@@ -257,6 +260,28 @@ def find_long_insertions(read: AlignedRead, min_long_ins: int) -> list[InsOp]:
     so. Both anchors are then used as `min(left, right)`: an insertion is only
     as well placed as its WEAKER side.
     """
+    memo = read_memo(read)
+    key = ("long_insertions", min_long_ins)
+    found = memo.get(key) if memo is not None else None
+    if found is None:
+        found = tuple((op.start, op.len, op.ref_pos, op.left_anchor, op.right_anchor)
+                      for op in _find_long_insertions(read, min_long_ins))
+        if memo is not None:
+            memo[key] = found
+    # Fresh InsOp objects on every call: the memo holds plain tuples, so a
+    # caller that edits what it is given cannot reach the next caller.
+    return [InsOp(start=start, len=length, ref_pos=ref_pos, left_anchor=left,
+                  right_anchor=right)
+            for start, length, ref_pos, left, right in found]
+
+
+def _find_long_insertions(read: AlignedRead, min_long_ins: int) -> list[InsOp]:
+    """The CIGAR walk behind `find_long_insertions`, once per read and floor.
+
+    It used to run for every component and every hypothesis that looked at the
+    read -- about three times per read on real ONT data, over CIGARs whose
+    90th percentile is ~5,000 operations.
+    """
     ops: list[InsOp] = []
     if not read.cigar:
         return ops
@@ -364,20 +389,31 @@ def anchor_len_from_bam(read: AlignedRead, bp: int,
     win_start = bp - w_anchor
     win_end = bp + w_anchor + 1
 
-    rpos = read.pos
+    # ONLY THE OPERATIONS NEAR THE WINDOW, found by binary search over where
+    # each one starts (`cigar_index`). Exact, not approximate: every operation
+    # before `first` ENDS at or before `win_start` (it ends where the next one
+    # starts, and that is < win_start), so it overlaps nothing and an `I` there
+    # sits outside the window; every operation from the first that STARTS at or
+    # past `win_end` onwards is outside it too. The loop below is the full
+    # walk's loop, run over the operations that can contribute.
+    starts = cigar_index(read).op_ref_start
+    first = max(0, bisect_left(starts, win_start) - 1)
+    cigar = read.cigar
     anchored = 0
     has_large_indel = False
-    for op, length in read.cigar:
+    for k in range(first, len(cigar)):
+        rpos = starts[k]
+        if rpos >= win_end:
+            break
+        op, length = cigar[k]
         if is_match_like(op):
             anchored += overlap_with_window(rpos, rpos + length, win_start, win_end)
-            rpos += length
             continue
         if op in (CIGAR_D, CIGAR_N):
             overlap = overlap_with_window(rpos, rpos + length, win_start, win_end)
             anchored += overlap
             if length >= LARGE_INDEL_BP and overlap > 0:
                 has_large_indel = True
-            rpos += length
             continue
         if op == CIGAR_I:
             if win_start <= rpos < win_end:

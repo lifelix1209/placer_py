@@ -88,6 +88,15 @@ class StageHooks:
     fetch_reference: Callable[[str, int, int], str] = lambda chrom, start, end: ""
     #: insert sequence -> TE alignment evidence.
     align_insert: Callable[[str], TEAlignmentEvidence] = lambda seq: TEAlignmentEvidence()
+    #: The same, for a whole bin at once: one evidence per sequence, in order.
+    #:
+    #: Optional, and `align_insert` stays the definition of what an alignment
+    #: is. This exists because the real aligner is an external process whose
+    #: start-up costs more than a few-hundred-base search, so seeing a bin's
+    #: inserts together lets it overlap those start-ups. It must return
+    #: exactly what `[align_insert(s) for s in seqs]` would; `None` means the
+    #: bin loop calls `align_insert` per insert.
+    align_inserts: Callable[[list[str]], list[TEAlignmentEvidence]] | None = None
     #: event strings -> one consensus sequence.
     consensus_fn: Callable[[list[str]], str] = consensus_module.single_sequence_consensus
     #: (chrom, bp_left, bp_right, insert_seq) -> a TSD detection, or None.

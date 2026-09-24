@@ -44,7 +44,8 @@ finalization stage -- so `placer_py` now runs end to end from reads to
 `scientific.txt` without the compiled binary.
 
 Two things are deliberately NOT ported, and both are documented where they
-would be used rather than silently stubbed:
+would be used rather than silently stubbed (the second now has a replacement
+of its own; see [Speed](#speed)):
 
   * **abPOA.** `placer_py/core/consensus.py` takes the consensus function as an
     argument. `single_sequence_consensus` handles the cases needing no
@@ -52,9 +53,10 @@ would be used rather than silently stubbed:
     the C++ links. A worse consensus would change the insert sequence, the TE
     identity, the poly(A) call and the structure decode without changing any QC
     field -- the run would look clean and every call would be subtly wrong.
-  * **The parallel executor.** It exists to use more cores and asserts its own
-    equivalence to the streaming path in the C++ suite. `placer_py` implements
-    the streaming path and says so when `PLACER_PARALLEL` is set.
+  * **The C++ parallel executor.** `placer_py` has its own instead:
+    `--threads N` cuts the scan at bin boundaries, runs the pieces on N
+    processes and rejoins them in genome order before finalization, with
+    byte-identical output (`placer_py/parallel.py`, `tests/test_38_parallel.py`).
 
 Every other C++ translation unit has a Python counterpart, and each module's
 docstring names the file it was ported from — so the map can be regenerated
@@ -157,6 +159,7 @@ placer_py/
   --- composition: the only modules allowed to import more than one stage -
   pipeline.py       gate -> scan -> finalize
   wiring.py         binds the four hooks to real I/O
+  parallel.py       the scan on N processes (`--threads`), same bytes out
   main.py           the CLI
   denovo.py         trio de novo calling
 
@@ -178,6 +181,7 @@ tests/
   test_30_call_selection.py  one call per component, the interval cache
   test_31_outputs.py    triage, posterior, output contracts, the CLI
   test_32_pipeline.py   THE end-to-end acceptance test, and de novo
+  test_38_parallel.py   --threads N writes the same bytes as --threads 1
   redesign/             the redesign's own unittest suite; needs pysam, and is
                         skipped without it (tests/redesign/conftest.py)
   oracle/cpp_reference.json      frozen from the C++
@@ -191,7 +195,7 @@ tools/
 
 ```bash
 pip install -e .            # the decision layer: no dependencies at all
-pip install -e '.[scan]'    # + pysam and pyabpoa, to run from a BAM
+pip install -e '.[scan]'    # + pysam, pyabpoa and rapidfuzz, to run from a BAM
 pip install -e '.[dev]'     # + pytest, ruff, mypy, pre-commit
 ```
 
@@ -206,10 +210,13 @@ changes cost numerically.
 ## Running the whole pipeline
 
 ```bash
-placer-py sample.bam reference.fa te_library.fa --output-dir out/
+placer-py sample.bam reference.fa te_library.fa --output-dir out/ --threads 8
 placer-py denovo --child-scientific out/scientific.txt \
     --parent-bam-list parents.txt --ref reference.fa --te te_library.fa
 ```
+
+`--threads N` (`-t`) scans on N processes. It changes how long the run takes
+and nothing else: the five files are the same bytes for any N.
 
 or, without installing, `python3 -m placer_py.main ...` from the repository
 root.
@@ -217,6 +224,50 @@ root.
 The decision layer needs none of the scan dependencies:
 `placer_py.core.finalization` and everything it imports run on a ledger alone,
 which is why they are optional rather than required.
+
+## Speed
+
+Measured on HG002 ONT-UL (GIAB, GRCh37), `21:18,704,270-19,599,876` -- 0.9 Mb,
+2,065 reads, 203 evaluated candidates -- on an 11-core Apple M3 Pro laptop.
+Every row writes the same five files, byte for byte, as the first.
+
+| | wall | CPU | peak memory |
+|---|---|---|---|
+| before any of this | 1450-2425 s | 977-986 s | 469 MB |
+| one process | 80 s | 73 s | 711 MB |
+| `--threads 8` | 21 s | 109 s | 503 MB per process |
+
+The "before" wall time is a range because it was measured twice and most of
+it was spent launching `blastn` one process after another, which on this
+machine varies from run to run; CPU is the stable comparison (~13x on one
+process). Memory went UP on one process: each read now carries its CIGAR
+index while it is in use, and up to 32 Mbp of recently fetched reads are kept
+for reuse (`io/bam.RecordCache`). Both are bounded -- by the bin and by the
+cache -- so neither grows with the genome.
+
+Where the single-process time went, and what was done about it -- every change
+exact, each checked by comparing the five output files:
+
+| was | fix |
+|---|---|
+| 63% in the flank-placement edit distance | `rapidfuzz` when installed (optional; the pure-Python DP is the fallback and gives the same answer) |
+| every window re-walking an ultra-long read's whole CIGAR (p90 ~5,000 operations) | one walk per read into a cached index; windows are binary searches |
+| one `blastn` per candidate, run one after another | the same one-insert-per-process calls, run concurrently per bin, and remembered per sequence so a repeated insert is not re-aligned |
+| each read decoded from pysam ~5 times, once per fetch that returned it | a bounded cache hands back the same read object |
+| the TE library hashed and its k-mer tables rebuilt per call / per process | once per run; k-mers folded per distinct key |
+
+**`blastn` is not batched, on purpose.** Packing several inserts into one
+`blastn` run changes the HSPs it reports for repetitive ones (measured: a
+112 bp (AT)n insert's `cross_family_margin` moved from 0.0610 to 0.0662), so
+each insert still gets its own process and the processes run side by side.
+
+**What is left is mostly `blastn` starting up.** Each launch costs ~0.8 s of
+CPU and ~1.3 s of wall time on the laptop above, whatever the query -- that is
+BLAST+ 2.17 initialising, and `blastn -version` alone pays it. It is about half
+of the single-process time. It cannot be cut without sharing a process between
+inserts, which is the change measured above to alter results, so the next
+lever there is a decision rather than an optimisation. The largest pure-Python
+cost left is the flank search in `core/segmentation.py` (~25%).
 
 ## The output files
 
@@ -269,7 +320,7 @@ python3 tools/run_tests_without_pytest.py test_04    # one module
 ```
 
 ```
-total: 694 passed, 0 failed, 0 skipped, 7 xfail (known issues)
+total: 755 passed, 0 failed, 0 skipped, 7 xfail (known issues)
 ```
 
 | module | status |

@@ -59,6 +59,19 @@ class PipelineConfig:
     bam_region_scope: BamRegionScope = field(default_factory=BamRegionScope)
 
     bam_threads: int = 2
+    #: Scan worker PROCESSES (`--threads`). Not a C++ field, and it changes no
+    #: output: `placer_py/parallel.py` splits the scan into bin-aligned chunks
+    #: and reassembles them in genome order before finalization, which runs
+    #: once, in the parent, over the whole run. 1 is the streaming path.
+    scan_workers: int = 1
+    #: Chunk width for the parallel scan; 0 chooses one from the region size
+    #: and the worker count. Rounded up to a multiple of `bin_size`, so a bin
+    #: is never split between two workers.
+    scan_chunk_bp: int = 0
+    #: Concurrent `blastn` processes per scan process; 0 shares the machine's
+    #: cores between the scan workers. Changes no output: every insert still
+    #: gets a `blastn` of its own (see `placer_py/io/te_library.py`).
+    te_blast_jobs: int = 0
     progress_interval: int = 100000
     log_stage_bins: bool = False
     log_stage_components: bool = False

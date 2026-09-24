@@ -491,11 +491,50 @@ def test_the_optimised_dp_agrees_with_the_textbook_one():
                     edited.pop(at)
             rhs = "".join(edited)
         for max_edits in (0, 1, 2, 3, 5, 12, max(len(lhs), len(rhs))):
-            actual = call_or_skip(B.edit_identity_if_at_least, lhs, rhs, max_edits)
             expected = _textbook_banded_levenshtein(lhs, rhs, max_edits)
+            # The pure-Python DP is checked directly, whichever kernel the
+            # dispatcher picked, so the fallback stays tested in an environment
+            # that has the accelerator installed.
+            actual = call_or_skip(B.edit_identity_if_at_least, lhs, rhs, max_edits)
             assert actual == expected, (lhs, rhs, max_edits, actual, expected)
+            fallback = B._edit_identity_python(lhs, rhs, max_edits)
+            assert fallback == expected, (lhs, rhs, max_edits, fallback, expected)
             checked += 1
     assert checked > 4000, checked
+
+
+def test_the_compiled_kernel_agrees_with_the_textbook_dp_on_flank_sized_input():
+    """The accelerator, at the sizes the segmenter actually asks about.
+
+    The test above uses strings up to 40 bp; the flank search compares 20 to
+    ~150 bp windows at a 0.90 identity budget. `rapidfuzz` switches algorithm
+    by length (bit-parallel for short strings, blocked for long ones), so the
+    sizes that matter in production are checked explicitly. Skipped where the
+    optional kernel is not installed -- the fallback is then the only path and
+    is already covered above.
+    """
+    import random
+
+    if B._LEVENSHTEIN is None:
+        pytest.skip("compiled kernel not in use (rapidfuzz missing or PLACER_PURE_PYTHON set)")
+    rng = random.Random(9001)
+    for _ in range(300):
+        length = rng.randint(20, 200)
+        lhs = "".join(rng.choice("ACGT") for _ in range(length))
+        edited = list(lhs)
+        for _ in range(rng.randint(0, length // 6)):
+            at = rng.randrange(len(edited))
+            roll = rng.random()
+            if roll < 0.6:
+                edited[at] = rng.choice("ACGT")
+            elif roll < 0.8:
+                edited.insert(at, rng.choice("ACGT"))
+            elif len(edited) > 1:
+                edited.pop(at)
+        rhs = "".join(edited)
+        for max_edits in (0, length // 20, length // 10, length // 4):
+            expected = _textbook_banded_levenshtein(lhs, rhs, max_edits)
+            assert B.edit_identity_if_at_least(lhs, rhs, max_edits) == expected
 
 
 def test_the_early_exit_cannot_reject_a_match_that_exists():

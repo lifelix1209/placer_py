@@ -102,9 +102,15 @@ def run_blastn_batch_against_te_library(blastn_path: str, blast_db_prefix: str,
                                         ) -> dict[str, list[BlastSubjectHit]]:
     """One blastn invocation for a whole batch of inserts.
 
-    Batching is not only a speed choice: blastn's e-values depend on the
-    database, not the query set, so batching does not change any reported
-    number -- which is what makes it safe to do.
+    BATCHING IS NOT RESULT-NEUTRAL, whatever the e-value argument suggests.
+    Measured with BLAST+ 2.17 on HG002 (chr21:19,546,363): a 112 bp (AT)n
+    insert reported different HSPs against LTR66 and MLT2B5 when three other
+    inserts shared its run than when it ran alone, which moved its
+    `cross_family_margin` from 0.0610 to 0.0662. In a tandem repeat many
+    alignments tie, and which one blastn keeps depends on how the batch's
+    queries were packed. The pipeline therefore aligns ONE insert per call
+    (see `placer_py/io/te_library.TeLibraryAligner`); a batch here is for a
+    caller that has decided the tie-breaking does not matter to it.
 
     EVERY query gets a key in the result, including ones with no hits. A missing
     key and an empty list would otherwise be indistinguishable, and "blastn was

@@ -5,12 +5,14 @@ Ported from `src/main.cpp`, pinned by `tests/test_32_pipeline.py`.
 
 WHAT THE CLI IS RESPONSIBLE FOR, and it is deliberately little: parse the
 arguments, apply the environment overrides, build the three external
-dependencies (BAM, reference, TE library), run the pipeline, write three files.
+dependencies (BAM, reference, TE library), run the pipeline, write five files.
 Every decision lives in the stages; nothing here chooses anything.
 
 THE FOUR FLAGS are the ones that survived. `--final-fdr-q` is the single policy
 knob -- a target false-call RISK, not an evidence weight -- and the other three
-are output shape. The read-count, GQ, insert-length and segmentation-score
+are output shape. `--threads` is a fifth that decides nothing: it sets how
+many processes scan (`placer_py/parallel.py`), and the files are the same
+bytes for any value. The read-count, GQ, insert-length and segmentation-score
 ladders that used to be flags were deleted along with the thresholds behind
 them; see `placer_py/core/policy.py`.
 
@@ -71,7 +73,7 @@ _ENV_STRING_FIELDS = {
     "PLACER_MAKEBLASTDB": "te_makeblastdb_path",
 }
 
-USAGE = ("placer [--region <chrom:start-end>] [--final-fdr-q <q>] "
+USAGE = ("placer [--region <chrom:start-end>] [--threads <n>] [--final-fdr-q <q>] "
          "[--final-report-mode <legacy|te-calibrated>] "
          "[--min-final-raw-cigar-insert-len-bp <bp>] <input.bam> <ref.fa> <te.fa>")
 
@@ -160,12 +162,11 @@ def apply_environment_config(config: PipelineConfig,
         if name in environ:
             setattr(config, field_name, environ[name])
     if "PLACER_PARALLEL" in environ and _env_bool(environ["PLACER_PARALLEL"]):
-        # The parallel executor is not ported. Saying so is better than
-        # accepting the flag and running single-threaded, because a user who
-        # set it is expecting a speed-up and would otherwise not learn there
-        # isn't one.
-        print("[PLACER] PLACER_PARALLEL is not supported by placer_py; "
-              "running the streaming path", file=sys.stderr)
+        # The C++ switch, which named a different executor. Saying what to use
+        # instead is better than accepting it and running on one core: a user
+        # who set it is expecting a speed-up.
+        print("[PLACER] PLACER_PARALLEL is not read by placer_py; "
+              "use --threads N", file=sys.stderr)
     return config
 
 
@@ -176,6 +177,9 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="print the version and exit")
     parser.add_argument("--region", default=None,
                         help="restrict the scan to chrom or chrom:start-end (1-based)")
+    parser.add_argument("-t", "--threads", type=int, default=None,
+                        help="scan worker processes (default 1); the output is "
+                             "identical for any value")
     parser.add_argument("--final-fdr-q", type=float, default=None,
                         help="target false-call risk for the final selection")
     parser.add_argument("--final-report-mode", default=None,
@@ -183,7 +187,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="legacy keeps structural insertions in the main output")
     parser.add_argument("--min-final-raw-cigar-insert-len-bp", type=int, default=None)
     parser.add_argument("--output-dir", default=".",
-                        help="where the three output files are written")
+                        help="where the five output files are written")
     parser.add_argument("bam")
     parser.add_argument("reference")
     parser.add_argument("te_fasta")
@@ -202,6 +206,10 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
     if args.region:
         config.bam_region_scope = parse_region_scope(args.region)
     apply_environment_config(config, environ)
+    if args.threads is not None:
+        if args.threads < 1:
+            raise ValueError(f"--threads must be at least 1, got {args.threads}")
+        config.scan_workers = args.threads
     if args.final_fdr_q is not None:
         config.final_fdr_q = args.final_fdr_q
     if args.final_report_mode is not None:
@@ -254,11 +262,20 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
         print(f"[PLACER] empty or unreadable TE library: {config.te_fasta_path}",
               file=sys.stderr)
         return 1
-    hooks = build_stage_hooks(config, reference, entries)
-
     try:
-        result = run_pipeline(reader.stream(), reader.chromosome_name,
-                              reader.fetch, config, hooks)
+        if config.scan_workers > 1:
+            from placer_py.io.te_library import TeLibraryAligner
+            from placer_py.parallel import run_pipeline_parallel
+
+            # The parent scans nothing, so it builds no hooks -- each worker
+            # builds its own. It does build the BLAST database, once, so the
+            # workers find it on disk rather than racing to create it.
+            TeLibraryAligner(config, entries).prepare()
+            result = run_pipeline_parallel(reader, config, config.scan_workers)
+        else:
+            hooks = build_stage_hooks(config, reference, entries)
+            result = run_pipeline(reader.stream(), reader.chromosome_name,
+                                  reader.fetch, config, hooks)
         # BUILT BEFORE THE HANDLES CLOSE, and that is the only reason it is
         # inside the `try`: the contig list comes from the BAM header and the
         # VCF anchor bases come from the reference, so both must still be open.

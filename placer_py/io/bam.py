@@ -26,6 +26,7 @@ package that does not use it.
 
 from __future__ import annotations
 
+from collections import OrderedDict
 from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable
@@ -64,6 +65,52 @@ def normalize_region_scope(scope: BamRegionScope) -> BamRegionScope:
     return scope
 
 
+class RecordCache:
+    """The `AlignedRead` already built for a record, if it is still recent.
+
+    WHY. The bin loop re-fetches the reads around every candidate, and on
+    ultra-long ONT the same read turns up in the fetches of many neighbouring
+    components and bins -- about five conversions per read on a real HG002
+    slice. Each conversion decodes the whole sequence and CIGAR, and each new
+    object starts with an empty `cigar_index` and memo, so every derived fact
+    was being recomputed as often as the read was fetched. Handing back the
+    SAME object for the same record keeps those.
+
+    SAFE because `AlignedRead` is treated as a value everywhere (nothing
+    mutates one, nothing compares reads by identity), so two lists holding one
+    object behave exactly as two lists holding equal copies.
+
+    THE KEY is every cheap field that distinguishes two records of one read:
+    name, flag, contig, both alignment ends, mapping quality and length. A
+    primary and its supplementaries differ in flag or position; secondary
+    records never reach here. BOUNDED BY BASES, not entries, because a read's
+    cost is its sequence -- one ultra-long read outweighs a hundred short ones.
+    """
+
+    def __init__(self, max_bases: int = 32_000_000) -> None:
+        self.max_bases = max_bases
+        self._reads: OrderedDict[tuple, AlignedRead] = OrderedDict()
+        self._bases = 0
+
+    def convert(self, record) -> AlignedRead:
+        if self.max_bases <= 0:
+            return read_from_pysam(record)
+        key = (record.query_name, record.flag, record.reference_id,
+               record.reference_start, record.reference_end,
+               record.mapping_quality, record.query_length)
+        read = self._reads.get(key)
+        if read is not None:
+            self._reads.move_to_end(key)
+            return read
+        read = read_from_pysam(record)
+        self._reads[key] = read
+        self._bases += len(read.seq)
+        while self._bases > self.max_bases and len(self._reads) > 1:
+            _, dropped = self._reads.popitem(last=False)
+            self._bases -= len(dropped.seq)
+        return read
+
+
 @dataclass
 class BamReadStats:
     total: int = 0
@@ -88,6 +135,7 @@ class BamStreamReader:
         self.bam_path = bam_path
         self.region_scope = normalize_region_scope(region_scope or BamRegionScope())
         self.stats = BamReadStats()
+        self.records = RecordCache()
         self._pysam = pysam
         # Optional because `close()` sets both to None, which is what
         # `is_valid()` and `can_fetch()` are reading. Saying so is the
@@ -177,12 +225,29 @@ class BamStreamReader:
                 continue
             self.stats.total += 1
             processed += 1
-            yield read_from_pysam(record)
+            yield self.records.convert(record)
             if progress is not None and progress_interval > 0 and (
                     processed - last_progress) >= progress_interval:
                 last_progress = processed
                 if not progress(processed, int(record.reference_id)):
                     return
+
+    def stream_interval(self, chrom: str, start: int,
+                        end: int | None) -> Iterator[AlignedRead]:
+        """`stream()` restricted to one interval, on the STREAM handle.
+
+        What a parallel worker reads its chunk with: the same filter and the
+        same tally as `stream()`, and a generator for the same reason -- a
+        chunk of ultra-long reads is far too large to hold as a list. It uses
+        the stream handle, not the fetch handle, so the local fetches the bin
+        loop makes while this is being consumed cannot move its position.
+        """
+        stream = self._open_stream()
+        for record in stream.fetch(chrom, max(0, start), end):
+            if not self._keep(record):
+                continue
+            self.stats.total += 1
+            yield self.records.convert(record)
 
     def fetch(self, chrom: str, start: int, end: int) -> list[AlignedRead]:
         """Records overlapping one interval, or [] when there is no index.
@@ -193,7 +258,7 @@ class BamStreamReader:
         """
         if self._fetch is None:
             return []
-        return [read_from_pysam(record)
+        return [self.records.convert(record)
                 for record in self._fetch.fetch(chrom, max(0, start), end)
                 if self._keep(record)]
 

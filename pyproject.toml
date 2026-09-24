@@ -43,13 +43,17 @@ placer-py = "placer_py.main:main"
 # everything it imports run on a ledger alone, which is why these are optional
 # rather than required.
 #
-#   pysam    reading the BAM and the indexed reference
-#   pyabpoa  the event consensus -- see placer_py/consensus.py for why there is
-#            no pure-Python fallback
+#   pysam      reading the BAM and the indexed reference
+#   pyabpoa    the event consensus -- see placer_py/consensus.py for why there
+#              is no pure-Python fallback
+#   rapidfuzz  the flank-placement edit distance, which was ~60% of a real run
+#              in pure Python. OPTIONAL even here: `core/breakpoints.py` falls
+#              back to the pure-Python DP, which gives the same answer, so
+#              the decision layer still needs nothing installed.
 #
 # BLAST+ (blastn, makeblastdb) is also needed for the TE alignment, and is not
 # a Python package: it has to be on PATH, or `te_blastn_path` set.
-scan = ["pysam>=0.22", "pyabpoa>=1.4"]
+scan = ["pysam>=0.22", "pyabpoa>=1.4", "rapidfuzz>=3.0"]
 dev = ["pytest>=7.4", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.5"]
 
 [tool.setuptools.packages.find]

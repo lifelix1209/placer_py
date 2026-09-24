@@ -153,11 +153,14 @@ def test_the_top_level_holds_only_the_shared_vocabulary_and_the_composition():
     is vocabulary. `placer_py/io/gate.py` holds the APPLICATION of the
     predicate, which is the part that is actually a stage.
 
-    `pipeline.py`, `wiring.py`, `main.py` and `denovo.py` are the composition
-    tier, and they are the only modules allowed to import more than one stage.
+    `pipeline.py`, `wiring.py`, `parallel.py`, `main.py` and `denovo.py` are
+    the composition tier, and they are the only modules allowed to import more
+    than one stage. (`parallel.py` joined it for the same reason `wiring.py`
+    did: each worker has to open the BAM and build the hooks itself.)
     Asserting the exact set means a new top-level module is a decision someone
     has to make on purpose rather than a file that quietly accumulates.
     """
     top = {p.stem for p in PACKAGE.glob("*.py")}
     assert top == {"__init__", "__main__", "alignment", "reads", "config",
-                   "schema", "pipeline", "wiring", "main", "denovo"}, sorted(top)
+                   "schema", "pipeline", "wiring", "parallel", "main",
+                   "denovo"}, sorted(top)

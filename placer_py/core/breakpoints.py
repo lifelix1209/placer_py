@@ -40,19 +40,19 @@ options.
 from __future__ import annotations
 
 import math
+import os
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
 
 from placer_py.alignment import (
-    CIGAR_I,
     CIGAR_S,
     AlignedRead,
-    consumes_ref,
-    find_first_non_hard_clip,
-    find_last_non_hard_clip,
+    cigar_index,
     median_i32,
     normalized_primary_alignment,
     normalized_sa_alignment,
     parse_sa_tag_z,
+    read_memo,
 )
 from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
@@ -202,7 +202,62 @@ def max_edits_for_identity_threshold(lhs_len: int, rhs_len: int,
     return max(0, math.floor(((1.0 - clamped) * denom) + 1e-9))
 
 
+def _load_levenshtein_kernel():
+    """`rapidfuzz`'s Levenshtein distance, or None to use the pure-Python DP.
+
+    OPTIONAL, AND THAT IS THE LAYERING RULE HOLDING. `core` must stay runnable
+    with nothing installed (`tests/test_37_layering.py`), so this is a guarded
+    import with an exact fallback rather than a dependency. The accelerator is
+    in the `scan` extra, which is the environment that runs a real BAM and the
+    only one where this function is hot.
+
+    WHY IT IS EXACT, not merely close. The banded DP below equals the true
+    Levenshtein distance whenever that distance is `<= max_edits`: a path of
+    cost d crosses at most d indels, so it never leaves `|i - j| <= d`, which is
+    inside the band. When the true distance exceeds the budget the band can
+    only make it larger, so the banded answer exceeds it too. That is precisely
+    `Levenshtein.distance(..., score_cutoff=max_edits)`, which returns the
+    distance when it is within the cutoff and `cutoff + 1` otherwise. The
+    identity is then computed from the same integer by the same expression.
+    `tests/test_26_breakpoints.py` checks both kernels against the textbook DP.
+
+    `PLACER_PURE_PYTHON=1` forces the fallback, so the two can be compared on a
+    real run without uninstalling anything.
+    """
+    if os.environ.get("PLACER_PURE_PYTHON", "").strip().lower() in ("1", "true", "yes", "on"):
+        return None
+    try:
+        from rapidfuzz.distance import Levenshtein
+    except ImportError:
+        return None
+    return Levenshtein.distance
+
+
+_LEVENSHTEIN = _load_levenshtein_kernel()
+
+
 def edit_identity_if_at_least(lhs: str, rhs: str, max_edits: int) -> float | None:
+    """Banded Levenshtein: the identity, or None if it cannot reach the bound.
+
+    Dispatches to the compiled kernel when it is installed and to
+    `_edit_identity_python` otherwise; the two agree exactly (see
+    `_load_levenshtein_kernel` for why).
+    """
+    n = len(lhs)
+    m = len(rhs)
+    if n <= 0 or m <= 0 or max_edits < 0:
+        return None
+    if abs(n - m) > max_edits:
+        return None
+    if _LEVENSHTEIN is None:
+        return _edit_identity_python(lhs, rhs, max_edits)
+    dist = _LEVENSHTEIN(lhs, rhs, score_cutoff=max_edits)
+    if dist > max_edits:
+        return None
+    return min(1.0, max(0.0, 1.0 - (dist / max(n, m))))
+
+
+def _edit_identity_python(lhs: str, rhs: str, max_edits: int) -> float | None:
     """Banded Levenshtein: the identity, or None if it cannot reach the bound.
 
     The band is the point. Full edit distance is O(n*m) and this stage runs it
@@ -320,6 +375,30 @@ def robust_local_split_insertion_positions(read: AlignedRead, chrom: str) -> lis
     the LONGEST, this keeps them all -- because here the question is "which
     positions should be considered", not "how much does this read support".
     """
+    return list(_cached_split_insertion_positions(read, chrom))
+
+
+def _cached_split_insertion_positions(read: AlignedRead, chrom: str) -> tuple[int, ...]:
+    """`robust_local_split_insertion_positions`, remembered per read and contig.
+
+    The answer depends on the read's SA tag, CIGAR and the contig name and on
+    nothing else, and the event stages ask it once per window. A tuple is
+    cached so that no caller can edit the shared copy; the public function
+    hands out a fresh list, as it always has.
+    """
+    memo = read_memo(read)
+    key = ("split_insertion_positions", chrom)
+    if memo is not None:
+        hit = memo.get(key)
+        if hit is not None:
+            return hit
+    positions = tuple(_split_insertion_positions(read, chrom))
+    if memo is not None:
+        memo[key] = positions
+    return positions
+
+
+def _split_insertion_positions(read: AlignedRead, chrom: str) -> list[int]:
     positions: list[int] = []
     sa_z = read.get_string_tag("SA")
     if not sa_z:
@@ -359,24 +438,33 @@ def classify_local_event_signal(read: AlignedRead, chrom: str, window_start: int
     signal = LocalEventSignal()
     if read is None or not read.cigar:
         return signal
-    split_positions = robust_local_split_insertion_positions(read, chrom)
+    split_positions = _cached_split_insertion_positions(read, chrom)
 
-    first = find_first_non_hard_clip(read.cigar)
-    last = find_last_non_hard_clip(read.cigar)
+    # ONE CIGAR WALK PER READ, not per window: `cigar_index` records where each
+    # clip and insertion sits, and the window is then two binary searches. The
+    # insertions are visited in CIGAR order, exactly as the full walk visited
+    # them, so the strict `<` below breaks ties toward the same one it always
+    # did.
+    index = cigar_index(read)
+    if (index.first_op == CIGAR_S and index.first_len >= SOFT_CLIP_SIGNAL_MIN
+            and window_start <= index.first_ref_pos <= window_end):
+        signal.left_clip = True
+        signal.left_clip_pos = index.first_ref_pos
+    if (index.last_op == CIGAR_S and index.last_len >= SOFT_CLIP_SIGNAL_MIN
+            and window_start <= index.last_ref_pos <= window_end):
+        signal.right_clip = True
+        signal.right_clip_pos = index.last_ref_pos
 
-    ref_pos = read.pos
-    window_center = window_start + ((window_end - window_start) // 2)
-    best_indel_dist = None
-    for i, (op, length) in enumerate(read.cigar):
-        if (i == first and op == CIGAR_S and length >= SOFT_CLIP_SIGNAL_MIN
-                and window_start <= ref_pos <= window_end):
-            signal.left_clip = True
-            signal.left_clip_pos = ref_pos
-        if (i == last and op == CIGAR_S and length >= SOFT_CLIP_SIGNAL_MIN
-                and window_start <= ref_pos <= window_end):
-            signal.right_clip = True
-            signal.right_clip_pos = ref_pos
-        if op == CIGAR_I and window_start <= ref_pos <= window_end:
+    ins_ref_pos = index.ins_ref_pos
+    lo = bisect_left(ins_ref_pos, window_start)
+    hi = bisect_right(ins_ref_pos, window_end)
+    if lo < hi:
+        ins_len = index.ins_len
+        window_center = window_start + ((window_end - window_start) // 2)
+        best_indel_dist = None
+        for k in range(lo, hi):
+            ref_pos = ins_ref_pos[k]
+            length = ins_len[k]
             signal.max_raw_cigar_insert_len = max(signal.max_raw_cigar_insert_len, length)
             if length >= LONG_INSERTION_SIGNAL_MIN:
                 signal.indel = True
@@ -384,8 +472,6 @@ def classify_local_event_signal(read: AlignedRead, chrom: str, window_start: int
                 if best_indel_dist is None or dist < best_indel_dist:
                     best_indel_dist = dist
                     signal.indel_pos = ref_pos
-        if consumes_ref(op):
-            ref_pos += length
 
     for pos in split_positions:
         if pos < window_start or pos > window_end:

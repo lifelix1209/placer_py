@@ -290,11 +290,9 @@ def build_te_canonical_kmer_frequencies(sequences: Sequence[str],
         return {}
     counts: dict[int, float] = {}
     total = 0.0
-    for sequence in sequences:
-        for _, key in for_each_valid_kmer(sequence, k):
-            canonical = canonical_kmer_key(key, k)
-            counts[canonical] = counts.get(canonical, 0.0) + 1.0
-            total += 1.0
+    for key, count in _canonical_kmer_counts(sequences, k).items():
+        counts[key] = float(count)
+        total += count
     if total <= 0.0:
         return {}
     return {key: count / total for key, count in counts.items()}
@@ -303,11 +301,32 @@ def build_te_canonical_kmer_frequencies(sequences: Sequence[str],
 def build_te_canonical_kmer_presence(sequences: Sequence[str], k: int) -> set[int]:
     if k <= 0 or k > 15:
         return set()
-    present: set[int] = set()
+    return set(_canonical_kmer_counts(sequences, k))
+
+
+def _canonical_kmer_counts(sequences: Sequence[str], k: int) -> dict[int, int]:
+    """Occurrences per CANONICAL k-mer, keyed in order of first occurrence.
+
+    Counts the raw keys first and folds each DISTINCT one onto its canonical
+    form once, instead of reverse-complementing every occurrence: a 1,400-family
+    library is ~1.8 Mbp, so that was 5 million reverse complements for at most
+    4^k distinct answers, and most of the start-up time of every scan process.
+
+    The result is the one the per-occurrence loop built, including its key
+    ORDER -- which the JSD sums iterate, so it matters. A canonical key first
+    appears where the earliest of its raw keys first appears, and walking the
+    raw keys in first-occurrence order meets them in exactly that order. The
+    counts are integers, so summing them in a different order is exact.
+    """
+    raw: dict[int, int] = {}
     for sequence in sequences:
         for _, key in for_each_valid_kmer(sequence, k):
-            present.add(canonical_kmer_key(key, k))
-    return present
+            raw[key] = raw.get(key, 0) + 1
+    folded: dict[int, int] = {}
+    for key, count in raw.items():
+        canonical = canonical_kmer_key(key, k)
+        folded[canonical] = folded.get(canonical, 0) + count
+    return folded
 
 
 @dataclass

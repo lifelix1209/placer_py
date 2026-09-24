@@ -572,7 +572,7 @@ def build_local_fragment_component(component, local_records: list[AlignedRead],
     """
     import copy
 
-    from placer_py.alignment import CIGAR_I, CIGAR_S
+    from placer_py.alignment import cigar_index
     from placer_py.core.breakpoints import robust_local_split_insertion_positions
     from placer_py.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ
 
@@ -593,13 +593,11 @@ def build_local_fragment_component(component, local_records: list[AlignedRead],
         if not read.cigar:
             continue
 
-        max_soft_clip = 0
-        max_insertion = 0
-        for op, length in read.cigar:
-            if op == CIGAR_S:
-                max_soft_clip = max(max_soft_clip, length)
-            elif op == CIGAR_I:
-                max_insertion = max(max_insertion, length)
+        # The longest clip and insertion are facts about the read, walked once
+        # into its `cigar_index` rather than once per component that asks.
+        index_ = cigar_index(read)
+        max_soft_clip = index_.max_soft_clip
+        max_insertion = index_.max_insertion
 
         if max_soft_clip >= config.min_soft_clip_for_seq_extract:
             local.soft_clip_read_indices.append(index)
