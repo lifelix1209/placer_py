@@ -38,7 +38,8 @@ insert sequence, the TE identity, the poly(A) call, the structure decode. So
 
   * `single_sequence_consensus` handles the cases needing no alignment (one
     input, or several identical ones) and raises otherwise;
-  * a caller with `pyabpoa` installed passes `pyabpoa_consensus`;
+  * a caller with `pyabpoa` installed passes
+    `placer_py.io.poa.pyabpoa_consensus`;
   * anything else is a deliberate choice by the caller, not a silent fallback.
 
 Returning a worse consensus silently would be the single most damaging thing
@@ -101,7 +102,8 @@ def single_sequence_consensus(sequences: list[str]) -> str:
         return sequences[0]
     raise ConsensusUnavailable(
         f"{len(sequences)} differing event strings need a partial-order alignment; "
-        "pass `pyabpoa_consensus` (pip install pyabpoa) or another consensus "
+        "pass `placer_py.io.poa.pyabpoa_consensus` (pip install pyabpoa) "
+        "or another consensus "
         "callable to build_event_consensus")
 
 
@@ -134,22 +136,6 @@ def poa_reads_within_budget(longest_bp: int, budget_bytes: int) -> int:
         return 1
     per_read = POA_BYTES_PER_READ_BASE_SQUARED * longest_bp * longest_bp
     return max(1, int(budget_bytes // per_read))
-
-
-def pyabpoa_consensus(sequences: list[str]) -> str:
-    """abPOA through its Python binding -- the same library the C++ links.
-
-    Imported lazily so the package has no hard dependency on it: the decision
-    layer needs no consensus at all, and only a run that starts from a BAM does.
-    """
-    import pyabpoa  # noqa: F401  (optional dependency)
-
-    if not sequences:
-        return ""
-    aligner = pyabpoa.msa_aligner()
-    result = aligner.msa([upper_acgt(seq) for seq in sequences], out_cons=True,
-                         out_msa=False, max_n_cons=1)
-    return upper_acgt(result.cons_seq[0]) if result.cons_seq else ""
 
 
 # ---------------------------------------------------------------------------

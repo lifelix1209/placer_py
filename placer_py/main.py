@@ -251,10 +251,10 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
       * a readable TE library -- without it every insert is
         `TE_LIBRARY_UNAVAILABLE`, which is a silent whole-run negative.
     """
-    from placer_py import consensus as consensus_module
-    from placer_py import te_classifier
     from placer_py.io.bam import make_bam_reader
+    from placer_py.io.poa import pyabpoa_consensus
     from placer_py.io.reference import ReferenceFetcher
+    from placer_py.io.te_library import align_insert_sequences, load_te_library
     from placer_py.pipeline import StageHooks, run_pipeline
     from placer_py.seqtools import build_te_sequence_background
     from placer_py.tsd import TsdConfig
@@ -277,8 +277,7 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
               file=sys.stderr)
         return 1
 
-    with open(config.te_fasta_path) as handle:
-        entries = te_classifier.load_te_entries_from_fasta(handle.read())
+    entries = load_te_library(config.te_fasta_path)
     if not entries:
         print(f"[PLACER] empty or unreadable TE library: {config.te_fasta_path}",
               file=sys.stderr)
@@ -286,8 +285,8 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     background = build_te_sequence_background([entry.sequence for entry in entries])
 
     def align_insert(insert_seq: str):
-        return te_classifier.align_insert_sequences(config, entries, [insert_seq],
-                                                    background)[0]
+        return align_insert_sequences(config, entries, [insert_seq],
+                                      background)[0]
 
     tsd_config = TsdConfig(tsd_min_len=config.tsd_min_len,
                            tsd_max_len=config.tsd_max_len,
@@ -317,7 +316,7 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
 
     hooks = StageHooks(fetch_reference=reference.fetch_window,
                        align_insert=align_insert,
-                       consensus_fn=consensus_module.pyabpoa_consensus,
+                       consensus_fn=pyabpoa_consensus,
                        detect_tsd=detect)
 
     try:

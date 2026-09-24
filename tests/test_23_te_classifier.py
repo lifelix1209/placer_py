@@ -6,7 +6,9 @@ the multi-k and rescue tests, `test_blast_te_alignment.cpp` in the family and
 margin tests -- but WITHOUT the external BLAST process. The C++ has to install
 a fake `blastn` shell script to test any of this; the port splits the parsing
 and aggregation away from the subprocess, so the decisions can be pinned
-directly and only the process plumbing needs an executable.
+directly and only the process plumbing needs an executable. That split is
+now the file layout: the parsing is `placer_py/te_classifier.py` and the
+process is `placer_py/io/blast.py`.
 """
 
 from __future__ import annotations
@@ -17,6 +19,8 @@ from conftest import call_or_skip, close
 from placer_py import te_classifier as T
 from placer_py.config import PipelineConfig
 from placer_py.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.io import blast as B
+from placer_py.io import te_library as L
 from placer_py.seqtools import build_te_sequence_background
 
 pytestmark = pytest.mark.invariant
@@ -485,15 +489,15 @@ def test_an_incomplete_blast_database_is_not_reused():
     interrupted makeblastdb would otherwise be reused, and blastn's failure mode
     on one is a confusing error rather than a rebuild.
     """
-    assert not T.blast_db_files_exist("/nonexistent/prefix")
+    assert not B.blast_db_files_exist("/nonexistent/prefix")
 
 
 def test_no_configured_library_is_a_normal_run_and_not_an_error():
-    assert call_or_skip(T.ensure_te_blast_db, "", "makeblastdb", "key") == ""
+    assert call_or_skip(B.ensure_te_blast_db, "", "makeblastdb", "key") == ""
 
 
 def test_alignment_without_a_library_reports_unavailable_for_every_insert():
-    evidences = call_or_skip(T.align_insert_sequences, PipelineConfig(), [],
+    evidences = call_or_skip(L.align_insert_sequences, PipelineConfig(), [],
                              ["ACGT" * 80, ""])
     assert [e.qc_reason for e in evidences] == ["TE_LIBRARY_UNAVAILABLE",
                                                 "TE_LIBRARY_UNAVAILABLE"]
