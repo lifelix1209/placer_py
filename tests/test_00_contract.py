@@ -12,7 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from placer_py import outputs, schema
+from placer_py import schema
+from placer_py.report import tsv as outputs
 
 pytestmark = pytest.mark.contract
 

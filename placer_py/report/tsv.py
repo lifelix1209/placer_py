@@ -1,5 +1,5 @@
 """
-Writing the three output files, and the column contracts they carry.
+The three TSV/TXT outputs, and the column contracts they carry.
 
 Ported from the writers in `src/main.cpp`, pinned by `tests/test_31_outputs.py`.
 
@@ -15,7 +15,8 @@ THREE FILES, AND WHAT EACH IS FOR:
 
 THE COLUMN ORDER IS THE CONTRACT. `placer_py/schema.py` pins which columns the
 decision layer READS and with what dtype; this module pins the order they are
-WRITTEN in. A reader that indexes by position -- and every downstream script
+WRITTEN in, and `placer_py/report/csv_table.py` reuses these same lists rather
+than declaring a second set. A reader that indexes by position -- and every downstream script
 eventually does -- breaks silently if the order changes, so the header lists
 here are the single source of truth for both files and are asserted against the
 schema in the tests.

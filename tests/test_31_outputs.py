@@ -14,7 +14,6 @@ from conftest import call_or_skip, close
 
 from placer_py import hypotheses as H
 from placer_py import main as M
-from placer_py import outputs as O
 from placer_py.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SOFT_CLIP,
@@ -26,6 +25,7 @@ from placer_py.config import FinalReportMode, PipelineConfig
 from placer_py.core import result as R
 from placer_py.events import EventReadEvidence
 from placer_py.ledger import EvidenceLedgerRow, FinalCall
+from placer_py.report import tsv as O
 
 pytestmark = pytest.mark.invariant
 

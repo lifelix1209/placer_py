@@ -29,6 +29,7 @@ from collections.abc import Mapping
 
 from placer_py import __version__
 from placer_py.config import BamRegionScope, FinalReportMode, PipelineConfig
+from placer_py.report.writer import write_outputs
 
 #: `PLACER_*` environment overrides, and the config field each sets. The C++
 #: reads these instead of adding flags for every tuning parameter; they are
@@ -210,32 +211,6 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
     if args.min_final_raw_cigar_insert_len_bp is not None:
         config.min_final_raw_cigar_insert_len_bp = args.min_final_raw_cigar_insert_len_bp
     return config
-
-
-def write_outputs(result, output_dir: str, include_insert_seq: bool = False,
-                  include_support_qnames: bool = False) -> dict[str, str]:
-    """Write the three files and return their paths.
-
-    All three, always, even when empty. A missing `structural_calls.tsv` is
-    ambiguous between "none were set aside" and "the run died before writing
-    it", and a downstream script cannot tell the difference.
-    """
-    from placer_py import outputs
-
-    os.makedirs(output_dir, exist_ok=True)
-    paths = {
-        "scientific_txt": os.path.join(output_dir, "scientific.txt"),
-        "structural_calls_tsv": os.path.join(output_dir, "structural_calls.tsv"),
-        "evidence_ledger_tsv": os.path.join(output_dir, "evidence_ledger.tsv"),
-    }
-    with open(paths["scientific_txt"], "w") as handle:
-        handle.write(outputs.render_scientific_txt(result, include_insert_seq))
-    with open(paths["structural_calls_tsv"], "w") as handle:
-        handle.write(outputs.render_structural_calls_tsv(result, include_insert_seq))
-    with open(paths["evidence_ledger_tsv"], "w") as handle:
-        handle.write(outputs.render_evidence_ledger_tsv(result, include_insert_seq,
-                                                        include_support_qnames))
-    return paths
 
 
 def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
