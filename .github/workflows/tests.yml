@@ -115,7 +115,7 @@ jobs:
           # No third-party dependency: importing the decision layer in an
           # environment with nothing else installed is the claim `dependencies
           # = []` makes, and this is where it is checked.
-          /tmp/clean/bin/python -c "import placer_py.finalization, placer_py.policy"
+          /tmp/clean/bin/python -c "import placer_py.core.finalization, placer_py.core.policy"
       - name: The typing marker must survive into the installed package
         # `py.typed` present in the source tree and absent from the wheel marks
         # nothing at all: a downstream checker reads the INSTALLED package, and

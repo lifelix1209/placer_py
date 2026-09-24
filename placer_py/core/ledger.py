@@ -8,8 +8,8 @@ WHY THERE ARE TWO, and the distinction matters for reading any PLACER output.
 
 A LEDGER ROW is every candidate the pipeline examined, whatever it concluded.
 It is the sample's own null set as well as its candidate set -- the dependency
-bound in `placer_py/dependency.py` and the conformal null set in
-`placer_py/conformal.py` are both measured from rows that were NOT selected. So
+bound in `placer_py/core/dependency.py` and the conformal null set in
+`placer_py/core/conformal.py` are both measured from rows that were NOT selected. So
 the ledger must contain the rejections, and a ledger filtered to the calls would
 silently destroy both calibrations.
 

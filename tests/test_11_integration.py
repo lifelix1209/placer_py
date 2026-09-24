@@ -19,7 +19,7 @@ import random
 import pytest
 from conftest import call_or_skip
 
-from placer_py import integrate
+from placer_py.core import integrate
 from placer_py.redesign.model import mechanistic as M
 
 pytestmark = pytest.mark.invariant
@@ -272,7 +272,7 @@ def test_the_penalty_regime_is_visible_rather_than_silent():
     The second is what made this subsystem inert in the C++ for a whole release,
     which is why it must not be silent. Note that it is ALSO the regime a
     genuine likelihood ratio lives in permanently, by construction -- see
-    `placer_py/decoys.py`. For an uncalibrated affine score it is luck; for a
+    `placer_py/core/decoys.py`. For an uncalibrated affine score it is luck; for a
     likelihood ratio it is a theorem.
     """
     rows, _ = _population(n_null=1500, n_true=80, seed=11)
@@ -303,7 +303,7 @@ def test_the_penalty_regime_is_visible_rather_than_silent():
     "range is smaller than genome-scale multiple testing requires. The single "
     "largest loss is tsd_loglr's clamp at 3.0: a 15 bp exact duplication in "
     "unique sequence is worth ~13 nats against a locally measured background, "
-    "so that clamp alone discards about ten. placer_py/tprt.py reaches 33 nats "
+    "so that clamp alone discards about ten. placer_py/core/tprt.py reaches 33 nats "
     "on the same case for exactly that reason."))
 def test_the_score_has_enough_range_for_genome_scale_fdr():
     rows, truth = _population(n_null=1000, n_true=60, seed=100)
@@ -334,7 +334,7 @@ def test_contamination_inflates_sigma_in_proportion_to_the_true_rate():
 
     The true positives are setting the bar they then have to clear. Taken to its
     conclusion in test_12, this is why candidate-set calibration cannot work at
-    all, and why placer_py/decoys.py stops estimating and starts verifying.
+    all, and why placer_py/core/decoys.py stops estimating and starts verifying.
     """
     penalties = []
     for frac in (0.0, 0.01, 0.03):
@@ -373,9 +373,9 @@ def test_the_bernstein_slack_is_not_where_the_penalty_comes_from():
     statement that this score assigns e^2.97 ~ 20 to a typical null locus.
     Tightening the inequality would buy 0.04 nats; making the blocks real
     log-LRs against measured nulls buys 3 -- and makes the penalty zero by
-    construction, which is what placer_py/tprt.py does.
+    construction, which is what placer_py/core/tprt.py does.
     """
-    from placer_py import dependency as dep
+    from placer_py.core import dependency as dep
     nulls = [_score(_null_row(random.Random(i))) for i in range(1060)]
     est = call_or_skip(dep.estimate_dependency_penalty, nulls, nulls, Q, 1060)
     slack_nats = math.log(est.vs_artifact.sigma_upper / est.vs_artifact.sigma_mean)

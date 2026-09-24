@@ -4,7 +4,7 @@ Breakpoint-shift controls and the empirical null tail.
 Ported from `src/pipeline/null_control.cpp`, pinned by
 `tests/test_17_null_control.py`.
 
-`make_breakpoint_shift_controls` is the construction `placer_py/decoys.py`
+`make_breakpoint_shift_controls` is the construction `placer_py/core/decoys.py`
 argued for and could not build from the scalar ledger: the SAME locus with the
 breakpoint moved, so local composition is preserved and the coincidences are
 whatever chance gives. It already existed in the C++, which is why the decoy

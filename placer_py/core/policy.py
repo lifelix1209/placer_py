@@ -311,7 +311,7 @@ class JointDecisionResult:
     mechanistic_lower_log_bf_te_vs_artifact: float = 0.0
     #: Penalty-FREE aggregates. Finalization needs them because the bound that
     #: makes the product an e-value is a property of the whole run, not of one
-    #: locus -- see placer_py/dependency.py.
+    #: locus -- see placer_py/core/dependency.py.
     mechanistic_raw_log_bf_te_vs_artifact: float = 0.0
     mechanistic_raw_log_bf_te_vs_non_te: float = 0.0
     mechanistic_lower_log_bf_te_vs_non_te: float = 0.0

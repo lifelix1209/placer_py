@@ -16,7 +16,7 @@ suite constrains them differently on purpose:
     to reproduce the C++ numbers would require it to get worse.
 
 `tests/test_10_mechanistic_invariants.py` is where that second constraint
-lives, and `placer_py/integrate.py` is where the redesign's hand-tuned score is
-put under the port's FDR machinery -- which is the only place the two actually
-meet.
+lives, and `placer_py/core/integrate.py` is where the redesign's
+hand-tuned score is put under the port's FDR machinery -- which is the only
+place the two actually meet.
 """

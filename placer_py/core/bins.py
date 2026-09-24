@@ -32,10 +32,10 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from typing import Callable
 
-from placer_py import call_selection as selection_module
 from placer_py.alignment import AlignedRead
 from placer_py.config import PipelineConfig
 from placer_py.core import breakpoints as bp_module
+from placer_py.core import call_selection as selection_module
 from placer_py.core import consensus as consensus_module
 from placer_py.core import events as events_module
 from placer_py.core import fragments as fragments_module

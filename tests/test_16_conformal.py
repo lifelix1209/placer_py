@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import conformal as C
+from placer_py.core import conformal as C
 
 pytestmark = pytest.mark.golden
 

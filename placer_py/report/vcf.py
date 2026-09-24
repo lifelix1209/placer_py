@@ -38,7 +38,7 @@ unchanged the moment `POLARITY_RESOLVED` flips. `tests/test_36_vcf_csv.py` ties
 those two facts together so the next person cannot turn one on without the
 other.
 
-SVLEN COMES FROM THE ALT, NOT FROM `insert_len`. `placer_py/finalization.py`
+SVLEN COMES FROM THE ALT, NOT FROM `insert_len`. `placer_py/core/finalization.py`
 sets `insert_seq` on the cluster-promoted path and never sets `insert_len`, so
 a promoted call can carry a kilobase of sequence and report a length of zero.
 That is a live defect in the existing TSVs; the VCF routes around it rather

@@ -12,11 +12,11 @@ These six affine maps carry nineteen hand-set constants, and the measurement in
 control at all: each block is clamped to a small range, the total caps near 9.9
 nats, and e-BH's rank-1 threshold at m=1060, q=0.10 is 9.27 nats before any
 penalty. Worse, their null expectation is an unknown number that has to be
-measured, and `placer_py/decoys.py` shows that it cannot be -- both candidate
+measured, and `placer_py/core/decoys.py` shows that it cannot be -- both candidate
 samples fail, in opposite directions.
 
 So this module exists to reproduce the C++ EXACTLY, for the diff, and not to be
-used for calling. `placer_py/tprt.py` is the decision path: real log-LRs whose
+used for calling. `placer_py/core/tprt.py` is the decision path: real log-LRs whose
 null expectation is 1 by construction, measured at 0.186 on simulated nulls, and
 which recover 96% recall at FDP 0.000 where these score nothing.
 

@@ -208,7 +208,7 @@ or, without installing, `python3 -m placer_py.main ...` from the repository
 root.
 
 The decision layer needs none of the scan dependencies:
-`placer_py.finalization` and everything it imports run on a ledger alone, which
+`placer_py.core.finalization` and everything it imports run on a ledger alone, which
 is why they are optional rather than required.
 
 ## Running the tests
@@ -404,7 +404,7 @@ Measured on the TPRT terms over 20,000 simulated nulls: `E_null[e^score] =
 penalty, and e-BH works.
 
 What remains for a null set is **verification, not estimation** — a likelihood
-approach's real risk is misspecification, so `placer_py/decoys.py` checks
+approach's real risk is misspecification, so `placer_py/core/decoys.py` checks
 `E_null[e^score] <= 1` and refuses to proceed if it fails. That is a far weaker
 requirement than calibration: an approximate null set can still falsify the
 inequality, whereas estimating sigma from one would need a faithful draw.

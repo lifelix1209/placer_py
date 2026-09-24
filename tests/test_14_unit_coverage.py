@@ -17,8 +17,7 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import dependency, integrate, tprt
-from placer_py.core import blocks, genotype, structure
+from placer_py.core import blocks, dependency, genotype, integrate, structure, tprt
 from placer_py.core import policy as P
 
 pytestmark = pytest.mark.invariant
@@ -368,7 +367,7 @@ def test_the_two_log_sum_exp_semantics_stay_distinct():
     """
     import math
 
-    from placer_py import finalization as finalization_module
+    from placer_py.core import finalization as finalization_module
     from placer_py.core import mathx
     from placer_py.core import policy as policy_module
 

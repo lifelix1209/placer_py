@@ -14,7 +14,7 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import finalization as F
+from placer_py.core import finalization as F
 from placer_py.core import result as R
 from placer_py.core.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 

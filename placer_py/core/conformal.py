@@ -6,7 +6,7 @@ Ported from `src/pipeline/conformal_selector.cpp`, pinned by
 
 WHY IT EXISTS ALONGSIDE e-BH. The two routes have different failure modes.
 e-BH depends on the e-values really being e-values -- that is, on the score's
-null expectation being at most 1, which `placer_py/decoys.py` verifies. The
+null expectation being at most 1, which `placer_py/core/decoys.py` verifies. The
 conformal route depends on no distributional assumption at all: it only counts
 how many rows that were NOT selected look at least as TE-like as the candidate.
 A locus that fools both has to survive a model-based argument and an

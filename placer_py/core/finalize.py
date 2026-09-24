@@ -23,9 +23,9 @@ finalize in the first place.
 from __future__ import annotations
 
 from placer_py.config import PipelineConfig
+from placer_py.core.finalization import finalize_final_calls
 from placer_py.core.ledger import FinalCallFilterConfig
 from placer_py.core.result import PipelineResult
-from placer_py.finalization import finalize_final_calls
 
 
 def finalize_run(result: PipelineResult, config: PipelineConfig,

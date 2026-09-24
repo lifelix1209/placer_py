@@ -17,7 +17,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py import tprt
+from placer_py.core import tprt
 
 pytestmark = pytest.mark.invariant
 

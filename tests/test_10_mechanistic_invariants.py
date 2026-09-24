@@ -136,7 +136,7 @@ def test_a_rarer_duplication_is_worth_more():
     "or SVA are all penalised for obeying their own mechanism. Only "
     "5'-TRUNCATED L1 insertions are reliably associated with short TSDs "
     "(Kojima 2010, Mobile DNA). P(TSD | mechanism) has to be conditioned, which "
-    "makes the insertion type a latent variable -- see placer_py/tprt.py's "
+    "makes the insertion type a latent variable -- see placer_py/core/tprt.py's "
     "TSD_MODEL. The C++ has the same defect, so this is not a porting "
     "regression."))
 def test_tsd_absence_is_conditioned_on_the_insertion_mechanism():

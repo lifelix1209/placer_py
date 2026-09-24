@@ -9,7 +9,7 @@ fail in exactly the locked-down environment the design is for.
 So import what you need:
 
     from placer_py.pipeline import run_pipeline        # needs pysam upstream
-    from placer_py.finalization import finalize_final_calls   # needs nothing
+    from placer_py.core.finalization import finalize_final_calls   # needs nothing
 """
 
 from __future__ import annotations

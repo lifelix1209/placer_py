@@ -36,15 +36,14 @@ procedure whose guarantee does not depend on it.
 
 THE THREE E-VALUE CONSTRUCTIONS are averaged, not maximised. The maximum of
 e-values is NOT an e-value -- that is one of the pinned regressions in
-`placer_py/selection.py` -- while their mean is, by linearity of expectation.
+`placer_py/core/selection.py` -- while their mean is, by linearity of expectation.
 """
 
 from __future__ import annotations
 
 import math
 
-from placer_py import selection
-from placer_py.core import mathx, supports
+from placer_py.core import mathx, selection, supports
 from placer_py.core.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 from placer_py.core.result import PipelineResult
 
@@ -1076,7 +1075,7 @@ def _conformal_feature(chrom: str, pos: int, bp_left: int, bp_right: int, index:
                        best_te_query_coverage: float, cross_family_margin: float,
                        ref_span_reads: int, left_flank_align_len: int,
                        right_flank_align_len: int):
-    from placer_py.conformal import ConformalFeatureVector
+    from placer_py.core.conformal import ConformalFeatureVector
 
     return ConformalFeatureVector(
         id=f"{chrom}:{pos}:{bp_left}:{bp_right}:{index}",
@@ -1218,7 +1217,7 @@ def apply_event_ebh_selection(calls: list[FinalCall], target_fdr: float) -> None
     if not calls:
         return
 
-    # `placer_py/selection.py` is where these two steps are defined, argued
+    # `placer_py/core/selection.py` is where these two steps are defined, argued
     # for and tested. This loop used to reimplement both inline -- identically,
     # as 48,000 differential comparisons confirm, but with its own copy of
     # E_VALUE_CONSTRUCTIONS and its own chance to drift.
@@ -2410,7 +2409,7 @@ def apply_dependency_penalty_calibration(result: PipelineResult,
     large, and nothing passes -- which is the right answer when there is no null
     to calibrate against.
     """
-    from placer_py.dependency import estimate_dependency_penalty
+    from placer_py.core.dependency import estimate_dependency_penalty
 
     null_art: list[float] = []
     null_non: list[float] = []
@@ -2532,7 +2531,7 @@ def apply_sample_local_conformal_selector(result: PipelineResult,
 
     THE LAST STEP IS A DROP: any call that no route selected is removed.
     """
-    from placer_py.conformal import ConformalNullSelector
+    from placer_py.core.conformal import ConformalNullSelector
 
     if not result.final_calls or not result.evidence_ledger:
         return

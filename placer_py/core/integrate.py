@@ -133,7 +133,7 @@ def select_likelihood(rows: Sequence[dict], score_fn: Callable[[dict], float],
     `select()` estimates sigma on the candidates. That is valid and unusable:
     the true positives saturate the cap and set sigma themselves, the headroom
     collapses to `1/pi`, and e-BH's requirement cannot be met for any q < 1 --
-    for any score, and worse the better the score is. See `placer_py/decoys.py`
+    for any score, and worse the better the score is. See `placer_py/core/decoys.py`
     for the algebra and `tests/test_12_head_to_head.py` for the measurement.
 
     A genuine likelihood ratio does not need the estimate at all, because
@@ -201,7 +201,7 @@ def select(candidates: Sequence[Candidate], q: float = 0.10) -> SelectionResult:
 
     RETAINED FOR THE RECORD, not for use. This is what the C++ does and what
     this port did first, and it cannot select anything at genome scale -- see
-    `select_likelihood` and `placer_py/decoys.py`. Kept because the golden
+    `select_likelihood` and `placer_py/core/decoys.py`. Kept because the golden
     vectors pin it and because the comparison in
     `tests/test_12_head_to_head.py` needs both paths.
 

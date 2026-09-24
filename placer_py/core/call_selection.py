@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from placer_py.finalization import FINAL_CALL_DEDUP_DISTANCE_BP
+from placer_py.core.finalization import FINAL_CALL_DEDUP_DISTANCE_BP
 
 #: An anchor must have at least this much support to tether anything.
 MIN_RETETHER_ANCHOR_SUPPORT = 1
