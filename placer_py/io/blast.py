@@ -27,7 +27,7 @@ import os
 import subprocess
 import tempfile
 
-from placer_py.te_classifier import (
+from placer_py.core.te_classifier import (
     BLAST_MAX_TARGET_SEQS,
     BLAST_OUTFMT,
     BlastSubjectHit,

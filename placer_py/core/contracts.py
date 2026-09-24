@@ -26,9 +26,9 @@ from collections.abc import Iterator
 from dataclasses import dataclass
 from typing import Callable, Protocol
 
-from placer_py import consensus as consensus_module
 from placer_py.alignment import AlignedRead
-from placer_py.te_classifier import TEAlignmentEvidence
+from placer_py.core import consensus as consensus_module
+from placer_py.core.te_classifier import TEAlignmentEvidence
 
 
 @dataclass
@@ -59,7 +59,7 @@ class ReadSource:
 class TsdDetection(Protocol):
     """What the pipeline reads off a TSD detection.
 
-    `placer_py.tsd.TsdDetection` satisfies it; so does any record with these
+    `placer_py.core.tsd.TsdDetection` satisfies it; so does any record with these
     five fields, which is the point -- a caller can supply its own detector
     without this module importing one.
     """
@@ -78,7 +78,7 @@ class StageHooks:
     Making them parameters is what lets the whole pipeline run on literals in a
     test: a reference is a callable returning a string, the TE alignment is a
     callable returning evidence, and the consensus is the callable
-    `placer_py/consensus.py` argues must be chosen deliberately.
+    `placer_py/core/consensus.py` argues must be chosen deliberately.
 
     It is also honest about what the pipeline actually needs from each -- the TE
     library is a function from an insert sequence to evidence, nothing more.
@@ -95,7 +95,7 @@ class StageHooks:
     #: Typed by what this module READS off the result (see `TsdDetection`)
     #: rather than as `object`, which is what it was: five attribute reads
     #: on a value the checker knew nothing about. A Protocol keeps the
-    #: reason `object` was there -- importing `placer_py.tsd` for its
+    #: reason `object` was there -- importing `placer_py.core.tsd` for its
     #: dataclass would put the reference-fetching half of the tool in front
     #: of a pipeline that takes its reference as a callable.
     #:

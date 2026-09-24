@@ -26,8 +26,8 @@ import pytest
 from conftest import call_or_skip
 
 from placer_py import schema
+from placer_py.core.ledger import FinalCall
 from placer_py.core.result import PipelineResult
-from placer_py.ledger import FinalCall
 from placer_py.report import csv_table as C
 from placer_py.report import tsv as O
 from placer_py.report import vcf as V

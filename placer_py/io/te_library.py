@@ -24,8 +24,7 @@ from __future__ import annotations
 
 from placer_py.config import PipelineConfig
 from placer_py.core.seqtools import TeSequenceBackground
-from placer_py.io.blast import ensure_te_blast_db, run_blastn_batch_against_te_library
-from placer_py.te_classifier import (
+from placer_py.core.te_classifier import (
     TEAlignmentEvidence,
     TeEntry,
     build_insert_alignment_evidence_from_blast_hits,
@@ -33,6 +32,7 @@ from placer_py.te_classifier import (
     load_te_entries_from_fasta,
     parse_kmer_sizes_csv,
 )
+from placer_py.io.blast import ensure_te_blast_db, run_blastn_batch_against_te_library
 
 
 def load_te_library(te_fasta_path: str) -> list[TeEntry]:

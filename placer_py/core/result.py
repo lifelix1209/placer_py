@@ -26,7 +26,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from placer_py.ledger import EvidenceLedgerRow, FinalCall
+from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
 
 
 @dataclass

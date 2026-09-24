@@ -1,7 +1,7 @@
 """
 The hypothesis triage, the breakpoint posterior, and the output contracts.
 
-Covers `placer_py/hypotheses.py`, `placer_py/outputs.py` and the region/config
+Covers `placer_py/core/hypotheses.py`, `placer_py/outputs.py` and the region/config
 half of `placer_py/main.py`. The C++ has no tests for any of it: the triage is
 in an `.inc` file, the writers are in `main.cpp`, and both need a pipeline to
 reach.
@@ -12,9 +12,9 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import hypotheses as H
 from placer_py import main as M
 from placer_py.config import FinalReportMode, PipelineConfig
+from placer_py.core import hypotheses as H
 from placer_py.core import result as R
 from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
@@ -23,8 +23,8 @@ from placer_py.core.clustering import (
     BreakpointCandidate,
     ComponentCall,
 )
-from placer_py.events import EventReadEvidence
-from placer_py.ledger import EvidenceLedgerRow, FinalCall
+from placer_py.core.events import EventReadEvidence
+from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
 from placer_py.report import tsv as O
 
 pytestmark = pytest.mark.invariant

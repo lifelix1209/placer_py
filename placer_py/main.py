@@ -12,7 +12,7 @@ THE FOUR FLAGS are the ones that survived. `--final-fdr-q` is the single policy
 knob -- a target false-call RISK, not an evidence weight -- and the other three
 are output shape. The read-count, GQ, insert-length and segmentation-score
 ladders that used to be flags were deleted along with the thresholds behind
-them; see `placer_py/policy.py`.
+them; see `placer_py/core/policy.py`.
 
 REGION PARSING IS 1-BASED INCLUSIVE ON THE WAY IN, half-open 0-based
 internally, because that is what every genomics tool's `chrom:start-end` means
@@ -228,15 +228,15 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     """
     from placer_py.core.contracts import StageHooks
     from placer_py.core.seqtools import build_te_sequence_background
+    from placer_py.core.tsd import TsdConfig
+    from placer_py.core.tsd import detect as detect_tsd
+    from placer_py.core.tsd import detect_from_insertion as detect_tsd_from_insertion
     from placer_py.io.bam import make_bam_reader
     from placer_py.io.poa import pyabpoa_consensus
     from placer_py.io.reference import ReferenceFetcher
     from placer_py.io.report_context import build_report_context
     from placer_py.io.te_library import align_insert_sequences, load_te_library
     from placer_py.pipeline import run_pipeline
-    from placer_py.tsd import TsdConfig
-    from placer_py.tsd import detect as detect_tsd
-    from placer_py.tsd import detect_from_insertion as detect_tsd_from_insertion
 
     reader = make_bam_reader(config.bam_path, config.bam_threads,
                              config.bam_region_scope)

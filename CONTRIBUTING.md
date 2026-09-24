@@ -96,7 +96,7 @@ A non-empty diff means the contract moved. Review it before committing.
 
 ## What is deliberately not here
 
-- **abPOA.** `placer_py/consensus.py` takes the consensus function as an
+- **abPOA.** `placer_py/core/consensus.py` takes the consensus function as an
   argument and raises rather than approximating. A worse consensus changes the
   insert sequence, the TE identity and the structure decode without changing
   any QC field — the run would look clean and every call would be wrong.

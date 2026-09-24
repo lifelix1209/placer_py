@@ -17,8 +17,9 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import blocks, dependency, genotype, integrate, structure, tprt
-from placer_py import policy as P
+from placer_py import dependency, integrate, tprt
+from placer_py.core import blocks, genotype, structure
+from placer_py.core import policy as P
 
 pytestmark = pytest.mark.invariant
 
@@ -346,9 +347,9 @@ def test_log_sum_exp_of_all_impossible_is_impossible_not_nan():
     """
     import math
 
-    from placer_py import genotype as genotype_module
-    from placer_py import policy as policy_module
+    from placer_py.core import genotype as genotype_module
     from placer_py.core import mathx
+    from placer_py.core import policy as policy_module
 
     impossible = -math.inf
     assert mathx.log_sum_exp((impossible,) * 3) == impossible
@@ -368,8 +369,8 @@ def test_the_two_log_sum_exp_semantics_stay_distinct():
     import math
 
     from placer_py import finalization as finalization_module
-    from placer_py import policy as policy_module
     from placer_py.core import mathx
+    from placer_py.core import policy as policy_module
 
     abstained, real = -math.inf, 3.0
     assert finalization_module.log_sum_exp_pair(abstained, real) == real

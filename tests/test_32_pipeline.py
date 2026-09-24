@@ -27,9 +27,9 @@ from placer_py.alignment import CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
 from placer_py.config import FinalReportMode, PipelineConfig
 from placer_py.core.bins import group_reads_into_bins
 from placer_py.core.contracts import StageHooks
+from placer_py.core.te_classifier import FragmentTEHit, TEAlignmentEvidence
 from placer_py.pipeline import run_pipeline
 from placer_py.report import tsv as O
-from placer_py.te_classifier import FragmentTEHit, TEAlignmentEvidence
 
 pytestmark = pytest.mark.invariant
 

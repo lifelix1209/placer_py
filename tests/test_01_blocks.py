@@ -1,5 +1,5 @@
 """
-Golden certificates. Skips until `placer_py.blocks` is ported.
+Golden certificates. Skips until `placer_py.core.blocks` is ported.
 
 These assert EQUALITY to full double precision against the C++, because the C++
 test suite pins only signs and orderings -- a port could compute a different
@@ -11,9 +11,9 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import blocks
-from placer_py import policy as P
-from placer_py.te_classifier import TEAlignmentEvidence
+from placer_py.core import blocks
+from placer_py.core import policy as P
+from placer_py.core.te_classifier import TEAlignmentEvidence
 
 pytestmark = pytest.mark.golden
 

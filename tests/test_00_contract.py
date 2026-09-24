@@ -133,7 +133,7 @@ def test_every_ledger_column_is_a_field_or_a_declared_derivation():
     """
     import dataclasses
 
-    from placer_py.ledger import EvidenceLedgerRow
+    from placer_py.core.ledger import EvidenceLedgerRow
 
     fields = {f.name for f in dataclasses.fields(EvidenceLedgerRow)}
     unexplained = [c for c in outputs.EVIDENCE_LEDGER_COLUMNS
@@ -145,7 +145,7 @@ def test_every_ledger_column_is_a_field_or_a_declared_derivation():
 def test_every_call_column_is_a_field_or_a_declared_rename():
     import dataclasses
 
-    from placer_py.ledger import FinalCall
+    from placer_py.core.ledger import FinalCall
 
     fields = {f.name for f in dataclasses.fields(FinalCall)}
     unexplained = [c for c in outputs.FINAL_CALL_COLUMNS
@@ -162,7 +162,7 @@ def test_the_header_and_the_row_stay_the_same_length():
     that fails to parse: every value is present and every value is under the
     wrong name.
     """
-    from placer_py.ledger import EvidenceLedgerRow, FinalCall
+    from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
 
     row = EvidenceLedgerRow()
     for insert_seq in (False, True):

@@ -60,7 +60,7 @@ from placer_py.core.seqtools import (
     te_kmer_jsd_vs_background,
     upper_acgt,
 )
-from placer_py.structure import SequenceExplanation, explain_te_sequence_structure
+from placer_py.core.structure import SequenceExplanation, explain_te_sequence_structure
 
 #: Ambiguity marker in the k-mer index: this k-mer occurs in two or more
 #: library entries, so it names no element.

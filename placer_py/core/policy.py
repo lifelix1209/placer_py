@@ -2,7 +2,7 @@
 The joint decision: four hypotheses, one emission gate, and the diagnostics.
 
 Ported from the second half of `src/pipeline/decision_policy.cpp` -- the half
-`placer_py/genotype.py` left behind -- and pinned by
+`placer_py/core/genotype.py` left behind -- and pinned by
 `tests/test_24_policy.py`.
 
 WHAT THIS MODULE DECIDES, and what it explicitly does not.
@@ -44,7 +44,7 @@ the C++, in two translation units, with OPPOSITE polarity on `pair_valid`:
 `pair_valid`. Both are reachable for the same locus, from the same evidence, in
 the same run. The port keeps both under distinct names rather than silently
 picking one -- see `is_one_sided_segmentation_pass` here and
-`_is_one_sided_segmentation_pass` in `placer_py/blocks.py`.
+`_is_one_sided_segmentation_pass` in `placer_py/core/blocks.py`.
 """
 
 from __future__ import annotations
@@ -53,10 +53,10 @@ import math
 from dataclasses import dataclass, field
 from enum import IntEnum
 
-from placer_py import blocks as blocks_module
-from placer_py import structure as structure_module
+from placer_py.core import blocks as blocks_module
 from placer_py.core import mathx
-from placer_py.explanation import (
+from placer_py.core import structure as structure_module
+from placer_py.core.explanation import (
     EventExplanation,
     ExplanationDecision,
     ExplanationKind,
@@ -65,8 +65,8 @@ from placer_py.explanation import (
     serialize_explanation_path,
     serialize_residual,
 )
-from placer_py.genotype import genotype_from_alt_vs_ref
-from placer_py.structure import SequenceExplanation
+from placer_py.core.genotype import genotype_from_alt_vs_ref
+from placer_py.core.structure import SequenceExplanation
 
 # --------------------------------------------------------------------------
 # DecisionThresholds. What is left after the ladders were deleted.
@@ -460,7 +460,7 @@ def is_one_sided_segmentation_pass(segmentation: EventSegmentationEvidence) -> b
 
     NOTE the polarity: this requires `pair_valid`, while the identically-named
     function in `mechanistic_evidence.cpp` (ported as
-    `placer_py.blocks._is_one_sided_segmentation_pass`) requires `NOT
+    `placer_py.core.blocks._is_one_sided_segmentation_pass`) requires `NOT
     pair_valid`. Both run on the same locus in the same pass. The port keeps
     both rather than choosing, because choosing would change behaviour under
     cover of a cleanup.
@@ -887,7 +887,7 @@ def te_alignment_log_support(te_alignment) -> float:
     The three PASS tiers get different INTERCEPTS and different slopes, and the
     pivots (identity 0.78 / 0.68 / 0.55, coverage 0.72 / 0.55 / 0.70) say where
     each tier is considered neutral. These are nineteen hand-set constants in
-    total across this file, which is precisely what `placer_py/blocks.py`'s
+    total across this file, which is precisely what `placer_py/core/blocks.py`'s
     docstring argues cannot support genome-scale FDR control -- and why this
     number feeds the RANKING and the diagnostics rather than the gate.
     """
@@ -1247,7 +1247,7 @@ def analyze_event_segmentation(has_consensus: bool, left_flank_align_len: int,
 # Each is a RESIDUAL vector -- "what this explanation failed to account for" --
 # and they are compared by dominance rather than by a weighted sum, so no
 # exchange rate between "50 unexplained bases" and "2 conflicting reads" ever
-# has to be declared. See placer_py/explanation.py for the comparison itself.
+# has to be declared. See placer_py/core/explanation.py for the comparison itself.
 # --------------------------------------------------------------------------
 def has_te_sequence_evidence(te_alignment) -> bool:
     """Is there ANY sequence evidence about a TE here, of any strength?

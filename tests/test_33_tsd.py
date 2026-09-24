@@ -2,7 +2,7 @@
 Target-site duplication detection, across the geometries the caller actually
 produces.
 
-THIS FILE EXISTS BECAUSE THE DETECTOR HAD NO TEST. `placer_py/tsd.py`'s
+THIS FILE EXISTS BECAUSE THE DETECTOR HAD NO TEST. `placer_py/core/tsd.py`'s
 docstring cited `tests/test_20_tsd.py`, which has never existed -- the
 numbering was reshuffled once and the reference was never updated. The gap was
 not cosmetic: `detect` reported every genuine duplication as a DELETION, and
@@ -36,7 +36,7 @@ import random
 import pytest
 from conftest import call_or_skip
 
-from placer_py.tsd import TsdConfig, detect, detect_from_insertion, fetcher_from_string
+from placer_py.core.tsd import TsdConfig, detect, detect_from_insertion, fetcher_from_string
 
 #: Long enough that the background window is fully inside the reference and
 #: the occurrence rate of a 15 bp motif is genuinely low. A short reference

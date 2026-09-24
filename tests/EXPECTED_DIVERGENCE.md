@@ -48,7 +48,7 @@ divergence is confined to inputs the functions reject.
 
 ## 2. Target-site duplication geometry
 
-**Where** `placer_py/tsd.py::detect`.
+**Where** `placer_py/core/tsd.py::detect`.
 
 **Was** An unconditional `if left_bp > right_bp: swap` at the top, which made
 `right_bp - left_bp` non-negative always.

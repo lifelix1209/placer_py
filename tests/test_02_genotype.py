@@ -1,11 +1,11 @@
-"""Golden genotypes. Skips until `placer_py.genotype` is ported."""
+"""Golden genotypes. Skips until `placer_py.core.genotype` is ported."""
 
 from __future__ import annotations
 
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import genotype
+from placer_py.core import genotype
 
 pytestmark = pytest.mark.golden
 

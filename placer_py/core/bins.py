@@ -15,7 +15,7 @@ WHERE THE COST IS, and why the triage exists. Everything up to the shortlist is
 linear in reads and cheap. Consensus, segmentation and TE alignment are
 thousands of times more expensive per candidate, so the structure here is
 mostly about deciding what NOT to send to them -- which is why
-`placer_py/hypotheses.py` is a triage stage rather than an evaluation one.
+`placer_py/core/hypotheses.py` is a triage stage rather than an evaluation one.
 
 WHAT IS DELIBERATELY NOT PORTED. The C++ has a parallel executor (a bounded
 work queue over bins with an ordered reducer) and a great deal of per-stage
@@ -32,22 +32,22 @@ from __future__ import annotations
 from collections.abc import Iterable, Iterator
 from typing import Callable
 
-from placer_py import breakpoints as bp_module
 from placer_py import call_selection as selection_module
-from placer_py import consensus as consensus_module
-from placer_py import events as events_module
-from placer_py import hypotheses as hyp_module
-from placer_py import policy as policy_module
-from placer_py import segmentation as seg_module
 from placer_py.alignment import AlignedRead
 from placer_py.config import PipelineConfig
+from placer_py.core import breakpoints as bp_module
+from placer_py.core import consensus as consensus_module
+from placer_py.core import events as events_module
 from placer_py.core import fragments as fragments_module
+from placer_py.core import hypotheses as hyp_module
 from placer_py.core import interval_cache as cache_module
+from placer_py.core import policy as policy_module
+from placer_py.core import segmentation as seg_module
 from placer_py.core.clustering import ComponentCall, build_component_calls
 from placer_py.core.contracts import StageHooks
+from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
 from placer_py.core.result import PipelineResult
-from placer_py.ledger import EvidenceLedgerRow, FinalCall
-from placer_py.te_classifier import TEAlignmentEvidence
+from placer_py.core.te_classifier import TEAlignmentEvidence
 
 #: How far around a component's seed breakpoints to fetch reads.
 LOCAL_EVENT_FETCH_SLACK_BP = 1000
@@ -414,7 +414,7 @@ def _evaluate_shortlisted(component: ComponentCall, local_records: list[AlignedR
         consensus_fn=hooks.consensus_fn)
     result.event_consensus_calls += 1
 
-    from placer_py.genotype import genotype_from_alt_vs_ref
+    from placer_py.core.genotype import genotype_from_alt_vs_ref
 
     alt_lengths = hyp_module.collect_alt_observed_lengths(component, evidence)
     event_length = hyp_module.infer_event_length_from_alt_support(alt_lengths)

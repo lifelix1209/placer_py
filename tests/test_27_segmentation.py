@@ -17,8 +17,8 @@ import random
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import segmentation as S
 from placer_py.config import PipelineConfig
+from placer_py.core import segmentation as S
 
 pytestmark = pytest.mark.invariant
 
@@ -79,7 +79,7 @@ def test_segmentation_does_not_discover_a_tsd_it_follows_the_given_breakpoints()
     duplicated bases end up INSIDE the insert.
 
     So a TSD reaches the ledger only when the breakpoint stage already proposed
-    two separated positions -- or from `placer_py/tsd.py`, which reads the
+    two separated positions -- or from `placer_py/core/tsd.py`, which reads the
     reference around the breakpoints directly and is the component actually
     responsible for finding one.
     """

@@ -15,7 +15,7 @@ from conftest import call_or_skip, close
 from placer_py import call_selection as S
 from placer_py.alignment import AlignedRead
 from placer_py.core import interval_cache as I
-from placer_py.events import ReadReferenceSpan
+from placer_py.core.events import ReadReferenceSpan
 
 pytestmark = pytest.mark.invariant
 

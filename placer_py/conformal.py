@@ -12,7 +12,7 @@ how many rows that were NOT selected look at least as TE-like as the candidate.
 A locus that fools both has to survive a model-based argument and an
 assumption-free one.
 
-THE SAME TOOL, A DIFFERENT PURPOSE. `placer_py/explanation.py` uses dominance to
+THE SAME TOOL, A DIFFERENT PURPOSE. `placer_py/core/explanation.py` uses dominance to
 avoid declaring an exchange rate between residual coordinates. Here dominance
 avoids assuming the features' JOINT DISTRIBUTION -- it never asks how identity
 and alt-read count covary, only how many nulls are no worse in every coordinate.

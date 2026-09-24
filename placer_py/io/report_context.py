@@ -22,7 +22,7 @@ import sys
 from collections.abc import Iterable
 from typing import Callable
 
-from placer_py.ledger import FinalCall
+from placer_py.core.ledger import FinalCall
 from placer_py.report.context import Contig, ReportContext
 from placer_py.report.vcf import anchor_index
 

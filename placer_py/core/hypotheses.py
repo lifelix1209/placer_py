@@ -4,7 +4,7 @@ Ranking breakpoint hypotheses, and the breakpoint-position posterior.
 Ported from `src/pipeline/pipeline_hypothesis_emission_stage.inc`, pinned by
 `tests/test_31_outputs.py`.
 
-WHAT THIS STAGE DOES. `placer_py/breakpoints.py` enumerates candidate
+WHAT THIS STAGE DOES. `placer_py/core/breakpoints.py` enumerates candidate
 breakpoints; this one evaluates each against the reads, collapses the ones that
 turn out to be the same hypothesis, and decides which survive to the expensive
 stages (consensus, segmentation, TE alignment). That triage is what makes the
@@ -37,11 +37,11 @@ import math
 from dataclasses import dataclass, field
 
 from placer_py.alignment import median_i32
-from placer_py.breakpoints import (
+from placer_py.core import supports
+from placer_py.core.breakpoints import (
     RESCUE_PRECISE_ANCHOR_MIN_DISTANCE_BP,
     breakpoint_hypothesis_support_weight,
 )
-from placer_py.core import supports
 from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SOFT_CLIP,
@@ -49,7 +49,7 @@ from placer_py.core.clustering import (
     BreakpointCandidate,
     ComponentCall,
 )
-from placer_py.events import EventReadEvidence
+from placer_py.core.events import EventReadEvidence
 
 #: Two hypotheses whose ends both agree within this, and whose support sets
 #: agree by this Jaccard, are the same hypothesis.
@@ -429,7 +429,7 @@ def collect_hypothesis_validator_evidence(summary: HypothesisSummary,
     partial one -- it is "how many reads will the consensus actually be built
     from", and the consensus uses full context wholesale when any exists.
     """
-    from placer_py.segmentation import has_identifiable_bilateral_partial_context_support
+    from placer_py.core.segmentation import has_identifiable_bilateral_partial_context_support
 
     out = HypothesisValidatorEvidence(summary=summary,
                                       event_evidence=summary.event_evidence)

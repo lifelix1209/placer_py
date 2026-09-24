@@ -12,8 +12,8 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import breakpoints as B
 from placer_py.alignment import CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
+from placer_py.core import breakpoints as B
 from placer_py.core import clustering as C
 from placer_py.core import fragments as F
 
@@ -424,7 +424,7 @@ def _textbook_banded_levenshtein(lhs: str, rhs: str, max_edits: int):
 
     Deliberately written for clarity, not speed: a fresh full-width row per
     iteration, `min` of the three moves, no early exit. This is the
-    specification the optimised version in `placer_py/breakpoints.py` must
+    specification the optimised version in `placer_py/core/breakpoints.py` must
     agree with EXACTLY.
     """
     n, m = len(lhs), len(rhs)

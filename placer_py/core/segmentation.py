@@ -53,13 +53,13 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from placer_py.breakpoints import (
+from placer_py.config import PipelineConfig
+from placer_py.core.breakpoints import (
     edit_identity_if_at_least,
     max_edits_for_identity_threshold,
 )
-from placer_py.config import PipelineConfig
+from placer_py.core.policy import FinalBoundaryInput, check_boundary_consistency
 from placer_py.core.seqtools import for_each_valid_kmer, reverse_complement
-from placer_py.policy import FinalBoundaryInput, check_boundary_consistency
 
 #: A flank must align at least this far to count as anchored.
 MIN_FLANK_ALIGN_BP = 50

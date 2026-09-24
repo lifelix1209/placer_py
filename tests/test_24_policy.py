@@ -15,8 +15,8 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import policy as P
-from placer_py.te_classifier import TEAlignmentEvidence
+from placer_py.core import policy as P
+from placer_py.core.te_classifier import TEAlignmentEvidence
 
 pytestmark = pytest.mark.invariant
 
@@ -277,7 +277,7 @@ def test_the_two_definitions_of_one_sided_pass_disagree_and_both_are_kept():
     the same locus in the same pass. Choosing one would change behaviour under
     cover of a cleanup.
     """
-    from placer_py import blocks
+    from placer_py.core import blocks
 
     seg = P.EventSegmentationEvidence(has_insert_seq=True, has_left_flank=True,
                                       has_right_flank=False, pair_valid=True)

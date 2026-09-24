@@ -45,13 +45,13 @@ if TYPE_CHECKING:  # pragma: no cover - imports for annotations only
     # `policy` imports this module, so these cannot be imported at runtime.
     # `from __future__ import annotations` makes every annotation a string, so
     # the guard costs nothing and the types are still checkable.
-    from placer_py.policy import (
+    from placer_py.core.policy import (
         BoundaryEvidence,
         ClipInsertConcordanceEvidence,
         EventExistenceEvidence,
         EventSegmentationEvidence,
     )
-    from placer_py.te_classifier import TEAlignmentEvidence
+    from placer_py.core.te_classifier import TEAlignmentEvidence
 
 
 @dataclass

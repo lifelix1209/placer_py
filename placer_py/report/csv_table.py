@@ -49,7 +49,7 @@ import csv
 import io
 from collections.abc import Sequence
 
-from placer_py.ledger import FinalCall
+from placer_py.core.ledger import FinalCall
 from placer_py.report import tsv
 from placer_py.report.vcf import vcf_pos
 

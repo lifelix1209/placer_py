@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py import explanation as E
+from placer_py.core import explanation as E
 
 pytestmark = pytest.mark.golden
 

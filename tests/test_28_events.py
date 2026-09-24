@@ -1,7 +1,7 @@
 """
 Reads into counts, and reads into one event sequence.
 
-Covers `placer_py/events.py` (the alt/ref tally) and `placer_py/consensus.py`
+Covers `placer_py/core/events.py` (the alt/ref tally) and `placer_py/core/consensus.py`
 (the event strings and their consensus). The C++ has partial coverage in
 `test_event_read_evidence.cpp`; the rules that matter most here -- one read one
 vote, the two slack bands, the clip partner rule -- are pinned directly.
@@ -12,11 +12,11 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py import consensus as K
-from placer_py import events as E
 from placer_py.alignment import CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
 from placer_py.config import PipelineConfig
 from placer_py.core import clustering as C
+from placer_py.core import consensus as K
+from placer_py.core import events as E
 from placer_py.core import fragments as F
 
 pytestmark = pytest.mark.invariant
@@ -458,7 +458,7 @@ def _clip_fragment(read_id, source, sequence, anchor_len=200, nm=2):
 
 
 def _segmentation(insert_seq):
-    from placer_py.segmentation import EventSegmentation
+    from placer_py.core.segmentation import EventSegmentation
 
     return EventSegmentation(insert_seq=insert_seq, pass_=True,
                              qc_reason="PASS_EVENT_SEGMENTATION")

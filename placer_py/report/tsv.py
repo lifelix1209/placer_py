@@ -11,7 +11,7 @@ THREE FILES, AND WHAT EACH IS FOR:
     the two can be concatenated or diffed without reshaping.
   * `evidence_ledger.tsv` -- every candidate examined, whatever the verdict.
     This is the sample's own null set as well as its candidate set; see
-    `placer_py/ledger.py`.
+    `placer_py/core/ledger.py`.
 
 THE COLUMN ORDER IS THE CONTRACT. `placer_py/schema.py` pins which columns the
 decision layer READS and with what dtype; this module pins the order they are
@@ -32,7 +32,7 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
-from placer_py.ledger import EvidenceLedgerRow, FinalCall
+from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
 
 #: Columns of `scientific.txt` and `structural_calls.tsv`, in order, WITHOUT
 #: the optional `insert_seq` (which is inserted after `consensus_len`).

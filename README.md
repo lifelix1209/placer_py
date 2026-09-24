@@ -46,7 +46,7 @@ finalization stage -- so `placer_py` now runs end to end from reads to
 Two things are deliberately NOT ported, and both are documented where they
 would be used rather than silently stubbed:
 
-  * **abPOA.** `placer_py/consensus.py` takes the consensus function as an
+  * **abPOA.** `placer_py/core/consensus.py` takes the consensus function as an
     argument. `single_sequence_consensus` handles the cases needing no
     alignment and RAISES otherwise; `pyabpoa_consensus` uses the same library
     the C++ links. A worse consensus would change the insert sequence, the TE

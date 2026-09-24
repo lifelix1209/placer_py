@@ -11,7 +11,7 @@ for: three of its jobs are impossible locally.
   1. MEASURE THE RUN'S OWN NULL. The dependency bound that makes a product of
      block e-values an e-value is `E_null[prod E_k]`, a whole-run expectation.
      Per-locus screening charges no penalty at all (see
-     `placer_py/blocks.py`), so the raw aggregates travel here and the certified
+     `placer_py/core/blocks.py`), so the raw aggregates travel here and the certified
      ones are computed from them. Same for the beta-binomial overdispersion and
      for the conformal null set.
 
@@ -45,17 +45,17 @@ import math
 
 from placer_py import selection
 from placer_py.core import mathx, supports
+from placer_py.core.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 from placer_py.core.result import PipelineResult
-from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
 #: The target risk. One number for the whole run.
 DEFAULT_FINAL_CONFORMAL_FDR = 0.10
 #: Two calls closer than this are the same locus for de-duplication.
 FINAL_CALL_DEDUP_DISTANCE_BP = 50
-#: One definition, in `placer_py/policy.py`. The per-locus policy and
+#: One definition, in `placer_py/core/policy.py`. The per-locus policy and
 #: the whole-run finalization score the same low-AF alternative against
 #: the same error process, so two copies could only ever drift apart.
-from placer_py.policy import (  # noqa: E402
+from placer_py.core.policy import (  # noqa: E402
     ALT_FRACTION_PRIOR_ALPHA,
     ALT_FRACTION_PRIOR_BETA,
     ARTIFACT_ERROR_RATE,
@@ -2467,7 +2467,7 @@ def apply_sample_overdispersion_calibration(result: PipelineResult) -> None:
     term, so the reported GQ and AF would describe a different model than the
     decision came from.
     """
-    from placer_py.genotype import estimate_overdispersion, genotype_from_alt_vs_ref
+    from placer_py.core.genotype import estimate_overdispersion, genotype_from_alt_vs_ref
 
     observations = [(max(0, row.alt_struct_reads),
                      max(0, row.alt_struct_reads) + max(0, row.ref_span_reads))
@@ -2504,7 +2504,7 @@ def apply_sequence_family_commitments(result: PipelineResult) -> None:
     detection. Running it last makes the label a description of a call that was
     already decided.
     """
-    from placer_py.breakpoints import append_qc_token
+    from placer_py.core.breakpoints import append_qc_token
 
     for call in result.final_calls:
         if (not call.sequence_family_commit_eligible or call.family_committed

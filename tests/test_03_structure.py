@@ -1,11 +1,11 @@
-"""Golden structural decode. Skips until `placer_py.structure` is ported."""
+"""Golden structural decode. Skips until `placer_py.core.structure` is ported."""
 
 from __future__ import annotations
 
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import structure
+from placer_py.core import structure
 
 pytestmark = pytest.mark.golden
 

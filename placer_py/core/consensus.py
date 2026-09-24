@@ -8,7 +8,7 @@ helpers of `src/pipeline/pipeline_event_helpers.inc`, pinned by
 WHAT AN "EVENT STRING" IS. Not the fragment, and not the read: it is
 `left_flank + insert + right_flank`, cut from ONE read, with up to 80 bp of
 anchored sequence on each available side. The flanks are what makes the
-consensus segmentable -- `placer_py/segmentation.py` finds the junctions by
+consensus segmentable -- `placer_py/core/segmentation.py` finds the junctions by
 aligning the ends back to the reference, and a consensus of bare inserts has no
 ends to align.
 
@@ -55,10 +55,10 @@ from typing import Callable
 
 from placer_py.alignment import AlignedRead
 from placer_py.config import PipelineConfig
+from placer_py.core.events import EventReadEvidence
 from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.core.segmentation import EventConsensus
 from placer_py.core.seqtools import upper_acgt
-from placer_py.events import EventReadEvidence
-from placer_py.segmentation import EventConsensus
 
 #: Flank taken from each available side of the insert.
 EVENT_CONSENSUS_FLANK_BP = 80
@@ -484,8 +484,8 @@ def analyze_clip_insert_concordance(event_evidence: EventReadEvidence,
     meaningful -- without a read that spans the event there is no assembled
     insert to compare the clips against, only the clips' own consensus.
     """
-    from placer_py.breakpoints import fixed_window_edit_identity
-    from placer_py.te_classifier import is_low_complexity_softclip, is_softclip_source
+    from placer_py.core.breakpoints import fixed_window_edit_identity
+    from placer_py.core.te_classifier import is_low_complexity_softclip, is_softclip_source
 
     evidence = ClipInsertConcordanceEvidence()
     if not segmentation.pass_ or not segmentation.insert_seq:
@@ -573,7 +573,7 @@ def build_local_fragment_component(component, local_records: list[AlignedRead],
     import copy
 
     from placer_py.alignment import CIGAR_I, CIGAR_S
-    from placer_py.breakpoints import robust_local_split_insertion_positions
+    from placer_py.core.breakpoints import robust_local_split_insertion_positions
     from placer_py.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ
 
     local = copy.copy(component)

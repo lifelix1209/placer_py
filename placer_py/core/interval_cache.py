@@ -24,7 +24,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from placer_py.alignment import AlignedRead
-from placer_py.events import ReadReferenceSpan
+from placer_py.core.events import ReadReferenceSpan
 
 
 @dataclass

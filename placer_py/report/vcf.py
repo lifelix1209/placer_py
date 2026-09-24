@@ -9,8 +9,8 @@ so a whole-genome run produces tens of megabytes where the TSVs default
 `insert_seq` off for exactly that reason. `bgzip` handles it.
 
 THE ANCHOR CONVENTION, which is a one-off that nothing in the golden vectors
-pins. `placer_py/tsd.py` fetches the left flank as `ref[bp_left - length :
-bp_left]`, and `placer_py/breakpoints.py` advances `ref_pos` only on
+pins. `placer_py/core/tsd.py` fetches the left flank as `ref[bp_left - length :
+bp_left]`, and `placer_py/core/breakpoints.py` advances `ref_pos` only on
 ref-consuming ops, so at a CIGAR `I` it holds the coordinate of the first
 reference base AFTER the flank. Both say the insertion sits immediately before
 `ref[bp_left]`. Measured independently on the example dataset: its AluY locus
@@ -50,7 +50,7 @@ from __future__ import annotations
 
 import math
 
-from placer_py.ledger import FinalCall
+from placer_py.core.ledger import FinalCall
 from placer_py.report.context import ReportContext, contig_ranks
 
 #: What an unfetched anchor renders as. Never "": an empty REF is unparseable.

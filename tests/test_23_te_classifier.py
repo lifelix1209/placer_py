@@ -7,7 +7,7 @@ margin tests -- but WITHOUT the external BLAST process. The C++ has to install
 a fake `blastn` shell script to test any of this; the port splits the parsing
 and aggregation away from the subprocess, so the decisions can be pinned
 directly and only the process plumbing needs an executable. That split is
-now the file layout: the parsing is `placer_py/te_classifier.py` and the
+now the file layout: the parsing is `placer_py/core/te_classifier.py` and the
 process is `placer_py/io/blast.py`.
 """
 
@@ -16,8 +16,8 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import te_classifier as T
 from placer_py.config import PipelineConfig
+from placer_py.core import te_classifier as T
 from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
 from placer_py.core.seqtools import build_te_sequence_background
 from placer_py.io import blast as B

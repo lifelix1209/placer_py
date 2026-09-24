@@ -28,7 +28,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from placer_py.policy import EventGenotypeInput
+from placer_py.core.policy import EventGenotypeInput
 
 
 @dataclass

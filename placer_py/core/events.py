@@ -33,7 +33,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from placer_py.alignment import AlignedRead, compute_ref_end
-from placer_py.breakpoints import classify_local_event_signal, read_has_local_event_signal
+from placer_py.core.breakpoints import classify_local_event_signal, read_has_local_event_signal
 from placer_py.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ, ComponentCall
 from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
 
@@ -266,7 +266,7 @@ def collect_event_read_evidence(component: ComponentCall,
                                 fragments: list[InsertionFragment],
                                 seed_left: int, seed_right: int) -> EventReadEvidence:
     """Tally support for the component's own resolved breakpoint bounds."""
-    from placer_py.breakpoints import resolve_event_breakpoint_bounds
+    from placer_py.core.breakpoints import resolve_event_breakpoint_bounds
 
     bp_left, bp_right = resolve_event_breakpoint_bounds(component, local_records,
                                                         fragments, seed_left, seed_right)

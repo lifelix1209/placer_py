@@ -33,7 +33,7 @@ THE CONSENSUS IS NOT PORTED. The C++ calls abPOA (a C library) to build a
 partial-order-alignment consensus of the event strings. There is no pure-Python
 equivalent worth writing, and a worse consensus would change every downstream
 number -- so `consensus_of` implements the two cases that need no library (zero
-and one sequence) and otherwise raises. `placer_py/consensus.py` documents the
+and one sequence) and otherwise raises. `placer_py/core/consensus.py` documents the
 options.
 """
 
