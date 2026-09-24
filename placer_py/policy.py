@@ -54,8 +54,8 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 from placer_py import blocks as blocks_module
-from placer_py import mathx
 from placer_py import structure as structure_module
+from placer_py.core import mathx
 from placer_py.explanation import (
     EventExplanation,
     ExplanationDecision,
@@ -395,7 +395,7 @@ def logsumexp3(a: float, b: float, c: float) -> float:
 
 
 #: Re-exported: the suite names these directly and the C++ has them in this
-#: translation unit. Bodies in `placer_py/mathx.py`.
+#: translation unit. Bodies in `placer_py/core/mathx.py`.
 log_choose_count = mathx.log_choose
 beta_binomial_log_pmf = mathx.beta_binomial_log_pmf
 binomial_log_pmf = mathx.binomial_log_pmf

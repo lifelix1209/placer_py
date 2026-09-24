@@ -64,14 +64,14 @@ from placer_py.alignment import (
     parse_cigar_ops,
     parse_sa_tag_z_with_quality,
 )
-from placer_py.clustering import (
+from placer_py.config import PipelineConfig
+from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SOFT_CLIP,
     CANDIDATE_SPLIT_SA_SUPPLEMENTARY,
     INSERTION_CANDIDATE_REQUIRED_MAPQ,
     ComponentCall,
 )
-from placer_py.config import PipelineConfig
 
 #: An insertion this far from the component's own breakpoints belongs to some
 #: other event that happens to sit on the same read.

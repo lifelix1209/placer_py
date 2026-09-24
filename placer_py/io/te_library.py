@@ -23,8 +23,8 @@ is a separate, measured change and not this module's doing -- see the note in
 from __future__ import annotations
 
 from placer_py.config import PipelineConfig
+from placer_py.core.seqtools import TeSequenceBackground
 from placer_py.io.blast import ensure_te_blast_db, run_blastn_batch_against_te_library
-from placer_py.seqtools import TeSequenceBackground
 from placer_py.te_classifier import (
     TEAlignmentEvidence,
     TeEntry,

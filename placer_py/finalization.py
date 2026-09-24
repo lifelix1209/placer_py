@@ -43,7 +43,8 @@ from __future__ import annotations
 
 import math
 
-from placer_py import mathx, selection, supports
+from placer_py import selection
+from placer_py.core import mathx, supports
 from placer_py.core.result import PipelineResult
 from placer_py.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
@@ -189,7 +190,7 @@ def combine_independent_local_fdr(lhs: float, rhs: float) -> float:
 # the C++ redefines them in this translation unit.
 # ---------------------------------------------------------------------------
 #: Re-exported: the suite names these directly and the C++ has them in this
-#: translation unit. Bodies in `placer_py/mathx.py`.
+#: translation unit. Bodies in `placer_py/core/mathx.py`.
 log_choose_count = mathx.log_choose
 beta_binomial_log_pmf = mathx.beta_binomial_log_pmf
 binomial_log_pmf = mathx.binomial_log_pmf
@@ -222,7 +223,7 @@ def heterozygous_balance_log_evidence(alt: int, ref: int) -> float:
     return balance * count_signal
 
 
-#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: Re-exported from `placer_py/core/mathx.py`, which defines the NaN policy
 #: these copies disagreed on -- see its docstring.
 _clamp01 = mathx.clamp01
 
@@ -609,7 +610,7 @@ def normalized_support_qnames(values: list[str]) -> list[str]:
     return sorted(set(values))
 
 
-#: Re-exported from `placer_py/supports.py`, which `hypotheses.py` shares --
+#: Re-exported from `placer_py/core/supports.py`, which `hypotheses.py` shares --
 #: it had the same merge-walk inlined, and neither module can import the
 #: other without inverting the pipeline.
 sorted_support_intersection_size = supports.intersection_size

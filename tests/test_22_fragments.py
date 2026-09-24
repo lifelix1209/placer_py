@@ -15,10 +15,10 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py import clustering as C
-from placer_py import fragments as F
 from placer_py.alignment import CIGAR_D, CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
 from placer_py.config import PipelineConfig
+from placer_py.core import clustering as C
+from placer_py.core import fragments as F
 
 pytestmark = pytest.mark.invariant
 

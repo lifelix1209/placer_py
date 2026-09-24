@@ -42,7 +42,7 @@ from typing import Callable
 
 from placer_py.alignment import AlignedRead
 from placer_py.config import PipelineConfig
-from placer_py.fragments import (
+from placer_py.core.fragments import (
     InsertionFragment,
     InsertionFragmentSource,
     analyze_clip_info,
@@ -162,7 +162,7 @@ def sanitize_token(text: str) -> str:
 def infer_te_family(te_name: str) -> str:
     """Collapse an element name onto a FAMILY, for the family-level veto.
 
-    A separate function from `placer_py.seqtools.parse_te_name_parts` and
+    A separate function from `placer_py.core.seqtools.parse_te_name_parts` and
     deliberately coarser: that one parses library headers, this one reads the
     `te` column of a `scientific.txt` written by an earlier run, which may hold
     a bare subfamily name with no class path at all. The fallback -- everything

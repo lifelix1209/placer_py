@@ -19,7 +19,7 @@ work, and only the call moved.
 
 from __future__ import annotations
 
-from placer_py.seqtools import upper_acgt
+from placer_py.core.seqtools import upper_acgt
 
 
 def pyabpoa_consensus(sequences: list[str]) -> str:

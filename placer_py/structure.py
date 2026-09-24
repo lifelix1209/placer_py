@@ -38,7 +38,7 @@ import math
 from dataclasses import dataclass, field
 from enum import Enum
 
-from placer_py import mathx
+from placer_py.core import mathx
 
 
 class TeAnnotationStatus(str, Enum):
@@ -95,7 +95,7 @@ TRANS_BASELINE_ENTROPY = 0.55
 TRANS_OPEN_LOG_ODDS = -1.6
 
 
-#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: Re-exported from `placer_py/core/mathx.py`, which defines the NaN policy
 #: these copies disagreed on -- see its docstring.
 _clamp01 = mathx.clamp01
 _clamp = mathx.clamp

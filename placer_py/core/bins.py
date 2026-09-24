@@ -36,14 +36,14 @@ from placer_py import breakpoints as bp_module
 from placer_py import call_selection as selection_module
 from placer_py import consensus as consensus_module
 from placer_py import events as events_module
-from placer_py import fragments as fragments_module
 from placer_py import hypotheses as hyp_module
-from placer_py import interval_cache as cache_module
 from placer_py import policy as policy_module
 from placer_py import segmentation as seg_module
 from placer_py.alignment import AlignedRead
-from placer_py.clustering import ComponentCall, build_component_calls
 from placer_py.config import PipelineConfig
+from placer_py.core import fragments as fragments_module
+from placer_py.core import interval_cache as cache_module
+from placer_py.core.clustering import ComponentCall, build_component_calls
 from placer_py.core.contracts import StageHooks
 from placer_py.core.result import PipelineResult
 from placer_py.ledger import EvidenceLedgerRow, FinalCall

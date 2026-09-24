@@ -54,13 +54,13 @@ from placer_py.alignment import (
     normalized_sa_alignment,
     parse_sa_tag_z,
 )
-from placer_py.clustering import (
+from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SPLIT_SA_SUPPLEMENTARY,
     ComponentCall,
 )
-from placer_py.fragments import InsertionFragment, InsertionFragmentSource, ReferenceSide
-from placer_py.windows import LONG_INSERTION_SIGNAL_MIN, SOFT_CLIP_SIGNAL_MIN
+from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource, ReferenceSide
+from placer_py.core.windows import LONG_INSERTION_SIGNAL_MIN, SOFT_CLIP_SIGNAL_MIN
 
 #: Positions further apart than this are different breakpoints.
 BREAKPOINT_CLUSTER_GAP_BP = 75

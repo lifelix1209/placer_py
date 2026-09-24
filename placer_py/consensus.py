@@ -55,10 +55,10 @@ from typing import Callable
 
 from placer_py.alignment import AlignedRead
 from placer_py.config import PipelineConfig
+from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.core.seqtools import upper_acgt
 from placer_py.events import EventReadEvidence
-from placer_py.fragments import InsertionFragment, InsertionFragmentSource
 from placer_py.segmentation import EventConsensus
-from placer_py.seqtools import upper_acgt
 
 #: Flank taken from each available side of the insert.
 EVENT_CONSENSUS_FLANK_BP = 80
@@ -574,7 +574,7 @@ def build_local_fragment_component(component, local_records: list[AlignedRead],
 
     from placer_py.alignment import CIGAR_I, CIGAR_S
     from placer_py.breakpoints import robust_local_split_insertion_positions
-    from placer_py.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ
+    from placer_py.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ
 
     local = copy.copy(component)
     local.read_indices = []

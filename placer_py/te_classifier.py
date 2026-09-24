@@ -36,10 +36,10 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 
-from placer_py import mathx
 from placer_py.config import PipelineConfig
-from placer_py.fragments import InsertionFragment, InsertionFragmentSource
-from placer_py.seqtools import (
+from placer_py.core import mathx
+from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.core.seqtools import (
     FNV1A_OFFSET_BASIS,
     TeNameParts,
     TeSequenceBackground,
@@ -204,7 +204,7 @@ class FragmentTEHit:
     total_kmers: int = 0
 
 
-#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: Re-exported from `placer_py/core/mathx.py`, which defines the NaN policy
 #: these copies disagreed on -- see its docstring.
 _clamp = mathx.clamp
 
@@ -404,7 +404,7 @@ class TeKmerQuickClassifier:
         if not (support_trigger or margin_trigger):
             return
 
-        from placer_py.seqtools import semiglobal_edit_identity
+        from placer_py.core.seqtools import semiglobal_edit_identity
 
         rescue_best_id = -1
         rescue_best_identity = 0.0

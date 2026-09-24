@@ -58,8 +58,8 @@ from placer_py.breakpoints import (
     max_edits_for_identity_threshold,
 )
 from placer_py.config import PipelineConfig
+from placer_py.core.seqtools import for_each_valid_kmer, reverse_complement
 from placer_py.policy import FinalBoundaryInput, check_boundary_consistency
-from placer_py.seqtools import for_each_valid_kmer, reverse_complement
 
 #: A flank must align at least this far to count as anchored.
 MIN_FLANK_ALIGN_BP = 50

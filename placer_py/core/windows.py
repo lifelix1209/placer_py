@@ -10,7 +10,7 @@ BAM is streamed in 10 kb bins; most bins contain nothing. This stage answers
 "which sub-intervals of this bin deserve the expensive stages", and it answers
 it from a WEIGHTED DENSITY rather than from individual reads -- so it is
 tolerant of the individual signals being imprecise, which they are. The
-three-dimensional DBSCAN in `placer_py/clustering.py` runs afterwards, on reads,
+three-dimensional DBSCAN in `placer_py/core/clustering.py` runs afterwards, on reads,
 and makes the sharp judgements.
 
 THE WEIGHTS ARE THE MODEL. Every evidence point carries one:
@@ -43,7 +43,7 @@ from placer_py.alignment import (
     find_first_non_hard_clip,
     find_last_non_hard_clip,
 )
-from placer_py.clustering import (
+from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SOFT_CLIP,
     CANDIDATE_SPLIT_SA_SUPPLEMENTARY,

@@ -35,7 +35,7 @@ import math
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass, field
 
-from placer_py import mathx
+from placer_py.core import mathx
 
 
 @dataclass
@@ -54,7 +54,7 @@ class PenaltyEstimate:
     estimated: bool = False
 
 
-#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: Re-exported from `placer_py/core/mathx.py`, which defines the NaN policy
 #: these copies disagreed on -- see its docstring.
 _clamp = mathx.clamp
 

@@ -13,7 +13,7 @@ import math
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from placer_py import mathx
+from placer_py.core import mathx
 
 #: Genotype priors, applied as log terms to the three likelihoods.
 PRIOR_HOM_REF = 0.25
@@ -45,7 +45,7 @@ class GenotypeInput:
     alt_observed_lengths: list[int] = field(default_factory=list)
 
 
-#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: Re-exported from `placer_py/core/mathx.py`, which defines the NaN policy
 #: these copies disagreed on -- see its docstring.
 _clamp = mathx.clamp
 
@@ -67,7 +67,7 @@ def _logsumexp3(a: float, b: float, c: float) -> float:
 
 #: Re-exported so the module's public surface is unchanged -- the suite names
 #: these directly, and the C++ has them in this translation unit. The bodies
-#: now live in `placer_py/mathx.py`; see its docstring for what the three
+#: now live in `placer_py/core/mathx.py`; see its docstring for what the three
 #: copies had drifted into.
 log_choose_count = mathx.log_choose
 beta_binomial_log_pmf = mathx.beta_binomial_log_pmf

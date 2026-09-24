@@ -36,13 +36,13 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from placer_py import supports
 from placer_py.alignment import median_i32
 from placer_py.breakpoints import (
     RESCUE_PRECISE_ANCHOR_MIN_DISTANCE_BP,
     breakpoint_hypothesis_support_weight,
 )
-from placer_py.clustering import (
+from placer_py.core import supports
+from placer_py.core.clustering import (
     CANDIDATE_LONG_INSERTION,
     CANDIDATE_SOFT_CLIP,
     CANDIDATE_SPLIT_SA_SUPPLEMENTARY,
@@ -125,7 +125,7 @@ def infer_event_length_from_alt_support(lengths: list[int]) -> int:
     return median_i32(lengths)
 
 
-#: Re-exported from `placer_py/supports.py`; `finalization.py` had the same
+#: Re-exported from `placer_py/core/supports.py`; `finalization.py` had the same
 #: merge-walk, factored into two functions instead of inlined.
 support_jaccard = supports.jaccard
 

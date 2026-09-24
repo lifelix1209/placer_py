@@ -18,10 +18,10 @@ from conftest import call_or_skip, close
 
 from placer_py import te_classifier as T
 from placer_py.config import PipelineConfig
-from placer_py.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.core.seqtools import build_te_sequence_background
 from placer_py.io import blast as B
 from placer_py.io import te_library as L
-from placer_py.seqtools import build_te_sequence_background
 
 pytestmark = pytest.mark.invariant
 

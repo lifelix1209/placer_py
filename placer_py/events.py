@@ -34,8 +34,8 @@ from dataclasses import dataclass, field
 
 from placer_py.alignment import AlignedRead, compute_ref_end
 from placer_py.breakpoints import classify_local_event_signal, read_has_local_event_signal
-from placer_py.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ, ComponentCall
-from placer_py.fragments import InsertionFragment, InsertionFragmentSource
+from placer_py.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ, ComponentCall
+from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
 
 #: How close a signal must be to the hypothesis to be alt support.
 ALT_SIGNAL_SLACK_BP = 25

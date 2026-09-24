@@ -36,7 +36,7 @@ import math
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
-from placer_py import mathx
+from placer_py.core import mathx
 
 from . import structure as structure_module
 from .structure import TeAnnotationStatus
@@ -92,7 +92,7 @@ DEFAULT_PRIOR = {
 }
 
 
-#: Re-exported from `placer_py/mathx.py`, which defines the NaN policy
+#: Re-exported from `placer_py/core/mathx.py`, which defines the NaN policy
 #: these copies disagreed on -- see its docstring.
 _clamp01 = mathx.clamp01
 _clamp = mathx.clamp

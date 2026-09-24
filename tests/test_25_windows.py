@@ -13,8 +13,8 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py import windows as W
 from placer_py.alignment import CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
+from placer_py.core import windows as W
 
 pytestmark = pytest.mark.invariant
 

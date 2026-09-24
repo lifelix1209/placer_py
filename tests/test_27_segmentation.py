@@ -194,7 +194,7 @@ def test_a_consensus_assembled_the_wrong_way_round_is_retried_reversed():
     has nothing to do with the locus, so the whole search is retried on the
     reverse complement -- once, guarded so it cannot recurse.
     """
-    from placer_py.seqtools import reverse_complement
+    from placer_py.core.seqtools import reverse_complement
 
     forward = REFERENCE[900:1000] + INSERT + REFERENCE[1000:1100]
     stats = S.SegmentationSearchStats()

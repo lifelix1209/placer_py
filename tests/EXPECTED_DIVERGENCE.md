@@ -22,7 +22,7 @@ find one that is not listed, treat it as a bug until someone proves otherwise.
 
 **Where** `log_choose_count`, `binomial_log_pmf`, `beta_binomial_log_pmf` —
 formerly three copies in `genotype.py`, `policy.py` and `finalization.py`, now
-one in `placer_py/mathx.py`.
+one in `placer_py/core/mathx.py`.
 
 **Was** `-1e300` in `genotype.py` and `policy.py`; `-inf` in `finalization.py`.
 The three copies never agreed.
