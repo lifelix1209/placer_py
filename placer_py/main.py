@@ -226,17 +226,12 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
       * a readable TE library -- without it every insert is
         `TE_LIBRARY_UNAVAILABLE`, which is a silent whole-run negative.
     """
-    from placer_py.core.contracts import StageHooks
-    from placer_py.core.seqtools import build_te_sequence_background
-    from placer_py.core.tsd import TsdConfig
-    from placer_py.core.tsd import detect as detect_tsd
-    from placer_py.core.tsd import detect_from_insertion as detect_tsd_from_insertion
     from placer_py.io.bam import make_bam_reader
-    from placer_py.io.poa import pyabpoa_consensus
     from placer_py.io.reference import ReferenceFetcher
     from placer_py.io.report_context import build_report_context
-    from placer_py.io.te_library import align_insert_sequences, load_te_library
+    from placer_py.io.te_library import load_te_library
     from placer_py.pipeline import run_pipeline
+    from placer_py.wiring import build_stage_hooks
 
     reader = make_bam_reader(config.bam_path, config.bam_threads,
                              config.bam_region_scope)
@@ -259,42 +254,7 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
         print(f"[PLACER] empty or unreadable TE library: {config.te_fasta_path}",
               file=sys.stderr)
         return 1
-    background = build_te_sequence_background([entry.sequence for entry in entries])
-
-    def align_insert(insert_seq: str):
-        return align_insert_sequences(config, entries, [insert_seq],
-                                      background)[0]
-
-    tsd_config = TsdConfig(tsd_min_len=config.tsd_min_len,
-                           tsd_max_len=config.tsd_max_len,
-                           tsd_flank_window=config.tsd_flank_window,
-                           tsd_bg_p_max=config.tsd_bg_p_max,
-                           tsd_max_mismatch_rate=config.tsd_max_mismatch_rate,
-                           tsd_max_mismatches=config.tsd_max_mismatches)
-
-    def detect(chrom: str, bp_left: int, bp_right: int, insert_seq: str):
-        """Pick the detector the evidence can actually support.
-
-        Distinct breakpoints mean the caller resolved both edges of the event,
-        and their overlap (or gap) is measurable in the reference -- that is
-        `detect`. Equal breakpoints mean the aligner emitted a single CIGAR
-        `I`, so the reference carries no trace of the duplication and the only
-        place left to look is the inserted sequence itself.
-        """
-        if not config.tsd_enable:
-            return None
-        if bp_left != bp_right:
-            return detect_tsd(reference.fetch_window, chrom, bp_left, bp_right,
-                              tsd_config)
-        if insert_seq:
-            return detect_tsd_from_insertion(reference.fetch_window, chrom,
-                                             bp_left, insert_seq, tsd_config)
-        return None
-
-    hooks = StageHooks(fetch_reference=reference.fetch_window,
-                       align_insert=align_insert,
-                       consensus_fn=pyabpoa_consensus,
-                       detect_tsd=detect)
+    hooks = build_stage_hooks(config, reference, entries)
 
     try:
         result = run_pipeline(reader.stream(), reader.chromosome_name,

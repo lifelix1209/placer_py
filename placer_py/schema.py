@@ -19,8 +19,8 @@ THIS IS A READER CONTRACT, NOT A WRITER ONE, and the distinction is worth
 stating because `check_header` invites the confusion. It answers "can the
 decision layer consume this ledger?" for a ledger produced ELSEWHERE -- the
 C++, or an older version of this tool. It does NOT describe the ledger
-`placer_py/outputs.py` writes, and running it against
-`outputs.EVIDENCE_LEDGER_COLUMNS` reports thirteen missing columns, which is
+`placer_py/report/tsv.py` writes, and running it against
+`report.tsv.EVIDENCE_LEDGER_COLUMNS` reports thirteen missing columns, which is
 correct rather than a bug: those are fields of the C++ row that the Python
 `EvidenceLedgerRow` spells differently or does not carry, and the decision
 layer reads them from the call rather than the ledger.

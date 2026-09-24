@@ -524,7 +524,7 @@ def load_denovo_child_candidates(text: str, config: DenovoConfig
 
     The header is found by its `#chrom` prefix, so the run-summary block above
     it is skipped without having to know how many lines it has. Columns are
-    resolved BY NAME -- `placer_py/outputs.py` documents why nothing may index
+    resolved BY NAME -- `placer_py/report/tsv.py` documents why nothing may index
     this file by position.
     """
     columns: dict[str, int] = {}

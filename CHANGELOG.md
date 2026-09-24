@@ -20,6 +20,18 @@ project's numbering, not this package's.)
 
 ### Added
 
+- **`calls.vcf`** — VCF 4.2, so the output can be read by `bcftools`, `truvari`,
+  `SURVIVOR` and anything else that speaks the format. The inserted sequence is
+  written out as the ALT allele rather than a symbolic `<INS:ME:*>`, because the
+  sequence is the evidence; a call whose sequence could not be assembled keeps
+  its record as `<INS>` with `FILTER=ALTSEQ_MISSING` rather than disappearing.
+  `MEINFO` is declared and emitted on no record — its polarity field is not
+  optional and this build does not resolve insertion orientation, so `MEI`,
+  `MEISTART` and `MEIEND` carry the three components that are known.
+- **`calls.csv`** — the full flat table, both call sets in one file
+  distinguished by a `call_set` column, plus `te_qc` and the three
+  `sequence_family_*` fields, which are the only record of *why* a family
+  abstained and appear in no other output.
 - Extracted into a standalone repository with an MIT `LICENSE`, making the code
   legally usable and publishable at all.
 - `placer-py --version`, and `python -m placer_py` as an equivalent entry point.
@@ -36,6 +48,24 @@ project's numbering, not this package's.)
 
 ### Changed
 
+- **The package is now three named stages**: `placer_py/io/` (everything that
+  talks to something outside the process — pysam, BLAST, abPOA), `placer_py/
+  core/` (everything that decides something) and `placer_py/report/`
+  (everything that renders). `core` may import neither of the other two, at
+  module scope or inside a function body, and `tests/test_37_layering.py`
+  enforces that rather than leaving it to a comment. **Import paths changed**:
+  `placer_py.finalization` is now `placer_py.core.finalization`,
+  `placer_py.outputs` is `placer_py.report.tsv`, `placer_py.bam_io` is
+  `placer_py.io.bam`, and so on. No shims were left behind, so a stale import
+  fails loudly instead of resolving to something that no longer means what it
+  did. Every existing output file is byte-identical across the whole move.
+- Gate-1 is no longer a closure inside the orchestrator: `placer_py/io/gate.py`
+  applies it and can be run, counted and replaced on its own. The predicate and
+  its thresholds in `placer_py/reads.py` are unchanged to the byte.
+- `run_pipeline` is now a composition of `core.scan.run_scan` and
+  `core.finalize.finalize_run`, so a caller can scan without calibrating, or
+  re-calibrate a scan it already has. Its own signature and behaviour are
+  unchanged.
 - Peak memory during a scan is now O(one bin) rather than O(genome): reads are
   streamed through the bin loop instead of being materialised first, which is
   what makes a genome-scale run possible at all.

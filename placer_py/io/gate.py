@@ -22,7 +22,7 @@ TWO PROPERTIES THIS MUST NOT LOSE, both of which the original closure had:
     sequence -- draining this into a list is what made a 10 Mb region of
     ultra-long ONT take 2.2 GB. See `group_reads_into_bins`.
   * The counters are only final once the stream is DRAINED. They are read by
-    the run summary in `placer_py/outputs.py`, which renders after the bin loop
+    the run summary in `placer_py/report/tsv.py`, which renders after the bin loop
     has finished, so this is a property of where they are read rather than of
     when they are written.
 

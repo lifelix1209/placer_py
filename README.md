@@ -63,28 +63,28 @@ from the source rather than maintained by hand:
 | C++ | Python |
 |---|---|
 | `gate1_module.cpp` | `reads.py` |
-| `bam_io.cpp`, `indexed_bam_reader.cpp` | `bam_io.py`, `alignment.py` |
-| `pipeline_window_helpers.inc` | `windows.py` |
-| `dbscan_component_module.cpp` | `clustering.py` |
-| `local_interval_cache.cpp` | `interval_cache.py` |
-| `insert_fragment_module.cpp` | `fragments.py` |
-| `te_quick_classifier.cpp` | `te_classifier.py`, `seqtools.py` |
-| `te_sequence_explainer.cpp` | `structure.py` |
-| `tsd_detector.cpp` | `tsd.py` |
-| `pipeline_breakpoint_{helpers,stage}.inc` | `breakpoints.py` |
-| `pipeline_event_evidence_stage.inc` | `events.py` |
-| `pipeline_consensus_stage.inc`, `pipeline_event_helpers.inc` | `consensus.py` |
-| `pipeline_segmentation_stage.inc` | `segmentation.py` |
-| `pipeline_hypothesis_emission_stage.inc` | `hypotheses.py` |
-| `decision_policy.cpp` | `policy.py`, `genotype.py` |
-| `mechanistic_evidence.cpp` | `blocks.py`, `dependency.py` |
-| `event_explanation.cpp` | `explanation.py` |
-| `conformal_selector.cpp` | `conformal.py` |
-| `null_control.cpp` | `null_control.py` |
-| `pipeline_call_selection.inc` | `call_selection.py` |
-| `pipeline_finalization_stage.inc` | `finalization.py` |
-| `pipeline_{entrypoints,bin_processing_stage}.inc` | `pipeline.py` |
-| `main.cpp` | `main.py`, `outputs.py` |
+| `bam_io.cpp`, `indexed_bam_reader.cpp` | `io/bam.py`, `io/reference.py`, `alignment.py` |
+| `pipeline_window_helpers.inc` | `core/windows.py` |
+| `dbscan_component_module.cpp` | `core/clustering.py` |
+| `local_interval_cache.cpp` | `core/interval_cache.py` |
+| `insert_fragment_module.cpp` | `core/fragments.py` |
+| `te_quick_classifier.cpp` | `core/te_classifier.py`, `core/seqtools.py`, `io/blast.py` |
+| `te_sequence_explainer.cpp` | `core/structure.py` |
+| `tsd_detector.cpp` | `core/tsd.py` |
+| `pipeline_breakpoint_{helpers,stage}.inc` | `core/breakpoints.py` |
+| `pipeline_event_evidence_stage.inc` | `core/events.py` |
+| `pipeline_consensus_stage.inc`, `pipeline_event_helpers.inc` | `core/consensus.py`, `io/poa.py` |
+| `pipeline_segmentation_stage.inc` | `core/segmentation.py` |
+| `pipeline_hypothesis_emission_stage.inc` | `core/hypotheses.py` |
+| `decision_policy.cpp` | `core/policy.py`, `core/genotype.py` |
+| `mechanistic_evidence.cpp` | `core/blocks.py`, `core/dependency.py` |
+| `event_explanation.cpp` | `core/explanation.py` |
+| `conformal_selector.cpp` | `core/conformal.py` |
+| `null_control.cpp` | `core/null_control.py` |
+| `pipeline_call_selection.inc` | `core/call_selection.py` |
+| `pipeline_finalization_stage.inc` | `core/finalization.py` |
+| `pipeline_{entrypoints,bin_processing_stage}.inc` | `pipeline.py`, `core/scan.py`, `core/bins.py` |
+| `main.cpp` | `main.py`, `wiring.py`, `report/tsv.py` |
 | `denovo_cli.cpp`, `parent_pool_scanner.cpp` | `denovo.py` |
 
 ## Why the tests had to come first
@@ -112,49 +112,56 @@ equality against that to full double precision.
 
 ```
 placer_py/
-  --- the scan: BAM to candidates ---------------------------------------
-  bam_io.py         the pysam reader, the reference fetcher, region scope
+  THREE STAGES, and the rule between them: core/ may import neither io/ nor
+  report/, at module scope or inside a function body. That is what keeps the
+  decision layer runnable with no pysam, no BLAST and no abPOA installed, and
+  tests/test_37_layering.py enforces it.
+
+  --- tier 0: the vocabulary all three stages speak ----------------------
   alignment.py      AlignedRead (the ReadView surface), CIGAR/SA parsing
-  reads.py          gate1: is this read worth carrying?
-  seqtools.py       sequence primitives, the composition model
-  windows.py        weighted evidence density, candidate windows
-  clustering.py     3-D DBSCAN over insertion signatures, components
-  interval_cache.py fetch each stretch of reads once, project per request
-  fragments.py      insert fragment extraction (clip / CIGAR / split-SA)
-  --- naming and assembling ----------------------------------------------
-  te_classifier.py  the k-mer shortlist and the BLAST classification
-  breakpoints.py    hypothesis enumeration, the priority ladder
-  events.py         reads into alt/ref counts, one read one vote
-  consensus.py      event strings, the consensus seam, clip concordance
-  segmentation.py   the flank | insert | flank decode
-  hypotheses.py     triage, the validator, the breakpoint posterior
-  --- deciding -----------------------------------------------------------
-  policy.py         the four hypotheses, the latent model, the emission gate
-  blocks.py         the six affine evidence blocks and the two aggregates
-  structure.py      the TE_CORE -> [TRANSDUCTION] -> [POLYA] decode
-  explanation.py    Pareto comparison of competing explanations
-  genotype.py       beta-binomial genotyping, overdispersion
-  tsd.py            target-site duplication detection
-  --- selecting ----------------------------------------------------------
-  dependency.py     sigma estimation, the cap, the calibration sample
-  selection.py      e-BH, the conformal route, the combination rule
-  conformal.py      the dominance route and its BY correction
-  decoys.py         verifying that a score is an e-value, not calibrating it
-  null_control.py   breakpoint-shift controls, the empirical null tail
-  call_selection.py one call per component, re-anchoring
-  finalization.py   aggregate, dedup, calibrate, select -- the whole-run stage
-  --- the parallel redesign (not a port; see placer_py/redesign/) ---------
-  redesign/         cli.py, io.py, models.py, candidates/, evidence/, model/
-  --- plumbing -----------------------------------------------------------
-  ledger.py         EvidenceLedgerRow and FinalCall
-  schema.py         the ledger contract
-  outputs.py        the three output files and their column contracts
+  reads.py          gate1's predicate: is this read worth carrying?
   config.py         PipelineConfig, every default from the C++
-  pipeline.py       the orchestration: BAM in, calls and a ledger out
+  schema.py         the ledger contract (a READER contract; see the file)
+
+  --- io/: everything that talks to something outside the process --------
+  io/bam.py         the pysam streaming reader and the indexed fetch
+  io/reference.py   the FASTA fetcher
+  io/pysam_adapter.py  a pysam record onto AlignedRead
+  io/gate.py        gate1 applied to a stream, with its tallies
+  io/blast.py       the makeblastdb / blastn driver
+  io/te_library.py  loading the library, and classifying a batch of inserts
+  io/poa.py         abPOA through pyabpoa
+  io/report_context.py  the contig list, sample name and VCF anchor bases
+
+  --- core/: everything that decides something ---------------------------
+  core/contracts.py ReadSource, StageHooks -- what core needs from outside
+  core/result.py    PipelineResult
+  core/ledger.py    EvidenceLedgerRow and FinalCall
+  core/scan.py      the bin loop
+  core/bins.py      one bin, reads to calls and ledger rows
+  core/finalize.py  the whole-run stage
+  (the scan)      seqtools windows clustering interval_cache fragments
+  (naming)        te_classifier breakpoints events consensus segmentation
+                  hypotheses
+  (deciding)      policy blocks structure explanation genotype tsd
+  (selecting)     dependency selection conformal decoys null_control
+                  call_selection finalization integrate tprt
+
+  --- report/: everything that renders; every function returns a string --
+  report/tsv.py     scientific.txt, structural_calls.tsv, evidence_ledger.tsv
+  report/vcf.py     calls.vcf -- VCF 4.2, explicit inserted sequence as ALT
+  report/csv_table.py  calls.csv -- the full flat table, both call sets
+  report/context.py the facts a VCF needs that no stage computes
+  report/writer.py  the only place in the output stage that opens a file
+
+  --- composition: the only modules allowed to import more than one stage -
+  pipeline.py       gate -> scan -> finalize
+  wiring.py         binds the four hooks to real I/O
   main.py           the CLI
   denovo.py         trio de novo calling
-  integrate.py      the two selection paths
-  tprt.py           the TPRT coincidence model
+
+  --- the parallel redesign (not a port; see placer_py/redesign/) ---------
+  redesign/         cli.py, io.py, models.py, candidates/, evidence/, model/
 tests/
   test_00..06, 09..18   the decision layer, against golden vectors
   test_19_seqtools.py   composition model, hand-computable pins
@@ -208,8 +215,43 @@ or, without installing, `python3 -m placer_py.main ...` from the repository
 root.
 
 The decision layer needs none of the scan dependencies:
-`placer_py.core.finalization` and everything it imports run on a ledger alone, which
-is why they are optional rather than required.
+`placer_py.core.finalization` and everything it imports run on a ledger alone,
+which is why they are optional rather than required.
+
+## The output files
+
+A run writes five files into `--output-dir`, always, even when some are empty.
+A missing file is ambiguous between "nothing qualified" and "the run died",
+and a downstream script cannot tell the difference.
+
+| file | what it is |
+|---|---|
+| `calls.vcf` | VCF 4.2. Both call sets, coordinate-sorted, structural ones marked `FILTER=STRUCTURAL` |
+| `calls.csv` | the full flat table: every column of `scientific.txt`, plus the call set and four fields no other file carries |
+| `scientific.txt` | the TE calls, with the run's calibration constants in a header block |
+| `structural_calls.tsv` | the structural insertions the TE-calibrated mode set aside — selected calls, not rejects |
+| `evidence_ledger.tsv` | every candidate examined, whatever the verdict. This is the sample's own null set as well as its candidate set |
+
+**The VCF writes the inserted sequence as the ALT allele**, not a symbolic
+`<INS:ME:ALU>`. The sequence is the evidence, and a symbolic allele sends every
+consumer back to a second file to see it. The cost is that the file is roughly
+the size of every insert sequence combined — tens of megabytes on a
+whole-genome run, where the TSVs default `insert_seq` off for that reason.
+`bgzip` handles it. A call whose sequence could not be assembled keeps its
+record with `ALT=<INS>` and `FILTER=ALTSEQ_MISSING`, rather than being dropped,
+so the VCF and `scientific.txt` never disagree about how many calls there were.
+
+**`MEINFO` is declared in the header and emitted on no record.** Its fourth
+field is a polarity, it is not optional, and the spec has no value for
+unknown — but this build never resolves insertion orientation, so `+` would
+invent a measurement and `.` would be read as a real one. The three components
+that *are* known go out as `MEI`, `MEISTART` and `MEIEND`. A test ties that
+decision to `schema.MISSING_FOR_TPRT`, so whoever wires orientation in gets a
+failing test telling them to turn `MEINFO` back on in the same commit.
+
+`QUAL` is the phred transform of the local FDR, and `.` rather than `0.00`
+when none was computed — a zero QUAL asserts "certainly wrong", which is a
+different claim from "not assessed".
 
 ## Running the tests
 
@@ -455,7 +497,7 @@ their call sets could be diffed**. That made this a rewrite with a ground truth 
 the safest kind.
 
 The Python side now produces the ledger too, so the diff runs in both
-directions and `placer_py/outputs.py` pins the column order both halves have to
+directions and `placer_py/report/tsv.py` pins the column order both halves have to
 agree on. Keep the C++ as the oracle until the Python agrees locus by locus on
 a real BAM; the synthetic end-to-end test in `test_32_pipeline.py` shows the
 stages compose, not that they agree with the C++ on real data.

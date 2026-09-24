@@ -1,7 +1,7 @@
 """What one run accumulates: the counters, the calibration, the three lists.
 
 WHY THIS IS ITS OWN MODULE. `PipelineResult` is the contract between the
-algorithm and the report stage -- `placer_py/outputs.py` reads six of its
+algorithm and the report stage -- `placer_py/report/tsv.py` reads six of its
 fields by name -- and it used to live at the bottom of `finalization.py`, 2800
 lines into the largest module in the package. A record that three stages touch
 should not be reachable only by importing the stage that happens to fill in

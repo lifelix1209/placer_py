@@ -1,7 +1,7 @@
 """
 The hypothesis triage, the breakpoint posterior, and the output contracts.
 
-Covers `placer_py/core/hypotheses.py`, `placer_py/outputs.py` and the region/config
+Covers `placer_py/core/hypotheses.py`, `placer_py/report/tsv.py` and the region/config
 half of `placer_py/main.py`. The C++ has no tests for any of it: the triage is
 in an `.inc` file, the writers are in `main.cpp`, and both need a pipeline to
 reach.
