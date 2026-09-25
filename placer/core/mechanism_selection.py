@@ -38,13 +38,16 @@ from placer.core.selection import ebh_select
 LOCUS_MERGE_BP = 300
 #: One-sided normal quantile for the decoy upper bound (95%).
 DECOY_UPPER_Z = 1.645
-#: Classes with fewer decoys than this share the pooled all-class estimate.
-MIN_DECOYS_PER_CLASS = 40
+#: Classes with fewer loci than this share the pooled all-class estimate. Loci,
+#: not decoys: a locus's decoys share its insert and neighbourhood, so one
+#: locus with 100 decoys is one sample, and its upper bound is infinite.
+MIN_LOCI_PER_CLASS = 10
 
 
 @dataclass
 class DecoyCheck:
     te_class: str
+    loci: int
     decoys: int
     mean: float
     upper: float
@@ -65,7 +68,7 @@ def _decoy_check(te_class: str, rows: list[EvidenceLedgerRow]) -> DecoyCheck:
                for row in rows if row.mech_decoy_count > 0]
     n = sum(count for count, _ in samples)
     if n == 0:
-        return DecoyCheck(te_class, 0, 0.0, 0.0, 1.0)
+        return DecoyCheck(te_class, 0, 0, 0.0, 0.0, 1.0)
     mean = sum(count * value for count, value in samples) / n
     # Per-locus means as the sampling unit: decoys of one locus share its
     # insert and neighbourhood, so they are not independent of each other.
@@ -77,7 +80,7 @@ def _decoy_check(te_class: str, rows: list[EvidenceLedgerRow]) -> DecoyCheck:
         upper = mean + DECOY_UPPER_Z * math.sqrt(var / k)
     else:
         upper = math.inf
-    return DecoyCheck(te_class, n, mean, upper, max(1.0, upper))
+    return DecoyCheck(te_class, k, n, mean, upper, max(1.0, upper))
 
 
 #: Rows whose insert names no TE class. They can only be structural calls, and
@@ -96,9 +99,9 @@ def decoy_checks(rows: list[EvidenceLedgerRow]) -> dict[str, DecoyCheck]:
     out = {"ALL": pooled}
     for te_class, members in sorted(by_class.items()):
         check = _decoy_check(te_class, members)
-        if check.decoys < MIN_DECOYS_PER_CLASS:
-            check = DecoyCheck(te_class, check.decoys, check.mean, pooled.upper,
-                               pooled.factor)
+        if check.loci < MIN_LOCI_PER_CLASS:
+            check = DecoyCheck(te_class, check.loci, check.decoys, check.mean,
+                               pooled.upper, pooled.factor)
         out[te_class] = check
     return out
 

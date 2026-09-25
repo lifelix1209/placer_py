@@ -29,7 +29,7 @@ from pathlib import Path
 import pysam
 
 CHROM = "chr1"
-REF_LEN = 108_000
+REF_LEN = 120_000
 READ_LEN = 8_000
 MEAN_DEPTH = 24
 ERROR_RATE = 0.008  # long-read-ish substitution rate, low enough to stay callable
@@ -88,6 +88,10 @@ def build_te_library(rng: random.Random) -> dict[str, str]:
     tir = "CAGGGGTGTCCA"
     hat = tir + _weighted_sequence(rng, 576) + _reverse_complement(tir)
     helitron = "TC" + _weighted_sequence(rng, 494) + "CTAG"
+    # A provirus split the way Dfam splits one: the LTR and the internal region
+    # are separate entries, and a full-length insertion is LTR-int-LTR.
+    erv_ltr = "TG" + _weighted_sequence(rng, 396) + "CA"
+    erv_int = _weighted_sequence(rng, 2_400)
     return {
         "AluY#SINE/Alu": alu,
         "L1HS#LINE/L1": line1,
@@ -95,6 +99,8 @@ def build_te_library(rng: random.Random) -> dict[str, str]:
         "MLT1J#LTR/ERVL-MaLR": ltr,
         "Charlie1#DNA/hAT-Charlie": hat,
         "Helitron1#RC/Helitron": helitron,
+        "MER41A#LTR/ERV1": erv_ltr,
+        "MER41-int#LTR/ERV1": erv_int,
     }
 
 
@@ -128,13 +134,15 @@ class Insertion:
 
 
 def build_insertions(rng: random.Random, library: dict[str, str]) -> list[Insertion]:
-    """Eight events chosen to cover the cases the caller distinguishes."""
+    """Nine events chosen to cover the cases the caller distinguishes."""
     alu = library["AluY#SINE/Alu"]
     line1 = library["L1HS#LINE/L1"]
     sva = library["SVA_E#Retroposon/SVA"]
     ltr = library["MLT1J#LTR/ERVL-MaLR"]
     hat = library["Charlie1#DNA/hAT-Charlie"]
     helitron = library["Helitron1#RC/Helitron"]
+    erv_ltr = library["MER41A#LTR/ERV1"]
+    provirus = erv_ltr + library["MER41-int#LTR/ERV1"] + erv_ltr
     return [
         # Full-length Alu, homozygous, clean 15 bp TSD: the easy positive.
         Insertion(12_000, "AluY#SINE/Alu", _mutate(rng, alu, 0.02),
@@ -163,6 +171,10 @@ def build_insertions(rng: random.Random, library: dict[str, str]) -> list[Insert
         # A Helitron: rolling circle, no TSD and no tail.
         Insertion(96_000, "Helitron1#RC/Helitron", _mutate(rng, helitron, 0.03),
                   tsd_len=0, polya_len=0, af=0.95, label="helitron_hom"),
+        # A full-length provirus, LTR-internal-LTR, 5 bp TSD: the form a
+        # caller has to recognise across two library entries.
+        Insertion(108_000, "MER41A#LTR/ERV1", _mutate(rng, provirus, 0.02),
+                  tsd_len=5, polya_len=0, af=0.95, label="erv_full_hom"),
     ]
 
 

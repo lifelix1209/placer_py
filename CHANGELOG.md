@@ -20,6 +20,17 @@ project's numbering, not this package's.)
 
 ### Added
 
+- **The form of an LTR insertion** -- `full` (LTR-internal-LTR), `solo`,
+  `internal` or `partial` -- read across the library's separate LTR and
+  internal-region entries (`MER41A` + `MER41-int`, EDTA's `_LTR`/`_INT`), in
+  the ledger, the TSVs and the VCF's `LTRFORM`.
+- **The per-class decision, in shadow** (`core/mechanism.py`,
+  `core/locus_evidence.py`, `core/mechanism_selection.py`): every evaluated
+  locus is scored by two likelihood ratios -- is the insert a TE, is there an
+  insertion here -- checked against 100 shifted-breakpoint decoys per locus,
+  and selected by e-BH. The ledger and `scientific.txt` record what it would
+  select beside the current decision, which it does not yet change.
+
 - **TE classes for any species' library** (`placer/core/taxonomy.py`). Every
   library entry gets a RepeatMasker class (LINE, SINE, Retroposon, PLE, LTR,
   DNA, RC, Unknown, or NonTE for satellites and RNA genes) and a superfamily:

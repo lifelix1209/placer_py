@@ -227,6 +227,7 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.te_element_length = te_alignment.te_element_length
     row.polya_len = te_alignment.element_structure.polya_len
     row.transduction_len = te_alignment.element_structure.transduction_len
+    row.ltr_form = te_alignment.ltr_form
     row.family_alignment_resolved = bool(getattr(te_alignment, "pass_", False))
     row.final_qc = _with_poa_cap_token(joint.final_qc, consensus)
     row.posterior_qc = joint.posterior_qc
@@ -362,6 +363,7 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.te_element_length = te_alignment.te_element_length
     call.polya_len = te_alignment.element_structure.polya_len
     call.transduction_len = te_alignment.element_structure.transduction_len
+    call.ltr_form = te_alignment.ltr_form
     call.te_sequence_model_label = te_alignment.sequence_model_label
     call.te_sequence_model_score = te_alignment.sequence_model_score
     call.te_sequence_model_gc = te_alignment.sequence_model_gc

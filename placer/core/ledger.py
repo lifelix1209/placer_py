@@ -61,6 +61,7 @@ class EvidenceLedgerRow:
     #: The oriented poly(A) and 3' transduction (`core/element_structure.py`).
     polya_len: int = 0
     transduction_len: int = -1
+    ltr_form: str = "NA"
     #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
     #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
     #: current decision so the two can be compared before one replaces the
@@ -205,6 +206,7 @@ class FinalCall:
     te_element_length: int = -1
     polya_len: int = 0
     transduction_len: int = -1
+    ltr_form: str = "NA"
     #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
     #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
     #: current decision so the two can be compared before one replaces the

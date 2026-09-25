@@ -41,6 +41,7 @@ from placer.core import mathx
 from placer.core.element_structure import ElementStructure
 from placer.core.element_structure import measure as measure_element_structure
 from placer.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer.core.ltr_pairs import insert_form as ltr_insert_form
 from placer.core.seqtools import (
     FNV1A_OFFSET_BASIS,
     TeNameParts,
@@ -64,6 +65,7 @@ from placer.core.seqtools import (
     upper_acgt,
 )
 from placer.core.structure import SequenceExplanation, explain_te_sequence_structure
+from placer.core.taxonomy import TeClass
 
 #: Ambiguity marker in the k-mer index: this k-mer occurs in two or more
 #: library entries, so it names no element.
@@ -672,6 +674,9 @@ class TEAlignmentEvidence:
     #: The best hit's interval on the insert, reference orientation, 0-based.
     te_query_start: int = -1
     te_query_end: int = -1
+    #: For an LTR element: "full" (LTR-internal-LTR), "solo", "internal",
+    #: "partial" (`core/ltr_pairs.py`); "NA" for any other class.
+    ltr_form: str = "NA"
     #: The class's structural hallmarks (`core/element_structure.py`).
     element_structure: ElementStructure = field(default_factory=ElementStructure)
     coarse_prefilter_score: float = 0.0
@@ -897,6 +902,14 @@ def build_insert_alignment_evidence_from_blast_hits(
     effective_query_coverage = evidence.best_query_coverage
     evidence.annotation_class = best_hit.name_parts.te_class.value
     evidence.annotation_order = best_hit.name_parts.superfamily
+    if best_hit.name_parts.te_class is TeClass.LTR:
+        family_hits = [hit for hit in hits if hit.name_parts.family == best_family]
+        evidence.ltr_form = ltr_insert_form(family_hits, len(insert_seq))
+        # The element spans all of its entries' hits -- LTR, internal, LTR --
+        # so the terminal probes (TG...CA) must read that span, not the best
+        # single entry's, which for a provirus is the internal region.
+        evidence.te_query_start = min(hit.query_start for hit in family_hits)
+        evidence.te_query_end = max(hit.query_end for hit in family_hits)
     evidence.annotation_masked_fraction = 0.0
     evidence.annotation_residual_fraction = _clamp(1.0 - effective_query_coverage,
                                                    0.0, 1.0)

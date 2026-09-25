@@ -80,6 +80,8 @@ _INFO_KEYS = (
      "RepeatMasker class of the element: LINE, SINE, Retroposon, PLE, LTR, "
      "DNA, RC, Unknown or NonTE"),
     ("TE_SUPERFAMILY", "1", "String", "Superfamily of the element"),
+    ("LTRFORM", "1", "String",
+     "LTR elements only: full (LTR-internal-LTR), solo, internal or partial"),
     ("FAM", "1", "String", "TE family"),
     ("SUBFAM", "1", "String", "TE subfamily"),
     ("FAMSTATUS", "1", "String",
@@ -263,6 +265,8 @@ def _info_pairs(call: FinalCall, *, svlen: int) -> list[str]:
             out.append(f"TE_CLASS={call.te_annotation_class}")
         if call.te_annotation_order and call.te_annotation_order != "NA":
             out.append(f"TE_SUPERFAMILY={call.te_annotation_order}")
+        if call.ltr_form and call.ltr_form != "NA":
+            out.append(f"LTRFORM={call.ltr_form}")
     out.append(f"FAM={call.family}")
     out.append(f"SUBFAM={call.subfamily}")
     out.append("FAMSTATUS=" + ("COMMITTED" if call.family_committed

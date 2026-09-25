@@ -58,7 +58,7 @@ def test_a_class_with_few_decoys_uses_the_pooled_bound():
     rows = [row(i * 1000, 50, 12.0, "LINE", decoys=4, decoy_mean=0.2) for i in range(20)]
     rows.append(row(900_000, 50, 12.0, "RC", decoys=4, decoy_mean=5.0))
     shadow = S.apply_mechanism_shadow_selection(rows, 0.1)
-    assert shadow.checks["RC"].decoys < S.MIN_DECOYS_PER_CLASS
+    assert shadow.checks["RC"].loci < S.MIN_LOCI_PER_CLASS
     assert shadow.checks["RC"].factor == shadow.checks["ALL"].factor
 
 
