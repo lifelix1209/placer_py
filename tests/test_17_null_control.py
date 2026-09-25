@@ -1,4 +1,4 @@
-"""Golden breakpoint-shift controls and the empirical null tail."""
+"""Breakpoint-shift controls and the empirical null tail: the shifted null Phase 3 builds on."""
 
 from __future__ import annotations
 
@@ -6,31 +6,6 @@ import pytest
 from conftest import call_or_skip, close
 
 from placer_py.core import null_control as N
-
-pytestmark = pytest.mark.golden
-
-
-def test_every_shift_case_matches_the_cpp(oracle):
-    for golden in oracle["breakpoint_shifts"]:
-        controls = call_or_skip(N.make_breakpoint_shift_controls,
-                                golden["bp_left"], golden["bp_right"],
-                                golden["window_start"], golden["window_end"],
-                                golden["step"], golden["max"])
-        got = [[c.bp_left, c.bp_right] for c in controls]
-        assert got == golden["controls"], (
-            f"bp=({golden['bp_left']},{golden['bp_right']}) "
-            f"window=({golden['window_start']},{golden['window_end']}) "
-            f"step={golden['step']} max={golden['max']}")
-
-
-def test_every_tail_probe_matches_the_cpp(oracle):
-    tail = N.EmpiricalNullTail()
-    for i in range(20):
-        call_or_skip(tail.add, float(i))
-    for golden in oracle["empirical_null_tail"]:
-        close(call_or_skip(tail.upper_tail_p, golden["observed"]),
-              golden["upper_tail_p"], f"observed={golden['observed']}")
-        assert call_or_skip(tail.size) == golden["n"]
 
 
 @pytest.mark.invariant

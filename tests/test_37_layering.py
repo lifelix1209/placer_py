@@ -16,7 +16,7 @@ IT WALKS THE AST, NOT THE TEXT, and at every depth rather than only the top
 import block. Both choices are load-bearing. A grep matches the docstring in
 `core/__init__.py` that STATES the rule and reports a violation that is not
 one. And this codebase uses function-local imports heavily -- `consensus.py`,
-`finalization.py`, `main.py` and `denovo.py` all do it, for good reasons -- so
+`finalization.py` and `main.py` both do it, for good reasons -- so
 a check that read only module-level imports would be checking the wrong half.
 
 Numbered last on purpose: `tests/test_34_runner_parity.py` pins the source
@@ -37,7 +37,7 @@ PACKAGE = pathlib.Path(__file__).resolve().parent.parent / "placer_py"
 #: `core` may not reach the stages on either side of it, nor the composition
 #: root that joins them.
 FORBIDDEN_FOR_CORE = ("placer_py.io", "placer_py.report", "placer_py.pipeline",
-                      "placer_py.wiring", "placer_py.main", "placer_py.denovo")
+                      "placer_py.wiring", "placer_py.parallel", "placer_py.main")
 
 #: Nor anything that would put a compiled or external dependency in front of
 #: the decision layer. `subprocess` and `tempfile` are stdlib and so do not
@@ -145,15 +145,15 @@ def test_the_top_level_holds_only_the_shared_vocabulary_and_the_composition():
     """
     Everything else belongs to a stage. The two tiers that remain are the
     vocabulary all three stages speak (`alignment`, `reads`, `config`,
-    `schema`) and the composition that joins them (`pipeline`, `main`,
-    `denovo`).
+    `schema`) and the composition that joins them (`pipeline`, `wiring`,
+    `parallel`, `main`).
 
     `reads.py` is here rather than in `io/` even though gating is input-stage
     work: `alignment.py` depends on it for the CIGAR and flag constants, so it
     is vocabulary. `placer_py/io/gate.py` holds the APPLICATION of the
     predicate, which is the part that is actually a stage.
 
-    `pipeline.py`, `wiring.py`, `parallel.py`, `main.py` and `denovo.py` are
+    `pipeline.py`, `wiring.py`, `parallel.py` and `main.py` are
     the composition tier, and they are the only modules allowed to import more
     than one stage. (`parallel.py` joined it for the same reason `wiring.py`
     did: each worker has to open the BAM and build the hooks itself.)
@@ -162,5 +162,5 @@ def test_the_top_level_holds_only_the_shared_vocabulary_and_the_composition():
     """
     top = {p.stem for p in PACKAGE.glob("*.py")}
     assert top == {"__init__", "__main__", "alignment", "reads", "config",
-                   "schema", "pipeline", "wiring", "parallel", "main",
-                   "denovo"}, sorted(top)
+                   "schema", "pipeline", "wiring", "parallel", "main"}, \
+        sorted(top)

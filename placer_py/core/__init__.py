@@ -7,7 +7,7 @@ the selection layer. Nothing here talks to anything outside the process.
 THE DEPENDENCY RULE, which `tests/test_37_layering.py` enforces:
 
     placer_py/core/** may not import placer_py.io, placer_py.report,
-    placer_py.pipeline, placer_py.wiring, placer_py.main or placer_py.denovo,
+    placer_py.pipeline, placer_py.wiring, placer_py.parallel or placer_py.main,
     and may not import pysam, pyabpoa, subprocess or tempfile -- at module
     scope OR inside a function body.
 

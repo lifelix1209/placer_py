@@ -1,8 +1,8 @@
 """
 The insert's structural decode: TE core, optional 3' transduction, poly(A).
 
-Ported from `src/component/te_sequence_explainer.cpp`, pinned by the six golden
-cases in `tests/test_03_structure.py`.
+Ported from `src/component/te_sequence_explainer.cpp`, pinned by the six
+structure cases in `tests/test_03_structure.py`.
 
 This is the closest thing in the C++ to a generative model of the biology -- a
 minimal duration-aware HSMM over the left-to-right chain

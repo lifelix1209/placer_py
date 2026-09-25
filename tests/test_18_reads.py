@@ -1,9 +1,8 @@
 """
 Read gating and CIGAR summarisation.
 
-No golden vectors: `pass_preliminary` takes a `ReadView` over a `bam1_t`, so it
-cannot be linked into the oracle without htslib. Tested against the decision
-table instead, case by case, with each case naming the fuse it exercises.
+Tested against the decision table, case by case, with each case naming the
+fuse it exercises.
 """
 
 from __future__ import annotations

@@ -44,12 +44,14 @@ the decision, then run both scorers side by side.
 ## `integrate.py` — retained for the comparison, and it says so
 
 `select()` calibrates sigma on the candidate set, the way the C++ does and the
-way this port did first. Its own docstring opens "RETAINED FOR THE RECORD, not
-for use": it cannot select anything at genome scale, which is the measurement
-`tests/test_12_head_to_head.py` exists to make.
+way this port did first; it cannot select anything at genome scale.
+`select_likelihood()` is the path that works: an uncalibrated log-LR under
+e-BH, checked by decoys, and `tests/test_13_end_to_end.py` is its acceptance
+test.
 
-**Decision: keep.** A head-to-head needs both heads. Deleting the losing one
-turns a measured comparison into an assertion.
+**Decision: keep, until the decision layer is rewritten.** The multi-species
+refactor puts `select_likelihood`'s construction on the calling path; at that
+point `test_13` moves onto the live path and this module goes.
 
 ## `decoys.py` — a validity check, not a calibration
 

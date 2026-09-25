@@ -4,10 +4,11 @@ Target-site duplication detection.
 Ported from `src/component/tsd_detector.cpp`, pinned by
 `tests/test_33_tsd.py`.
 
-NO GOLDEN VECTORS FOR THIS ONE, and the reason matters. `TSDDetector::detect`
-reads the reference through a faidx handle, so it cannot be linked into the
-oracle dumper without an indexed FASTA. The pure helpers it is built from live
-in an anonymous namespace and are not reachable either. So this module is tested
+NO FROZEN C++ OUTPUT FOR THIS ONE, and the reason matters.
+`TSDDetector::detect` reads the reference through a faidx handle, so it could
+not be driven from a standalone C++ harness without an indexed FASTA. The pure
+helpers it is built from live in an anonymous namespace and are not reachable
+either. So this module is tested
 against HAND-VERIFIABLE cases -- sequences constructed so the right answer is
 determinable by counting -- rather than against frozen C++ output. That is a
 weaker contract than the rest of the suite and it is stated rather than hidden.

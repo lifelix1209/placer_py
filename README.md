@@ -4,35 +4,17 @@ A Python implementation of [PLACER](https://github.com/lifelix1209/PLACER),
 the long-read transposable-element insertion caller. It runs end to end — BAM
 in, calls and an evidence ledger out — without the compiled binary.
 
-**This repository is a port with a ground truth, and that is the whole point.**
-The C++ is the oracle: the selection layer is pinned to golden vectors frozen
-out of it (`tests/oracle/cpp_reference.json`), every module's docstring names
-the C++ file it came from, and `tools/regenerate_oracle.sh` regenerates the
-contract from a C++ checkout. Keep the C++ authoritative until the two agree
-locus by locus on a real BAM.
+This repository began as a port of the C++ and is now the reference
+implementation itself: the C++ golden-vector oracle has been removed, and how
+this implementation departed from the C++ up to that point is recorded in
+[`docs/departures-from-cpp.md`](docs/departures-from-cpp.md). Every module's
+docstring still names the C++ file it came from.
 
-```
-placer-py/            this repository
-PLACER/               the C++, expected as a sibling checkout by
-                      tools/regenerate_oracle.sh (or set PLACER_SRC)
-```
-
-Tests first, **and the two layers are constrained differently on purpose**.
-
-`placer_py/redesign/` holds a 2,602-line Python implementation that predates
-the port and had no tests. That code is **not a port of the C++** — it is a
-parallel redesign: it
-takes candidates from a Sniffles VCF rather than scanning the BAM itself, it
-scores the L1 endonuclease target motif (which the C++ does not model at all),
-it treats the TSD as a log-LR against a background probability rather than a
-`+0.15` bonus, and its TE-body term really is 5'-truncation tolerant.
-
-So the two codebases are strong in different halves, and the suite reflects that:
-
-| layer | binding constraint | why |
-|---|---|---|
-| **Selection** — `sigma`, the cap, e-BH, the combination rule, conformal/BY | **C++ golden values** | The redesign has no selection layer at all, and the C++ one is statistically correct and was just fixed. Reproduce it exactly. |
-| **Mechanistic** — endonuclease motif, TSD, poly(A), TE body, counts | **invariants + behaviour** | The redesign is ahead of the C++ here. Requiring it to reproduce C++ numbers would require it to get worse. |
+**This is mid-refactor toward PLACER 1.0**, a multi-species caller: the
+TE taxonomy, the structure grammar and the decision layer are being made
+class-aware (LINE/SINE/LTR/DNA/Helitron) rather than human-specific. The
+sections below describe the implementation as it stands, and this README will be
+rewritten for users before the release.
 
 **The migration is complete, and it now covers the whole pipeline rather than
 the decision layer alone.** The first pass ported `decision_policy.cpp`,
@@ -87,7 +69,6 @@ from the source rather than maintained by hand:
 | `pipeline_finalization_stage.inc` | `core/finalization.py` |
 | `pipeline_{entrypoints,bin_processing_stage}.inc` | `pipeline.py`, `core/scan.py`, `core/bins.py` |
 | `main.cpp` | `main.py`, `wiring.py`, `report/tsv.py` |
-| `denovo_cli.cpp`, `parent_pool_scanner.cpp` | `denovo.py` |
 
 ## Why the tests had to come first
 
@@ -105,10 +86,10 @@ Signs and orderings. Very little of it pins a value.
 That is a reasonable regression net for C++ refactors and a **weak
 specification for a port**: a Python implementation could compute a completely
 different function and still satisfy every one of those assertions. So the first
-step was not to write Python, it was to freeze the actual numbers —
-`tools/dump_oracle.cpp` walks a grid of inputs through the real C++ entry points
-and writes `tests/oracle/cpp_reference.json`, and the Python tests assert
-equality against that to full double precision.
+step was not to write Python, it was to freeze the actual numbers from the
+real C++ entry points and assert equality against them to full double
+precision. That oracle has since been removed; see
+[`docs/departures-from-cpp.md`](docs/departures-from-cpp.md).
 
 ## Layout
 
@@ -161,12 +142,9 @@ placer_py/
   wiring.py         binds the four hooks to real I/O
   parallel.py       the scan on N processes (`--threads`), same bytes out
   main.py           the CLI
-  denovo.py         trio de novo calling
 
-  --- the parallel redesign (not a port; see placer_py/redesign/) ---------
-  redesign/         cli.py, io.py, models.py, candidates/, evidence/, model/
 tests/
-  test_00..06, 09..18   the decision layer, against golden vectors
+  test_00..18           the decision layer
   test_19_seqtools.py   composition model, hand-computable pins
   test_20_clustering.py the geometry stage
   test_21_alignment.py  the read view and CIGAR/SA parsing
@@ -182,12 +160,7 @@ tests/
   test_31_outputs.py    triage, posterior, output contracts, the CLI
   test_32_pipeline.py   THE end-to-end acceptance test, and de novo
   test_38_parallel.py   --threads N writes the same bytes as --threads 1
-  redesign/             the redesign's own unittest suite; needs pysam, and is
-                        skipped without it (tests/redesign/conftest.py)
-  oracle/cpp_reference.json      frozen from the C++
 tools/
-  dump_oracle.cpp                generates the golden vectors
-  regenerate_oracle.sh           build + run + validate + install
   run_tests_without_pytest.py    zero-dependency runner
 ```
 
@@ -204,15 +177,13 @@ a Python package — put it on `PATH`, or set `te_blastn_path` in the config.
 
 Nothing is published yet: `0.1.0` is the version this package was extracted at,
 not a release. [`CHANGELOG.md`](CHANGELOG.md) is what has changed since, and
-[`tests/EXPECTED_DIVERGENCE.md`](tests/EXPECTED_DIVERGENCE.md) is what those
+[`docs/departures-from-cpp.md`](docs/departures-from-cpp.md) is what those
 changes cost numerically.
 
 ## Running the whole pipeline
 
 ```bash
 placer-py sample.bam reference.fa te_library.fa --output-dir out/ --threads 8
-placer-py denovo --child-scientific out/scientific.txt \
-    --parent-bam-list parents.txt --ref reference.fa --te te_library.fa
 ```
 
 `--threads N` (`-t`) scans on N processes. It changes how long the run takes
@@ -320,17 +291,17 @@ python3 tools/run_tests_without_pytest.py test_04    # one module
 ```
 
 ```
-total: 755 passed, 0 failed, 0 skipped, 7 xfail (known issues)
+total: 736 passed, 0 failed, 2 skipped, 2 xfail (known issues)
 ```
 
 | module | status |
 |---|---|
 | `schema.py` | the ledger contract |
 | `pipeline.py` | end to end, reads to calls (`test_32`) |
-| `genotype.py` | 14 golden cases, exact |
-| `structure.py` | 6 golden cases, exact |
-| `blocks.py` | 8 golden certificates, exact |
-| `dependency.py` | 6 golden cases + 3 regressions |
+| `genotype.py` | GQ as posterior Phred, count invariants |
+| `structure.py` | path confidence, poly(A) state |
+| `blocks.py` | 8 certificates, aggregate algebra, robust lfdr |
+| `dependency.py` | bound invariants + 3 regressions |
 | `selection.py` | e-BH, mean-not-max, dominance, BY, FDR simulation |
 | `decoys.py` | the validity check that replaced calibration |
 | `integrate.py` | both selection paths, joined to the mechanistic layer |
@@ -338,28 +309,21 @@ total: 755 passed, 0 failed, 0 skipped, 7 xfail (known issues)
 
 ## How to read the suite
 
-- **passed** — either the seam contract, or a relationship the golden data must
-  satisfy internally. These constrain the C++ as well as the port.
-- **xfail (7)** — known problems, pinned so the port reproduces them faithfully.
-  Fixing one is a modelling change and has to flip the xfail deliberately:
-  the 3' transduction net penalty; the serialized blocks not summing to the
-  aggregate; the endonuclease gate admitting only one mismatch; the flat TSD
-  absence penalty; the high-precision tier excluding Alu and truncated L1; the
-  clamped score's dynamic range; and the head-to-head comparison that the sigma
-  blocker made unrunnable.
+- **passed** — the seam contract, an invariant, a regression, or a behaviour
+  case.
+- **xfail (2)** — known problems, pinned so that fixing one is a deliberate
+  modelling change: the 3' transduction net penalty, and the serialized blocks
+  not summing to the aggregate.
 - **no skips** — the migration surface is empty.
 
-## The four kinds of test
+## The kinds of test
 
-1. **Golden** (`@pytest.mark.golden`) — equality against the C++ to `rtol=1e-12`.
-   That tolerance admits a different order of floating-point operations and
-   nothing else; it is far too tight to absorb a different formula.
-2. **Invariant** (`@pytest.mark.invariant`) — mathematical properties any
+1. **Invariant** (`@pytest.mark.invariant`) — mathematical properties any
    correct implementation must satisfy, in any language. The most valuable is
    `test_controls_fdr_under_the_null_by_simulation`, which constrains the e-BH
    *procedure* rather than its arithmetic and so catches an off-by-one in the
-   step-up rule that a handful of golden cases would miss.
-3. **Regression** (`@pytest.mark.regression`) — bugs found and fixed during this
+   step-up rule that a handful of fixed cases would miss.
+2. **Regression** (`@pytest.mark.regression`) — bugs found and fixed during this
    work, pinned so a port cannot reintroduce them:
    - the dependency cap applied *after* the penalty instead of before (a
      validity bug: `sigma` bounds `E[min(Y,C)]`, so only `min(Y,C)/sigma` is an
@@ -371,7 +335,7 @@ total: 755 passed, 0 failed, 0 skipped, 7 xfail (known issues)
    - GQ implemented as a likelihood difference instead of the posterior error in
      Phred;
    - a minimum-depth gate that duplicated what GQ already does.
-4. **Contract** (`@pytest.mark.contract`) — the ledger schema, i.e. the seam.
+3. **Contract** (`@pytest.mark.contract`) — the ledger schema, i.e. the seam.
 
 ## What joining the layers found
 
@@ -549,8 +513,7 @@ the safest kind.
 
 The Python side now produces the ledger too, so the diff runs in both
 directions and `placer_py/report/tsv.py` pins the column order both halves have to
-agree on. Keep the C++ as the oracle until the Python agrees locus by locus on
-a real BAM; the synthetic end-to-end test in `test_32_pipeline.py` shows the
+agree on. The synthetic end-to-end test in `test_32_pipeline.py` shows the
 stages compose, not that they agree with the C++ on real data.
 
 `placer_py.schema.MISSING_FOR_TPRT` lists eight observables the current ledger
@@ -560,51 +523,6 @@ ratio, which discards about 8.5 nats of 3'-anchoring evidence for a 1 kb
 fragment of a 6 kb L1. Two integers instead of one ratio is the whole cost of
 recovering it, and the scanner has to emit them before the model can be
 computed at all.
-
-## What the mechanistic tests found
-
-`test_10_mechanistic_invariants.py` runs against the existing `model/` and
-confirms one real strength, plus three problems worth knowing about.
-
-**The strength, and it is a genuine one.** The linkage hallmarks separate a
-mismapped old reference copy from a new insertion, which is the dominant false
-positive and the thing the C++ cannot address at all. An old copy is itself a
-TPRT product, so it carries a real poly(A) and a real TE body — those internal
-terms are byte-identical between the two cases. The endonuclease motif and the
-TSD are properties of *this* locus, and they carry the whole separation:
-4 hallmarks / +9.76 nats / `MECH_TPRT_STRONG` against 2 / +3.66 /
-`MECH_TPRT_SUPPORTED`. The truncation tolerance is real too: past ~120 bp of
-core the TE-body term is flat, so a 1 kb 5'-truncated L1 scores exactly like a
-6 kb full-length one.
-
-**The high-precision tier structurally excludes the modal insertion.**
-`hp_score = identity × coverage × insert_len` against a threshold of 3500 means
-that at identity 0.95 and coverage 0.90 the insert must exceed **4094 bp**. So
-regardless of evidence quality it can never fire for an Alu (~300 bp, the most
-common new insertion in humans) or for a 5'-truncated L1 below 4 kb — and ~95%
-of L1 insertions are 5'-truncated. The tier reaches its quoted ~0.94 precision
-by selecting near-full-length L1, which is the easy case. The statistic
-conflates "is it TE" with "is it long", and the threshold then acts as a length
-filter.
-
-**The endonuclease gate admits at most one mismatch.** `> 2.0` on the PWM means
-a two-mismatch target site (1.676) loses the hallmark, while the biology is more
-permissive: priming needs as few as 4 matching nt at the primer 3' end and
-tolerates terminal mismatches compensated within the last 10 bases, and the
-endonuclease is promiscuous in vitro, cutting largely on DNA structure rather
-than sequence.
-
-**TSD absence is not conditioned on mechanism.** A flat −0.4 penalises
-full-length L1, twin-primed L1 and trans-mobilised Alu/SVA for obeying their own
-mechanism — only 5'-truncated L1 reliably carries a short TSD. The C++ shares
-this defect, so it is not a porting regression.
-
-**And one to weigh.** `DEFAULT_HP_MIN` and `DEFAULT_HP_COV_MIN` come from
-`scripts/calibrate_mechanistic_vs_tldr.py`, i.e. from fitting to another
-caller's output. That makes the quoted figure a precision *against TLDR* and
-imports TLDR's blind spots as ground truth — the "where do the weights come
-from" problem, whose answer is supposed to be the FDR machinery in the selection
-layer rather than another caller's calls.
 
 ## The two pinned problems in the C++ decode
 
@@ -622,16 +540,6 @@ log-LRs use weights `0.45 / 0.65 / 1 / 0.80 / 0.50`; the aggregate uses
 for the decision — only the aggregate decides — but it defeats anyone trying to
 re-derive a call by hand from the ledger.
 
-## Regenerating the golden vectors
-
-```bash
-HTSLIB_INCLUDE_DIR=/path/to/htslib/include tools/regenerate_oracle.sh
-git diff -- PLACER_py/tests/oracle/cpp_reference.json
-```
-
-Headers only; nothing links against htslib. A non-empty diff means the contract
-moved — decide whether that was intended before committing.
-
 ## Where the work is now
 
 The porting order this section used to give — genotype, dependency,
@@ -642,11 +550,11 @@ misleading paragraph in this file.
 What replaces it is not a list of modules to port but a set of open
 questions, each of which has evidence attached rather than an opinion:
 
-- **`tests/EXPECTED_DIVERGENCE.md`** — the frozen C++ vectors are now a
-  characterisation, not a definition. Every deliberate departure is recorded
-  there with what moved, by how much, and how it was measured. One entry is
+- **`docs/departures-from-cpp.md`** — a historical record of how this
+  implementation departed from the C++ while the C++ was the reference. Every
+  deliberate departure is recorded there with what moved, by how much, and how it was measured. One entry is
   marked **Open**: fixing `blocks._structure_explanation` to fall back to the
-  shadow path (as the C++ does, and as the golden vectors confirm) raises the
+  shadow path (as the C++ does) raises the
   TE evidence of loci with no TE alignment, and the precision effect of that
   has not yet been measured on real data.
 - **`tools/make_giab_eval.py`** — cuts an HG002 ONT-UL evaluation slice and a
@@ -658,6 +566,3 @@ questions, each of which has evidence attached rather than an opinion:
   deliberate: see `docs/off-pipeline-modules.md` for which is which.
   `selection.py` was the fifth and was the only genuine duplicate; it is now
   imported by `finalization.py` and the inline copy is gone.
-- **`placer_py/redesign/`** — a second implementation kept alongside the
-  port. It holds the only TE-hit orientation in the repository and the only
-  flank-evidence collector, both of which `tprt.py` would need.

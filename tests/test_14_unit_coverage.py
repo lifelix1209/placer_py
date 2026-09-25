@@ -169,7 +169,7 @@ def test_log_choose_count_matches_the_binomial_coefficient():
     close(call_or_skip(genotype.log_choose_count, 10, 3),
           math.log(120.0), "C(10,3) = 120")
     # DELIBERATE DIVERGENCE: -inf, not the C++'s -1e300. See
-    # tests/EXPECTED_DIVERGENCE.md -- the three copies of this function
+    # docs/departures-from-cpp.md -- the three copies of this function
     # disagreed, and -1e300 survives an isfinite() guard that an impossible
     # count should not.
     assert call_or_skip(genotype.log_choose_count, 3, 10) == -math.inf

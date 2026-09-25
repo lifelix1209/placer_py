@@ -1,5 +1,5 @@
 """
-The dependency bound: golden values, the invariants, and the three regressions.
+The dependency bound: the invariants, and the three regressions.
 
 This is the subsystem where porting from a reading of the code is most likely to
 reintroduce a bug, so it gets the most tests.
@@ -13,46 +13,6 @@ import pytest
 from conftest import call_or_skip, close
 
 from placer_py.core import dependency
-
-pytestmark = pytest.mark.golden
-
-
-def _fixture_inputs(name: str) -> tuple[list[float], list[float], float, int]:
-    """Mirrors the deterministic cases in tools/dump_oracle.cpp -- no RNG, so
-    both languages can be fed byte-identical input."""
-    ramp = [-6.0 + 0.01 * i for i in range(500)]
-    tailed = ramp + [4.0 + 0.02 * i for i in range(50)]
-    table = {
-        "ramp_500": (ramp, ramp, 0.10, 1000),
-        "ramp_with_right_tail": (tailed, tailed, 0.10, 1000),
-        "tiny_two": ([0.1, 0.3], [0.1, 0.3], 0.10, 1000),
-        "single_row": ([0.5], [0.5], 0.10, 1000),
-        "empty": ([], [], 0.10, 1000),
-        "asymmetric_sides": (tailed, ramp, 0.05, 250),
-    }
-    return table[name]
-
-
-def test_every_case_matches_the_cpp(oracle):
-    for g in oracle["dependency_penalty"]:
-        art, non, q, m = _fixture_inputs(g["name"])
-        est = call_or_skip(dependency.estimate_dependency_penalty,
-                           art, non, q, m)
-        close(est.cap_log, g["cap_log"], f"{g['name']}.cap_log")
-        close(est.vs_artifact.sigma_mean, g["sigma_mean_art"],
-              f"{g['name']}.sigma_mean_art")
-        close(est.vs_artifact.sigma_upper, g["sigma_upper_art"],
-              f"{g['name']}.sigma_upper_art")
-        close(est.vs_artifact.log_penalty, g["log_penalty_art"],
-              f"{g['name']}.log_penalty_art")
-        close(est.vs_non_te.sigma_mean, g["sigma_mean_non"],
-              f"{g['name']}.sigma_mean_non")
-        close(est.vs_non_te.sigma_upper, g["sigma_upper_non"],
-              f"{g['name']}.sigma_upper_non")
-        close(est.vs_non_te.log_penalty, g["log_penalty_non"],
-              f"{g['name']}.log_penalty_non")
-        assert est.null_count == g["null_count"], g["name"]
-        assert est.estimated == g["estimated"], g["name"]
 
 
 @pytest.mark.invariant
@@ -216,3 +176,56 @@ def test_non_finite_inputs_are_dropped_not_propagated():
     assert math.isfinite(b.vs_artifact.log_penalty)
     # -inf maps to a finite e-value of 0, which legitimately lowers the mean.
     assert b.vs_artifact.sigma_mean <= a.vs_artifact.sigma_mean + 1e-9
+
+
+def _grid() -> dict[str, tuple[list[float], list[float], float, int]]:
+    """Deterministic inputs, no RNG: a ramp, the ramp plus a right tail, two
+    tiny samples, an empty one, and two sides drawn from different pools."""
+    ramp = [-6.0 + 0.01 * i for i in range(500)]
+    tailed = ramp + [4.0 + 0.02 * i for i in range(50)]
+    return {
+        "ramp_500": (ramp, ramp, 0.10, 1000),
+        "ramp_with_right_tail": (tailed, tailed, 0.10, 1000),
+        "tiny_two": ([0.1, 0.3], [0.1, 0.3], 0.10, 1000),
+        "single_row": ([0.5], [0.5], 0.10, 1000),
+        "empty": ([], [], 0.10, 1000),
+        "asymmetric_sides": (tailed, ramp, 0.05, 250),
+    }
+
+
+@pytest.mark.invariant
+@pytest.mark.parametrize("name", sorted(_grid()))
+def test_the_bound_is_well_formed(name):
+    """Across the grid: the penalty is the log of the bound, the bound is
+    floored at 1, it sits above the empirical mean unless it is on a clamp, and
+    with fewer than two usable rows the only honest bound is the cap."""
+    art, non, q, m = _grid()[name]
+    est = call_or_skip(dependency.estimate_dependency_penalty, art, non, q, m)
+    close(est.cap_log, math.log(m / q), f"{name}.cap_log")
+    assert est.estimated == (len(art) >= 2 and len(non) >= 2), name
+    for side, rows in (("vs_artifact", art), ("vs_non_te", non)):
+        s = getattr(est, side)
+        label = f"{name}.{side}"
+        close(s.log_penalty, math.log(s.sigma_upper), label)
+        assert s.sigma_upper >= 1.0, label
+        assert s.log_penalty >= 0.0, label
+        on_clamp = math.isclose(s.sigma_upper, 1.0, rel_tol=1e-12) or \
+            math.isclose(s.sigma_upper, math.exp(est.cap_log), rel_tol=1e-9)
+        assert s.sigma_upper >= s.sigma_mean or on_clamp, label
+        if len(rows) < 2:
+            close(s.log_penalty, est.cap_log, f"{label}: falls back to the cap")
+
+
+@pytest.mark.invariant
+def test_the_right_tail_is_what_the_bound_is_made_of():
+    """`ramp_500` and `ramp_with_right_tail` share 500 identical rows; the
+    latter adds 50 high ones. sigma is a MEAN, so those 50 rows are almost the
+    whole quantity."""
+    grid = _grid()
+    plain = call_or_skip(dependency.estimate_dependency_penalty,
+                         *grid["ramp_500"])
+    tailed = call_or_skip(dependency.estimate_dependency_penalty,
+                          *grid["ramp_with_right_tail"])
+    close(plain.vs_artifact.sigma_upper, 1.0,
+          "the tail-free sample should bottom out on the floor")
+    assert tailed.vs_artifact.log_penalty > plain.vs_artifact.log_penalty + 2.0

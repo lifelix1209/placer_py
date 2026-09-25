@@ -1,4 +1,4 @@
-"""Golden Pareto explanation comparison. Ported from event_explanation.cpp."""
+"""Pareto explanation comparison. Ported from event_explanation.cpp."""
 
 from __future__ import annotations
 
@@ -6,8 +6,6 @@ import pytest
 from conftest import call_or_skip
 
 from placer_py.core import explanation as E
-
-pytestmark = pytest.mark.golden
 
 
 def _res(s, m, u, b, r, rc, a, la, pc):
@@ -25,8 +23,7 @@ def _exp(kind, res, family="NA", subfamily="NA"):
 
 K = E.ExplanationKind
 
-#: Mirrors tools/dump_oracle.cpp exactly. A scenario added there and not here
-#: fails loudly rather than being skipped.
+#: Hand-written explanation sets, one per decision the comparison can reach.
 SCENARIOS = {
     "te_dominates_closed": ([
         _exp(K.TE, _res(0, 0, 0, 0, 0, 0, 0, 0, 1), "L1", "L1HS"),
@@ -73,46 +70,34 @@ SCENARIOS = {
     ], True),
 }
 
+#: (a, b, a dominates b, b dominates a). The expected answers follow from the
+#: definition: no worse on every primary coordinate and strictly better on at
+#: least one, with the three tie-break coordinates ignored.
 PAIRS = {
     "strictly_better_everywhere": (_res(0, 0, 0, 0, 0, 0, 0, 0, 0),
-                                   _res(1, 1, 1, 1, 1, 1, 1, 1, 1)),
-    "equal": (_res(1, 1, 1, 0, 1, 1, 1, 0, 0), _res(1, 1, 1, 0, 1, 1, 1, 0, 0)),
+                                   _res(1, 1, 1, 1, 1, 1, 1, 1, 1),
+                                   True, False),
+    "equal": (_res(1, 1, 1, 0, 1, 1, 1, 0, 0), _res(1, 1, 1, 0, 1, 1, 1, 0, 0),
+              False, False),
     "one_better_one_worse": (_res(0, 1, 0, 0, 0, 0, 0, 0, 0),
-                             _res(1, 0, 0, 0, 0, 0, 0, 0, 0)),
+                             _res(1, 0, 0, 0, 0, 0, 0, 0, 0), False, False),
     "one_strictly_better_rest_equal": (_res(0, 1, 1, 0, 1, 1, 1, 0, 0),
-                                       _res(1, 1, 1, 0, 1, 1, 1, 0, 0)),
+                                       _res(1, 1, 1, 0, 1, 1, 1, 0, 0),
+                                       True, False),
     "tie_break_fields_ignored": (_res(1, 1, 1, 99, 1, 1, 1, 99, 99),
-                                 _res(1, 1, 1, 0, 1, 1, 1, 0, 0)),
+                                 _res(1, 1, 1, 0, 1, 1, 1, 0, 0),
+                                 False, False),
 }
 
 
-def test_every_decision_matches_the_cpp(oracle):
-    for golden in oracle["event_explanations"]:
-        name = golden["name"]
-        assert name in SCENARIOS, f"scenario {name!r} not mirrored in this test"
-        explanations, closed = SCENARIOS[name]
-        decision = call_or_skip(E.compare_event_explanations, explanations,
-                                closed)
-        assert decision.final_qc == golden["final_qc"], name
-        assert E.explanation_kind_name(decision.best.kind) == \
-            golden["best_kind"], name
-        assert decision.emit_te_call == golden["emit_te_call"], name
-        assert decision.emit_unknown_te == golden["emit_unknown_te"], name
-        assert decision.emit_evidence_te_call == \
-            golden["emit_evidence_te_call"], name
-        assert len(decision.alternatives) == golden["n_alternatives"], name
-        assert call_or_skip(E.serialize_residual, decision.best.residual) == \
-            golden["best_residual"], name
-
-
-def test_the_dominance_truth_table_matches(oracle):
-    for golden in oracle["dominance_pairs"]:
-        name = golden["name"]
-        a, b = PAIRS[name]
-        assert call_or_skip(E.dominates_primary_residuals, a, b) == \
-            golden["a_dominates_b"], f"{name}: a dominates b"
-        assert call_or_skip(E.dominates_primary_residuals, b, a) == \
-            golden["b_dominates_a"], f"{name}: b dominates a"
+@pytest.mark.invariant
+@pytest.mark.parametrize("name", sorted(PAIRS))
+def test_the_dominance_truth_table(name):
+    a, b, a_dom_b, b_dom_a = PAIRS[name]
+    assert call_or_skip(E.dominates_primary_residuals, a, b) == a_dom_b, (
+        f"{name}: a dominates b")
+    assert call_or_skip(E.dominates_primary_residuals, b, a) == b_dom_a, (
+        f"{name}: b dominates a")
 
 
 @pytest.mark.invariant

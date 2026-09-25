@@ -8,8 +8,7 @@ explicit ALTs the file is roughly the size of every insert sequence combined,
 so a whole-genome run produces tens of megabytes where the TSVs default
 `insert_seq` off for exactly that reason. `bgzip` handles it.
 
-THE ANCHOR CONVENTION, which is a one-off that nothing in the golden vectors
-pins. `placer_py/core/tsd.py` fetches the left flank as `ref[bp_left - length :
+THE ANCHOR CONVENTION, which is a one-off that nothing upstream pins. `placer_py/core/tsd.py` fetches the left flank as `ref[bp_left - length :
 bp_left]`, and `placer_py/core/breakpoints.py` advances `ref_pos` only on
 ref-consuming ops, so at a CIGAR `I` it holds the coordinate of the first
 reference base AFTER the flank. Both say the insertion sits immediately before

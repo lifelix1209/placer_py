@@ -1,7 +1,7 @@
 """
-The TPRT coincidence model: a BEHAVIOUR table, not golden vectors.
+The TPRT coincidence model: a BEHAVIOUR table, not fixed values.
 
-There is no C++ implementation to be golden against -- this model is the
+There is no C++ implementation to compare against -- this model is the
 intended replacement for the six affine blocks, not a port of them. So the
 constraint is a table of cases with the sign and rough magnitude each must
 produce, derived from the mechanism and checked against the reference

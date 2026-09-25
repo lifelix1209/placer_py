@@ -1,10 +1,10 @@
 """
 Beta-binomial genotyping and the sample-level overdispersion estimate.
 
-Ported from `src/pipeline/decision_policy.cpp` and pinned by the 14 golden cases
-in `tests/oracle/cpp_reference.json`. Everything here is a faithful port; the
+Ported from `src/pipeline/decision_policy.cpp` and pinned by
+`tests/test_02_genotype.py`. Everything here is a faithful port; the
 commentary records the places where a reasonable-looking reimplementation
-diverges, because those are the places the golden vectors earn their keep.
+diverges.
 """
 
 from __future__ import annotations
@@ -127,8 +127,8 @@ def genotype_log_likelihood(inp: GenotypeInput, alt_copy_fraction: float) -> flo
     NOTE, and this is the detail my stub got wrong: at `rho <= 1e-9` the C++ does
     NOT switch to a closed binomial form -- it sets `kappa = 1e9` and stays in
     the Beta-binomial. The two agree to about 8 decimal places, not exactly, so
-    a port that "helpfully" special-cases the binomial limit fails the golden
-    comparison at its 1e-12 tolerance.
+    a port that "helpfully" special-cases the binomial limit disagrees with the
+    C++ beyond a 1e-12 tolerance.
     """
     alt = max(0, inp.alt_struct_reads)
     ref = max(0, inp.ref_span_reads)
@@ -165,7 +165,7 @@ def genotype_from_alt_vs_ref(alt_struct_reads: int, ref_span_reads: int,
     """
     Port of `placer::genotype_event_from_alt_vs_ref`.
 
-    Two details a reimplementation gets wrong, both pinned by golden cases:
+    Two details a reimplementation gets wrong:
 
     1. GQ is the POSTERIOR error in Phred, `-10 log10(1 - P(best | data))`,
        computed over all three genotypes -- not the best-minus-second-best
@@ -174,8 +174,8 @@ def genotype_from_alt_vs_ref(alt_struct_reads: int, ref_span_reads: int,
        that conflates them is caught immediately.
 
     2. On a 0/0 call the function returns EARLY, so `best_nonref_minus_ref_ll`
-       stays at its default 0.0 rather than holding the (negative) margin. The
-       golden row for `alt=1, ref=9` has exactly 0 there, which is the tell.
+       stays at its default 0.0 rather than holding the (negative) margin.
+       `alt=1, ref=9` has exactly 0 there, which is the tell.
 
     There is deliberately no minimum-depth gate: a shallow locus has a diffuse
     posterior and therefore a low GQ on its own, so a depth threshold would be a

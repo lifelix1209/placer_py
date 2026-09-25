@@ -299,11 +299,6 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
-    if argv and argv[0] == "denovo":
-        from placer_py.denovo import run_denovo_cli
-
-        return run_denovo_cli(argv[1:])
-
     args = build_arg_parser().parse_args(argv)
     try:
         config = config_from_args(args)

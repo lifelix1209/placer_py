@@ -23,10 +23,7 @@ A small deletion is the same shape with the opposite sign (a GAP rather than
 an overlap), which is why the sign must survive: normalising it away is what
 made every TSD look like a deletion.
 
-No golden vectors here, for the reason `tsd.py` gives: the C++ detector reads
-the reference through a faidx handle and cannot be linked into the oracle
-dumper. These are hand-constructed cases whose answer is determinable by
-counting.
+These are hand-constructed cases whose answer is determinable by counting.
 """
 
 from __future__ import annotations

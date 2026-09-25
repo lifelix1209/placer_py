@@ -1,13 +1,13 @@
-"""Golden structural decode. Skips until `placer_py.core.structure` is ported."""
+"""Structural decode behaviour of `placer_py.core.structure`."""
 
 from __future__ import annotations
 
+import math
+
 import pytest
-from conftest import call_or_skip, close
+from conftest import call_or_skip
 
 from placer_py.core import structure
-
-pytestmark = pytest.mark.golden
 
 SEQS = {
     "core_plus_polya": ("G" * 220 + "A" * 30, 0.96, 0.88, 0.12, 0.0, 0.18,
@@ -31,22 +31,49 @@ SEQS = {
 }
 
 
-def test_structural_decode_matches_the_cpp(oracle):
-    for g in oracle["sequence_structure"]:
-        seq, ident, cov, resid, masked, margin, model, score, qc = SEQS[g["name"]]
-        assert len(seq) == g["insert_len"], (
-            f"{g['name']}: test fixture drifted from the oracle generator")
-        ex = call_or_skip(structure.explain_te_sequence_structure,
-                          seq, qc, "L1", "L1HS", ident, cov, resid, masked,
-                          margin, 0.0, model, score)
-        for field in ("te_structure_log_evidence",
-                      "nonte_structure_log_evidence",
-                      "artifact_structure_log_evidence",
-                      "structure_path_confidence", "polyA_posterior",
-                      "transduction_posterior", "te_core_coverage"):
-            close(getattr(ex, field), g[field], f"{g['name']}.{field}")
-        assert ex.unexplained_high_complexity_bp == \
-            g["unexplained_high_complexity_bp"], g["name"]
+def _explain(name):
+    seq, ident, cov, resid, masked, margin, model, score, qc = SEQS[name]
+    return call_or_skip(structure.explain_te_sequence_structure,
+                        seq, qc, "L1", "L1HS", ident, cov, resid, masked,
+                        margin, 0.0, model, score)
+
+
+@pytest.mark.invariant
+@pytest.mark.parametrize("name", sorted(SEQS))
+def test_path_confidence_is_the_logistic_of_the_margin(name):
+    ex = _explain(name)
+    margin = ex.te_structure_log_evidence - max(
+        ex.nonte_structure_log_evidence, ex.artifact_structure_log_evidence)
+    assert math.isclose(ex.structure_path_confidence,
+                        1.0 / (1.0 + math.exp(-margin)),
+                        rel_tol=1e-10, abs_tol=1e-12), name
+    for key in ("polyA_posterior", "transduction_posterior",
+                "structure_path_confidence", "te_core_coverage"):
+        assert 0.0 <= getattr(ex, key) <= 1.0, f"{name}.{key}"
+
+
+@pytest.mark.invariant
+def test_a_terminal_poly_a_run_opens_the_polya_state():
+    """30 A's at 1.28 nats/base against an open-odds of -3.0 must win easily."""
+    with_tail = _explain("core_plus_polya")
+    without = _explain("core_only")
+    assert with_tail.polyA_posterior > 0.99
+    assert without.polyA_posterior < with_tail.polyA_posterior
+
+
+@pytest.mark.xfail(strict=True, reason=(
+    "KNOWN, and pinned rather than tolerated: a real 3' transduction is NET "
+    "PENALISED despite having a dedicated HSMM state. The residual counters are "
+    "computed before the transduction decode and never reduced by it, so the "
+    "Viterbi path is reporting-only. Coverage falls and costs 2.45/unit, the "
+    "high-complexity residual rises and costs 1.25/unit, and the transduction "
+    "posterior returns only 0.35. Fixing it is a modelling change and has to "
+    "flip this xfail deliberately."))
+def test_transduction_is_rewarded_not_penalised():
+    plain = _explain("core_plus_polya")
+    transduced = _explain("core_transduction_polya")
+    assert transduced.transduction_posterior > 0.5
+    assert transduced.te_structure_log_evidence >= plain.te_structure_log_evidence
 
 
 def test_polya_emission_constant_is_reproduced():

@@ -2,22 +2,18 @@
 
 ## The one rule
 
-**This is a port with an oracle.** The C++ at
-[lifelix1209/PLACER](https://github.com/lifelix1209/PLACER) is authoritative for
-anything under `placer_py/` that is not `redesign/`. Before changing behaviour
-here, decide which of these you are doing, because they are reviewed
-differently:
+**The C++ is no longer the oracle.** This package began as a port of
+[lifelix1209/PLACER](https://github.com/lifelix1209/PLACER) and is now the
+reference implementation itself; how it departed from the C++ up to that point
+is recorded in [`docs/departures-from-cpp.md`](docs/departures-from-cpp.md).
+Before changing behaviour here, decide which of these you are doing, because
+they are reviewed differently:
 
 | change | what it needs |
 |---|---|
 | **Porting more of the C++** | The module docstring names the C++ file. Match it, including the parts that look wrong — and pin the ones that look wrong in a test that says so. |
-| **Fixing a port bug** | A test that fails before and passes after, and a line in the test explaining what the C++ actually does. |
-| **Changing what PLACER decides** | Change the C++ first, regenerate the oracle, then port the change. A behaviour change made only here silently forks the two. |
-
-The third row is the one that matters. `tests/oracle/cpp_reference.json` is
-frozen out of the C++ and asserted to `rtol=1e-12` — a tolerance that admits a
-different order of floating-point operations and nothing else. If a change
-makes those tests fail, the contract moved, and that has to be deliberate.
+| **Fixing a bug** | A test that fails before and passes after, and a line in the test explaining what went wrong. |
+| **Changing what PLACER decides** | A test that pins the new behaviour, and a `CHANGELOG.md` entry saying what moved and how it was measured. |
 
 ## Running the tests
 
@@ -63,11 +59,9 @@ nothing.
 
 ## Writing a test
 
-The suite has four kinds, and the marker says which argument the test is
+The suite has three kinds, and the marker says which argument the test is
 making:
 
-- `@pytest.mark.golden` — equality against a C++ vector. The strongest, and
-  only available where `tools/dump_oracle.cpp` can reach the function.
 - `@pytest.mark.invariant` — a property any correct implementation must have,
   in any language. Most of the scanner half is pinned this way, because the C++
   cannot reach those stages without a BAM.
@@ -83,16 +77,6 @@ segmenter that does not discover TSDs, a family parsed from the class path
 rather than the element name. Each is pinned with a docstring explaining why it
 looks wrong and why it is kept. Please keep that habit; it is the difference
 between a port and a rewrite.
-
-## Regenerating the oracle
-
-```bash
-PLACER_SRC=/path/to/PLACER HTSLIB_INCLUDE_DIR=/path/to/htslib/include \
-  tools/regenerate_oracle.sh
-git diff -- tests/oracle/cpp_reference.json
-```
-
-A non-empty diff means the contract moved. Review it before committing.
 
 ## What is deliberately not here
 

@@ -13,7 +13,7 @@ abPOA installed -- they are `StageHooks.consensus_fn`'s default and the refusal
 that `CONTRIBUTING.md` names by name. And `poa_reads_within_budget` is not a
 backend detail at all: the memory cap changes WHICH READS ENTER the consensus,
 which is an algorithm decision with a measured entry in
-`tests/EXPECTED_DIVERGENCE.md`. Only the call into the library is input-stage
+`docs/departures-from-cpp.md`. Only the call into the library is input-stage
 work, and only the call moved.
 """
 

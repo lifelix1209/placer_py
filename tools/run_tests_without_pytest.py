@@ -7,8 +7,7 @@ exists for two situations where that is not available:
 
   * a locked-down or offline environment with no package index, and
   * a fast smoke check that the test MODULES themselves are sound -- that they
-    import, that the golden data loads, that the assertions execute -- without
-    installing anything.
+    import and that the assertions execute -- without installing anything.
 
 It implements the pytest surface the suite uses: `fixture` (including
 `scope="session"` and yield-fixtures), `mark.parametrize`, `mark.<name>`,
@@ -28,7 +27,7 @@ exceptions, a skip not failing the run -- parity with pytest won, and the
 comment at that point says so.
 
     python3 tools/run_tests_without_pytest.py           # everything
-    python3 tools/run_tests_without_pytest.py test_09   # one module
+    python3 tools/run_tests_without_pytest.py test_04   # one module
 """
 
 from __future__ import annotations
@@ -36,7 +35,6 @@ from __future__ import annotations
 import importlib.util
 import inspect
 import itertools
-import json
 import sys
 import types
 from pathlib import Path
@@ -476,22 +474,6 @@ def run_module(path: Path, conftest_fixtures: dict, session: _Session) -> Module
     return report
 
 
-def check_oracle_present() -> None:
-    """Fail fast, and say how to fix it.
-
-    The `oracle` fixture in `tests/conftest.py` is what actually loads the
-    file -- this only front-runs it, because 673 tests reporting one missing
-    input file is a worse message than one line before anything runs.
-    """
-    path = TESTS / "oracle" / "cpp_reference.json"
-    if not path.exists():
-        print(f"FATAL: golden vectors missing at {path}")
-        print("Regenerate with tools/regenerate_oracle.sh")
-        sys.exit(2)
-    with path.open() as handle:
-        json.load(handle)
-
-
 def main() -> int:
     pattern = sys.argv[1] if len(sys.argv) > 1 else ""
     files = sorted(p for p in TESTS.glob("test_*.py") if pattern in p.name)
@@ -503,7 +485,6 @@ def main() -> int:
     sys.modules["pytest"] = _build_pytest_stub()
     sys.path.insert(0, str(TESTS))
     sys.path.insert(0, str(ROOT))
-    check_oracle_present()
 
     try:
         conftest = _import_path(TESTS / "conftest.py", "conftest")

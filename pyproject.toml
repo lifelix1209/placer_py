@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "placer-py"
 version = "0.1.0"
-description = "Python port of the PLACER pipeline: BAM to TE insertion calls, constrained by golden vectors from the C++ implementation"
+description = "Python port of the PLACER pipeline: BAM to TE insertion calls"
 readme = "README.md"
 # 3.9 works and is what the suite is run on: every module uses
 # `from __future__ import annotations`, so the `X | Y` syntax throughout is
@@ -73,20 +73,16 @@ testpaths = ["tests"]
 pythonpath = [".", "tests"]
 # -r s prints the skip reasons, which is how any remaining migration surface is
 # read off the suite: every skip is one unported function.
-# --import-mode=importlib is REQUIRED, not a preference. There are two
-# conftest.py files (tests/ and tests/redesign/). Under the default "prepend"
-# mode both are registered in sys.modules under the basename `conftest`, so
-# whichever loads second wins and the 28 test files doing
-# `from conftest import call_or_skip, close` get the wrong one -- 28 collection
-# errors, which is why the pytest CI job had never passed. importlib mode
-# derives a unique module name from each path.
+# --import-mode=importlib: when there were two conftest.py files, the default
+# "prepend" mode registered both as `conftest` and the second shadowed the
+# first. There is one now, but the tests still do `from conftest import ...`,
+# and importlib mode keeps that unambiguous if a second ever appears.
 #
 # --strict-config turns an unknown ini key into an error. Without it a typo'd
 # option is a warning that scrolls past, which is exactly how the line above
 # was first written wrong (as a bare `importmode =` key) and silently ignored.
 addopts = "-q -r s --strict-markers --strict-config --import-mode=importlib"
 markers = [
-    "golden: asserts equality against a vector frozen from the C++ implementation",
     "invariant: asserts a mathematical property that any implementation must satisfy",
     "regression: pins a bug that was found and fixed, so it cannot come back",
     "contract: pins the ledger schema, i.e. the seam between the two languages",
@@ -165,8 +161,7 @@ ignore = [
     # E501 finds no defects, and enabling it here would contradict the
     # paragraph above. `line-length` is still set, so `ruff format` and any
     # editor reading this file agree on the target; what is not wanted is 80
-    # existing lines flagged forever, 58 of them in `placer_py/redesign/`,
-    # which is code the refactor is going to remove rather than reflow.
+    # existing lines flagged forever.
     "E501",
 ]
 

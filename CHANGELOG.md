@@ -6,7 +6,7 @@ follow [semantic versioning](https://semver.org/spec/v2.0.0.html).
 
 Numerical behaviour that departs from the C++ implementation on purpose is not
 summarised here: each departure is recorded in
-[`tests/EXPECTED_DIVERGENCE.md`](tests/EXPECTED_DIVERGENCE.md) with what moved,
+[`docs/departures-from-cpp.md`](docs/departures-from-cpp.md) with what moved,
 by how much, and how it was measured. This file says *that* something changed;
 that file says what it cost.
 
@@ -93,10 +93,28 @@ project's numbering, not this package's.)
   the packaging job installs the built wheel into a clean environment and runs
   the console script.
 
+### Removed
+
+- The C++ golden-vector oracle (`tests/oracle/cpp_reference.json`,
+  `tools/dump_oracle.cpp`, `tools/regenerate_oracle.sh`) and the tests that
+  asserted equality against it are gone; placer is now the reference
+  implementation. The record of how it departed from the C++ up to that point
+  is kept as [`docs/departures-from-cpp.md`](docs/departures-from-cpp.md).
+- **`placer-py denovo`** (trio de novo calling) and `placer_py/redesign/` (the
+  pre-port implementation that took candidates from a Sniffles VCF). The one
+  piece of the redesign nothing else had -- the L1 endonuclease motif -- moved
+  to `placer_py/core/endonuclease.py` first; see Fixed.
+
 ### Fixed
 
+- The L1 endonuclease motif's minus-strand window was assembled in the wrong
+  order (`revcomp(right[:4] + left[-2:])`), so a perfect bottom-strand
+  5'-TTTT|AA-3' site scored as four mismatches out of six. It is now
+  `revcomp(left[-2:] + right[:4])`, pinned in `tests/test_39_endonuclease.py`.
+  The motif is not on the calling path yet, so no call changes.
+
 Caller fixes from the first real-data runs, each recorded with its measured
-effect in `tests/EXPECTED_DIVERGENCE.md` (5-9). On HG002 chr21:10-20 Mb: TE
+effect in `docs/departures-from-cpp.md` (5-9). On HG002 chr21:10-20 Mb: TE
 calls 12 -> 9, GIAB TE truth recalled 2/3 -> 3/3, calls labelled from a simple
 repeat or a <= 30 bp match 7 -> 0.
 

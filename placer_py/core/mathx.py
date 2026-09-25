@@ -119,8 +119,8 @@ def beta_binomial_log_pmf(alt: int, total: int, alpha: float, beta: float) -> fl
 
     THE SIGNATURE IS `(alt, total, alpha, beta)`, NOT `(k, n, mu, rho)`, and
     `genotype.py` explains why: the C++ converts mu/rho to alpha/beta inside
-    `genotype_log_likelihood`, so keeping the split means the golden
-    comparison exercises the same two functions it does. The mu/rho form reads
+    `genotype_log_likelihood`, so keeping the split keeps the same two
+    functions it has. The mu/rho form reads
     more naturally and is the wrong port boundary.
     """
     if alt < 0 or total < 0 or alt > total or alpha <= 0.0 or beta <= 0.0:

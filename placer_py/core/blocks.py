@@ -1,24 +1,24 @@
 """
 The six mechanistic evidence blocks and the two aggregates.
 
-Ported from `src/pipeline/mechanistic_evidence.cpp`, pinned by the eight golden
-certificates in `tests/test_01_blocks.py` and the cross-field algebra in
-`tests/test_09_oracle_selfconsistency.py`.
+Ported from `src/pipeline/mechanistic_evidence.cpp`; the eight certificate
+scenarios and the cross-field algebra are pinned in `tests/test_01_blocks.py`.
 
-WHAT THIS IS FOR, and it is not the decision path.
+WHAT THIS IS FOR -- and, despite what this docstring used to say, it IS the
+decision path today. `policy.evaluate_joint_hypotheses` gates emission on
+`evaluate_robust_lfdr`, and the raw log-BFs from `build_certificate` are the
+e-values finalization feeds to the dependency cap and e-BH.
 
-These six affine maps carry nineteen hand-set constants, and the measurement in
-`tests/test_12_head_to_head.py` shows they cannot support genome-scale FDR
-control at all: each block is clamped to a small range, the total caps near 9.9
-nats, and e-BH's rank-1 threshold at m=1060, q=0.10 is 9.27 nats before any
-penalty. Worse, their null expectation is an unknown number that has to be
-measured, and `placer_py/core/decoys.py` shows that it cannot be -- both candidate
-samples fail, in opposite directions.
-
-So this module exists to reproduce the C++ EXACTLY, for the diff, and not to be
-used for calling. `placer_py/core/tprt.py` is the decision path: real log-LRs whose
-null expectation is 1 by construction, measured at 0.186 on simulated nulls, and
-which recover 96% recall at FDP 0.000 where these score nothing.
+That is the problem the multi-species refactor fixes. These six affine maps
+carry nineteen hand-set constants and cannot support genome-scale FDR control:
+each block is clamped to a small range, the total caps near 9.9 nats, and
+e-BH's rank-1 threshold at m=1060, q=0.10 is 9.27 nats before any penalty.
+Their null expectation is an unknown number that has to be measured, and
+`placer_py/core/decoys.py` shows that it cannot be. `placer_py/core/tprt.py`
+holds the replacement: real log-LRs whose null expectation is 1 by
+construction (0.186 measured on simulated nulls), which recover 96% recall at
+FDP 0.000 in `tests/test_13_end_to_end.py` where these score nothing. This
+module is removed once that replacement is on the calling path.
 
 Ported unchanged anyway, including two inconsistencies, because a migration that
 changes behaviour cannot be validated by diffing against the thing it replaces:

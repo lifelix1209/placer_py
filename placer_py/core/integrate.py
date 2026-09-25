@@ -1,9 +1,12 @@
 """
 Join the two layers: the existing mechanistic score, and FDR control.
 
-This is the first time the Python side has any FDR control at all. The existing
-`placer_py/redesign/model/mechanistic.py` produces a per-candidate `loglr` and a hallmark tier, and
-then the decision is a threshold on those. That gives no guarantee over a
+TRANSITIONAL. This is the off-pipeline prototype of the decision layer the
+multi-species refactor puts on the calling path (a per-class log-LR under e-BH,
+checked by shifted decoys); `tests/test_13_end_to_end.py` is its acceptance
+test, and both move onto the live path together. It was written against the
+pre-port redesign's mechanistic score, which produced a per-candidate `loglr`
+and a hallmark tier, and then the decision was a threshold on those. That gives no guarantee over a
 whole-genome run: several tens of thousands of candidates, each judged locally,
 and nothing bounding how many of the reported ones are wrong.
 
@@ -29,9 +32,8 @@ the real insertions stop passing too. So:
     in this architecture the hand-set constants can only cost RECALL.
     They cannot inflate the FDR.
 
-`tests/test_11_integration.py::test_bad_mechanistic_constants_cannot_break_fdr`
-demonstrates exactly that, by deliberately scrambling the weights and checking
-the guarantee survives.
+`tests/test_13_end_to_end.py` checks the same property the other way round:
+a misspecified score is refused by the decoy check rather than reported.
 
 THE ONE THING THAT CAN BREAK IT is the sigma estimate itself, which is why
 `dependency.calibration_rows` excludes nothing. sigma is a MEAN dominated by its
@@ -57,8 +59,8 @@ from . import dependency, selection
 class Candidate:
     """One locus, reduced to what selection needs.
 
-    `log_score` is whatever the mechanistic layer produced -- currently
-    `placer_py.redesign.model.mechanistic.mechanistic_te_score(...).loglr`. Nothing here assumes it
+    `log_score` is whatever the mechanistic layer produced -- in
+    `tests/test_13_end_to_end.py`, the TPRT log-LR. Nothing here assumes it
     is calibrated, or a likelihood ratio, or even monotone in anything. It only
     has to be a fixed function of the data.
     """
@@ -134,7 +136,7 @@ def select_likelihood(rows: Sequence[dict], score_fn: Callable[[dict], float],
     the true positives saturate the cap and set sigma themselves, the headroom
     collapses to `1/pi`, and e-BH's requirement cannot be met for any q < 1 --
     for any score, and worse the better the score is. See `placer_py/core/decoys.py`
-    for the algebra and `tests/test_12_head_to_head.py` for the measurement.
+    for the algebra and the README's "The blocker" for the measurement.
 
     A genuine likelihood ratio does not need the estimate at all, because
     `E_null[p1/p0] = 1` holds by construction. Measured on the TPRT terms over
@@ -201,9 +203,8 @@ def select(candidates: Sequence[Candidate], q: float = 0.10) -> SelectionResult:
 
     RETAINED FOR THE RECORD, not for use. This is what the C++ does and what
     this port did first, and it cannot select anything at genome scale -- see
-    `select_likelihood` and `placer_py/core/decoys.py`. Kept because the golden
-    vectors pin it and because the comparison in
-    `tests/test_12_head_to_head.py` needs both paths.
+    `select_likelihood` and `placer_py/core/decoys.py`. Kept only until the
+    decision layer is rewritten, as the contrast `test_13` draws.
 
     1. Calibrate sigma on EVERY candidate. Not on a subset chosen by the score:
        see `dependency.calibration_rows`. Contamination by true positives
@@ -248,8 +249,8 @@ def candidates_from_mechanistic(rows: Sequence[dict],
     Adapter from evidence rows to `Candidate`, so the selection layer never
     imports the mechanistic layer and the two stay independently testable.
 
-    `score_fn` takes a row and returns a log score -- in practice a closure over
-    `placer_py.redesign.model.mechanistic.mechanistic_te_score`. Keeping it injected is what lets
+    `score_fn` takes a row and returns a log score -- in `test_13`, a closure
+    over the TPRT terms. Keeping it injected is what lets
     the integration tests scramble the weights deliberately and check that the
     FDR guarantee survives it.
     """

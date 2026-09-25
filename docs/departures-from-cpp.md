@@ -1,5 +1,8 @@
 # Deliberate divergences from the C++
 
+> **Historical record.** This is how this implementation departed from the C++ PLACER up to the point the C++ stopped being the reference.
+> The golden-vector oracle and the tests it refers to have since been removed; placer is now the reference implementation.
+
 `tests/oracle/cpp_reference.json` is frozen out of
 [lifelix1209/PLACER](https://github.com/lifelix1209/PLACER) and the suite still
 asserts against it. What changed is what a failure MEANS.

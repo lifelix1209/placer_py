@@ -131,9 +131,10 @@ def test_a_session_yield_fixture_is_not_torn_down_between_tests(
     assert _session_teardown_log == ["setup"]
 
 
-def test_fixtures_defined_in_conftest_are_visible_here(oracle: dict) -> None:
-    # `oracle` lives in tests/conftest.py. The zero-dependency runner used to
-    # special-case this one name by inspecting the signature; it now resolves
-    # it as a fixture like any other, which is why this assertion is about
-    # more than the golden file being readable.
-    assert isinstance(oracle, dict) and oracle, "conftest's oracle fixture"
+def test_fixtures_defined_in_conftest_are_visible_here(repo_root) -> None:
+    # `repo_root` lives in tests/conftest.py. The zero-dependency runner used
+    # to special-case one conftest fixture name by inspecting the signature;
+    # it now resolves conftest fixtures like any other, which is what this
+    # assertion checks.
+    assert (repo_root / "tests" / "conftest.py").is_file(), (
+        "conftest's repo_root fixture")

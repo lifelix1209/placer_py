@@ -10,7 +10,7 @@ is the reason it was designed that way: the zero-dependency runner has no
 `monkeypatch`, so a renderer that took a `fetch_reference` function could not
 be pinned at this level at all.
 
-THE ANCHOR TEST IS THE LOAD-BEARING ONE. Nothing in the golden vectors relates
+THE ANCHOR TEST IS THE LOAD-BEARING ONE. Nothing else in the suite relates
 `bp_left` to the reference base a VCF record is anchored on, so getting it
 backwards would shift every record by one base and break no existing test. It
 is fixed here from two independent directions -- what `tsd.py` and

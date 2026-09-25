@@ -1,7 +1,7 @@
 """
 Selection: e-BH, the conformal route, and the combination rule.
 
-Mostly INVARIANT tests rather than golden ones, because the guarantees here are
+Mostly INVARIANT tests rather than fixed values, because the guarantees here are
 mathematical: they must hold for any correct implementation, in any language,
 and they are what a port can most easily break while still looking plausible.
 """
@@ -61,7 +61,7 @@ def test_controls_fdr_under_the_null_by_simulation():
 
     This is the single test most worth having: it constrains the procedure
     rather than the arithmetic, so it catches an off-by-one in the step-up rule
-    that golden vectors on a handful of cases would miss.
+    that fixed values on a handful of cases would miss.
     """
     rng = random.Random(20240914)
     q = 0.10

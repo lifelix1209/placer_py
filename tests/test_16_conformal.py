@@ -1,4 +1,4 @@
-"""Golden conformal selection. Ported from conformal_selector.cpp."""
+"""Conformal selection. Ported from conformal_selector.cpp."""
 
 from __future__ import annotations
 
@@ -7,11 +7,9 @@ from conftest import call_or_skip, close
 
 from placer_py.core import conformal as C
 
-pytestmark = pytest.mark.golden
-
 
 def _build(n_nulls: int, n_candidates: int, contexts: int):
-    """Mirrors tools/dump_oracle.cpp's deterministic ramp exactly."""
+    """A deterministic ramp of null controls and candidates, no RNG."""
     selector = C.ConformalNullSelector()
     for i in range(n_nulls):
         t = i / max(1, n_nulls - 1)
@@ -31,24 +29,6 @@ def _build(n_nulls: int, n_candidates: int, contexts: int):
             ref_span_reads=6.0 - 5.0 * t,
             context=i % max(1, contexts)))
     return selector, candidates
-
-
-def test_every_conformal_scenario_matches_the_cpp(oracle):
-    for golden in oracle["conformal"]:
-        selector, candidates = _build(golden["n_nulls"],
-                                      golden["n_candidates"],
-                                      golden["contexts"])
-        results = call_or_skip(selector.select, candidates, golden["q"])
-        assert len(results) == len(golden["results"]), golden["name"]
-        for got, want in zip(results, golden["results"]):
-            label = f"{golden['name']}::{want['id']}"
-            assert got.id == want["id"], label
-            close(got.conformal_p, want["conformal_p"], f"{label}.p")
-            close(got.by_threshold, want["by_threshold"], f"{label}.threshold")
-            assert got.dominated_null_count == want["dominated"], label
-            assert got.null_count == want["null_count"], label
-            assert got.pass_ == want["pass"], label
-            assert got.qc == want["qc"], label
 
 
 @pytest.mark.invariant
