@@ -729,24 +729,26 @@ def _finalize_evidence(evidence: TEAlignmentEvidence, insert_seq: str,
         evidence.cross_family_margin, evidence.second_score,
         evidence.sequence_model_label, evidence.sequence_model_score,
         te_class=evidence.annotation_class, te_strand=evidence.te_strand)
+    core_start, core_end = _core_in_element_orientation(evidence, insert_seq)
     evidence.element_structure = measure_element_structure(
         insert_seq, evidence.annotation_class, evidence.te_strand,
         evidence.te_consensus_start, evidence.te_consensus_end,
-        evidence.te_element_length, _core_end_in_element_orientation(evidence, insert_seq),
-        evidence.annotation_order)
+        evidence.te_element_length, core_end, evidence.annotation_order,
+        core_start)
     return evidence
 
 
-def _core_end_in_element_orientation(evidence: TEAlignmentEvidence,
-                                     insert_seq: str) -> int:
-    """Where the aligned core ends, counted in the element's orientation."""
+def _core_in_element_orientation(evidence: TEAlignmentEvidence,
+                                 insert_seq: str) -> tuple[int, int]:
+    """The aligned core's [start, end) on the insert, in element orientation."""
     if evidence.te_query_end <= evidence.te_query_start or evidence.te_query_start < 0:
-        return -1
+        return -1, -1
     if evidence.te_strand == "-":
-        return len(insert_seq) - evidence.te_query_start
+        n = len(insert_seq)
+        return n - evidence.te_query_end, n - evidence.te_query_start
     if evidence.te_strand == "+":
-        return evidence.te_query_end
-    return -1
+        return evidence.te_query_start, evidence.te_query_end
+    return -1, -1
 
 
 #: A hit NAMES an element only if at least this many of the insert bases it

@@ -162,13 +162,19 @@ def _identity(a: str, b: str) -> float:
 def measure(insert_seq: str, te_class: str, strand: str,
             consensus_start: int = -1, consensus_end: int = -1,
             element_length: int = -1, core_end_on_insert: int = -1,
-            superfamily: str = "") -> ElementStructure:
+            superfamily: str = "", core_start_on_insert: int = -1) -> ElementStructure:
     """Measure the class's hallmarks on one insert.
 
     `consensus_start`/`consensus_end` are the best alignment's interval on the
     element (0-based half-open), `element_length` the element's length, and
-    `core_end_on_insert` where the aligned core ends on the insert in ELEMENT
-    orientation (-1 when unknown).
+    `core_start_on_insert`/`core_end_on_insert` where the aligned core starts
+    and ends on the insert in ELEMENT orientation (-1 when unknown).
+
+    The terminal probes (LTR TG...CA, TIRs, Helitron TC...CTRR) read the CORE,
+    not the whole insert: the insert also carries the second copy of the
+    target site, and a tail or transduction, which would shift every probe
+    off the element's own ends. The tail is measured on the whole insert,
+    since it lies outside the core by definition.
     """
     cls = _class_of(te_class, superfamily)
     out = ElementStructure(te_class=cls.value,
@@ -191,14 +197,17 @@ def measure(insert_seq: str, te_class: str, strand: str,
         tail_start = len(seq) - out.polya_len
         out.transduction_len = max(0, tail_start - core_end_on_insert)
 
-    if len(seq) >= 4:
-        out.ltr_start_matches = _matches(seq[:2], "TG")
-        out.ltr_end_matches = _matches(seq[-2:], "CA")
-        out.helitron_start_matches = _matches(seq[:2], "TC")
-        out.helitron_end_matches = _matches(seq[-4:], "CTRR")
-    if len(seq) >= 2 * TIR_PROBE_BP:
-        out.tir_identity = _identity(seq[:TIR_PROBE_BP],
-                                     reverse_complement(seq[-TIR_PROBE_BP:]))
+    core = seq
+    if 0 <= core_start_on_insert < core_end_on_insert <= len(seq):
+        core = seq[core_start_on_insert:core_end_on_insert]
+    if len(core) >= 4:
+        out.ltr_start_matches = _matches(core[:2], "TG")
+        out.ltr_end_matches = _matches(core[-2:], "CA")
+        out.helitron_start_matches = _matches(core[:2], "TC")
+        out.helitron_end_matches = _matches(core[-4:], "CTRR")
+    if len(core) >= 2 * TIR_PROBE_BP:
+        out.tir_identity = _identity(core[:TIR_PROBE_BP],
+                                     reverse_complement(core[-TIR_PROBE_BP:]))
     return out
 
 
