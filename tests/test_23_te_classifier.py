@@ -625,3 +625,20 @@ def test_another_familys_hit_does_not_add_to_the_coverage():
     evidence = T.build_insert_alignment_evidence_from_blast_hits(seq, True, hits, 0.04)
     assert evidence.best_family == "L1"
     close(evidence.best_query_coverage, 0.6, "L1 alone")
+
+
+def test_a_miss_against_a_de_novo_library_is_not_held_against_the_insert():
+    """A curated library (Dfam) holds essentially every known repeat of the
+    species, so matching nothing is evidence against a TE. A de novo library
+    (EDTA, RepeatModeler2) may simply never have seen the element, so the
+    same miss is left uninformative rather than labelled an outlier."""
+    curated = T.build_insert_alignment_evidence_from_blast_hits(TEA * 4, True, [], 0.04)
+    assert curated.qc_reason == "NO_TE_ALIGNMENT_MATCH"
+    assert curated.sequence_model_label == "TE_MODEL_OUTLIER"
+    close(curated.sequence_model_score, -0.50, "curated miss")
+
+    denovo = T.build_insert_alignment_evidence_from_blast_hits(
+        TEA * 4, True, [], 0.04, library_complete=False)
+    assert denovo.qc_reason == "NO_TE_ALIGNMENT_MATCH"
+    assert denovo.sequence_model_label == "TE_MODEL_UNAVAILABLE"
+    close(denovo.sequence_model_score, 0.0, "de novo miss")

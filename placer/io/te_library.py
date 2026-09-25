@@ -54,6 +54,11 @@ def load_te_library(te_fasta_path: str) -> list[TeEntry]:
         return load_te_entries_from_fasta(handle.read())
 
 
+def library_is_complete(config: PipelineConfig) -> bool:
+    """Whether a miss against the library is evidence (see the config field)."""
+    return config.te_library_completeness != "denovo"
+
+
 def summarise_te_library(entries: list[TeEntry]) -> LibrarySummary:
     """How many library entries have a class, and where it came from.
 
@@ -82,7 +87,8 @@ def align_insert_sequences(config: PipelineConfig, entries: list[TeEntry],
     """
     if not entries or not config.te_fasta_path:
         return [build_insert_alignment_evidence_from_blast_hits(
-            seq, False, [], config.te_subfamily_margin_min, background)
+            seq, False, [], config.te_subfamily_margin_min, background,
+            library_is_complete(config))
             for seq in insert_seqs]
 
     ks = parse_kmer_sizes_csv(config.te_kmer_sizes_csv, config.te_kmer_size)
@@ -100,7 +106,8 @@ def align_insert_sequences(config: PipelineConfig, entries: list[TeEntry],
 
     return [build_insert_alignment_evidence_from_blast_hits(
         seq, True, hits_by_id.get(unique.get(seq, ""), []),
-        config.te_subfamily_margin_min, background) for seq in insert_seqs]
+        config.te_subfamily_margin_min, background, library_is_complete(config))
+        for seq in insert_seqs]
 
 
 class TeLibraryAligner:
@@ -214,7 +221,8 @@ class TeLibraryAligner:
 
         return [build_insert_alignment_evidence_from_blast_hits(
             seq, True, list(batch_hits.get(seq, [])) if seq else [],
-            config.te_subfamily_margin_min, self.background)
+            config.te_subfamily_margin_min, self.background,
+            library_is_complete(config))
             for seq in insert_seqs]
 
     def align_one(self, insert_seq: str) -> TEAlignmentEvidence:

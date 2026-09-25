@@ -397,3 +397,12 @@ def test_a_flag_beats_an_inherited_environment_variable():
     close(config.final_fdr_q, 0.01, "flag wins")
     assert config.final_report_mode == FinalReportMode.LEGACY
     assert config.bin_size == 5000
+
+
+def test_library_completeness_defaults_to_curated_and_takes_a_flag():
+    parser = M.build_arg_parser()
+    default = M.config_from_args(parser.parse_args(["a.bam", "ref.fa", "te.fa"]), {})
+    assert default.te_library_completeness == "curated"
+    denovo = M.config_from_args(parser.parse_args(
+        ["--library-completeness", "denovo", "a.bam", "ref.fa", "te.fa"]), {})
+    assert denovo.te_library_completeness == "denovo"

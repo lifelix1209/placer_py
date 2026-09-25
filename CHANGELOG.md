@@ -31,6 +31,10 @@ project's numbering, not this package's.)
   cichlid MWCichlidTE-3.2 library 565 of 599 by superfamily (the other 34 are
   `Unknown` in the library itself). The run log states the counts, and warns
   when over half the library is unclassified.
+- **`--library-completeness {curated,denovo}`**. With a curated library (the
+  default: Dfam, RepBase) an insert that matches nothing counts against it, as
+  before. With `denovo` (EDTA, RepeatModeler2 on a non-model genome) the same
+  miss is left uninformative, since it may be an element the library never saw.
 
 - **`--threads N`** (`-t`): the scan runs on N processes. The genome is cut at
   bin boundaries, the pieces are scanned independently and rejoined in genome

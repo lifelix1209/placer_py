@@ -56,6 +56,12 @@ class PipelineConfig:
     te_fasta_path: str = ""
     te_blastn_path: str = "blastn"
     te_makeblastdb_path: str = "makeblastdb"
+    #: "curated" (Dfam, RepBase: essentially every known repeat of the species)
+    #: or "denovo" (EDTA, RepeatModeler2 on a non-model genome). Decides what an
+    #: insert that matches NOTHING in the library means: in a curated library
+    #: that is evidence against a TE (`TE_MODEL_OUTLIER`); in a de novo one it
+    #: may be a real element the library never saw, so it is left neutral.
+    te_library_completeness: str = "curated"
     bam_region_scope: BamRegionScope = field(default_factory=BamRegionScope)
 
     bam_threads: int = 2

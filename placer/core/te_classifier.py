@@ -728,18 +728,23 @@ def informative_aligned_bases(hit: BlastSubjectHit, mask: list[bool]) -> int:
 def build_insert_alignment_evidence_from_blast_hits(
         insert_seq: str, has_blast_db: bool, hits: list[BlastSubjectHit],
         subfamily_margin_min: float,
-        sequence_background: TeSequenceBackground | None = None
+        sequence_background: TeSequenceBackground | None = None,
+        library_complete: bool = True
 ) -> TEAlignmentEvidence:
     """Turn collapsed BLAST hits into the evidence the decision policy reads.
 
     FOUR outcomes, and the `qc_reason` names which:
 
       * `TE_LIBRARY_UNAVAILABLE` / `EMPTY_INSERT_SEQUENCE` -- nothing was asked.
-      * `NO_TE_ALIGNMENT_MATCH` -- asked, nothing found. This is the only path
-        that sets a NEGATIVE sequence-model score (-0.50) and labels the insert
-        a `TE_MODEL_OUTLIER`: failing to match a library of essentially every
-        known human repeat is itself evidence, and the alternative -- scoring it
-        0 -- would make "no TE" and "no information" the same number.
+      * `NO_TE_ALIGNMENT_MATCH` -- asked, nothing found. Against a curated
+        library (`library_complete`) this sets a NEGATIVE sequence-model score
+        (-0.50) and labels the insert a `TE_MODEL_OUTLIER`: failing to match a
+        library of essentially every known repeat of the species is itself
+        evidence, and scoring it 0 would make "no TE" and "no information" the
+        same number. Against a de novo library (EDTA, RepeatModeler2 on a
+        non-model genome) the same miss may be an element the library never
+        saw, so the label stays `TE_MODEL_UNAVAILABLE`, which every consumer
+        scores as uninformative.
       * `PASS_..._UNKNOWN` / `..._FAMILY_ONLY` / `PASS_INSERT_TE_ALIGNMENT` --
         found, named to three different depths.
 
@@ -775,8 +780,9 @@ def build_insert_alignment_evidence_from_blast_hits(
 
     if not hits:
         evidence.qc_reason = "NO_TE_ALIGNMENT_MATCH"
-        evidence.sequence_model_label = "TE_MODEL_OUTLIER"
-        evidence.sequence_model_score = -0.50
+        if library_complete:
+            evidence.sequence_model_label = "TE_MODEL_OUTLIER"
+            evidence.sequence_model_score = -0.50
         return _finalize_evidence(evidence, insert_seq,
                                   evidence.best_query_coverage, sequence_background)
 

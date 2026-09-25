@@ -80,7 +80,8 @@ UNCLASSIFIED_LIBRARY_WARN_FRACTION = 0.5
 
 USAGE = ("placer [--region <chrom:start-end>] [--threads <n>] [--final-fdr-q <q>] "
          "[--final-report-mode <legacy|te-calibrated>] "
-         "[--min-final-raw-cigar-insert-len-bp <bp>] <input.bam> <ref.fa> <te.fa>")
+         "[--min-final-raw-cigar-insert-len-bp <bp>] "
+         "[--library-completeness <curated|denovo>] <input.bam> <ref.fa> <te.fa>")
 
 
 def parse_region_scope(region: str) -> BamRegionScope:
@@ -191,6 +192,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         choices=("legacy", "te-calibrated"),
                         help="legacy keeps structural insertions in the main output")
     parser.add_argument("--min-final-raw-cigar-insert-len-bp", type=int, default=None)
+    parser.add_argument("--library-completeness", default=None,
+                        choices=("curated", "denovo"),
+                        help="curated (default; Dfam, RepBase): an insert that "
+                             "matches nothing counts against it. denovo (EDTA, "
+                             "RepeatModeler2 on a non-model genome): such an "
+                             "insert may be an element the library never saw, "
+                             "and the miss is not held against it")
     parser.add_argument("--output-dir", default=".",
                         help="where the five output files are written")
     parser.add_argument("bam")
@@ -223,6 +231,8 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
                                     else FinalReportMode.TE_CALIBRATED)
     if args.min_final_raw_cigar_insert_len_bp is not None:
         config.min_final_raw_cigar_insert_len_bp = args.min_final_raw_cigar_insert_len_bp
+    if args.library_completeness is not None:
+        config.te_library_completeness = args.library_completeness
     return config
 
 
@@ -268,7 +278,8 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
               file=sys.stderr)
         return 1
     library = summarise_te_library(entries)
-    print(f"[PLACER] TE library {library.render()}", file=sys.stderr)
+    print(f"[PLACER] TE library ({config.te_library_completeness}) "
+          f"{library.render()}", file=sys.stderr)
     if library.unknown_fraction > UNCLASSIFIED_LIBRARY_WARN_FRACTION:
         print(f"[PLACER] WARNING: {library.unknown_fraction:.0%} of the TE library "
               "has no recognisable class. Calls against those entries get class "
