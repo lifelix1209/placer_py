@@ -418,6 +418,82 @@ def build_event_consensus(local_records: list[AlignedRead],
 
 
 # ---------------------------------------------------------------------------
+# Side consensuses: an insertion seen only through clips
+# ---------------------------------------------------------------------------
+#: How far from the junction each side's clipped bases are used. Enough for an
+#: element's end to be named; a longer clip reaches the far flank or another
+#: element, which adds nothing to naming this one.
+SIDE_CONSENSUS_MAX_BP = 3000
+
+
+@dataclass
+class SideConsensus:
+    """The two ends of an insert that no read spans, each assembled alone.
+
+    `start_seq` is the insert's first bases in reference orientation -- the
+    clipped tails of reads aligned to the LEFT of the junction -- and
+    `end_seq` its last, from reads aligned to the RIGHT. Each side's strings
+    share one end (the junction), which is what lets them be assembled: the
+    partial-context consensus mixes the two kinds, and on short-read ONT
+    (cichlid D2, mean read ~1.9 kb) that produced ~170 bp of flank and junk
+    at insertions tldr names as Rex-Babar or Gypsy elements several hundred bp
+    long.
+    """
+
+    start_seq: str = ""
+    end_seq: str = ""
+    start_reads: int = 0
+    end_reads: int = 0
+
+
+def build_side_consensuses(local_records: list[AlignedRead],
+                           fragments: list[InsertionFragment],
+                           event_evidence: EventReadEvidence,
+                           consensus_fn: Callable[[list[str]], str] = single_sequence_consensus
+                           ) -> SideConsensus:
+    """Assemble each side of the insert from the clips that reach into it."""
+    out = SideConsensus()
+    support_qnames = set(event_evidence.support_qnames)
+    starts: dict[str, str] = {}
+    ends: dict[str, str] = {}
+    for fragment in fragments:
+        if (not fragment.read_id or fragment.read_id not in support_qnames
+                or not fragment_supports_event_consensus(fragment)
+                or not fragment_is_local_to_event(fragment, event_evidence.bp_left,
+                                                  event_evidence.bp_right)):
+            continue
+        seq = upper_acgt(fragment.sequence)
+        if not seq:
+            continue
+        if fragment.source == InsertionFragmentSource.CLIP_REF_RIGHT:
+            seq = seq[:SIDE_CONSENSUS_MAX_BP]           # starts at the junction
+            target = starts
+        elif fragment.source == InsertionFragmentSource.CLIP_REF_LEFT:
+            seq = seq[-SIDE_CONSENSUS_MAX_BP:]          # ends at the junction
+            target = ends
+        else:
+            continue
+        if len(seq) > len(target.get(fragment.read_id, "")):
+            target[fragment.read_id] = seq
+
+    def assemble(strings: list[str]) -> str:
+        if not strings:
+            return ""
+        strings = sorted(strings, key=lambda x: (-len(x), x))
+        if len(strings) == 1:
+            return strings[0]
+        try:
+            return upper_acgt(consensus_fn(strings))
+        except (ConsensusUnavailable, ValueError, RuntimeError):   # names nothing
+            return ""
+
+    out.start_reads, out.end_reads = len(starts), len(ends)
+    out.start_seq = assemble(list(starts.values()))
+    out.end_seq = assemble(list(ends.values()))
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Clip/insert concordance: do the clipped bases match the assembled insert?
 # ---------------------------------------------------------------------------
 #: The comparison window, and the identity it must reach.

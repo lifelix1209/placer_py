@@ -34,7 +34,7 @@ number: the tiers are naming SPECIFICITY, not evidence strength.
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 
 from placer.config import PipelineConfig
 from placer.core import mathx
@@ -674,6 +674,9 @@ class TEAlignmentEvidence:
     #: The best hit's interval on the insert, reference orientation, 0-based.
     te_query_start: int = -1
     te_query_end: int = -1
+    #: Named from the insert's two ends, assembled separately from clips,
+    #: because no read spans it (`combine_side_alignments`).
+    from_clip_sides: bool = False
     #: For an LTR element: "full" (LTR-internal-LTR), "solo", "internal",
     #: "partial" (`core/ltr_pairs.py`); "NA" for any other class.
     ltr_form: str = "NA"
@@ -1004,4 +1007,60 @@ def parse_blast_output(text: str, query_lengths: dict[str, int]
     return hsps_by_query
 
 
+def _names_an_element(evidence: TEAlignmentEvidence) -> bool:
+    return (bool(getattr(evidence, "pass_", False))
+            and evidence.best_family not in ("", "NA", "UNKNOWN")
+            and evidence.annotation_class not in ("NA", "NonTE"))
 
+
+def combine_side_alignments(main: TEAlignmentEvidence,
+                            start: TEAlignmentEvidence | None, start_seq: str,
+                            end: TEAlignmentEvidence | None, end_seq: str
+                            ) -> TEAlignmentEvidence:
+    """Name an insert from its two ends when the assembled insert names nothing.
+
+    `start`/`end` are the alignments of the side consensuses
+    (`consensus.build_side_consensuses`). If both name the same family they
+    are one element seen from both ends: the evidence is the longer side's,
+    with identity length-weighted over both and the aligned bases summed. If
+    they name different families the longer side's is taken at family depth
+    only. The element's structure (its tail) is measured on the side that
+    holds its 3' end -- the insert's end on the plus strand, its start on the
+    minus strand. `main` is returned unchanged when it already names an
+    element or no side does.
+    """
+    if _names_an_element(main):
+        return main
+    sides = [(ev, seq) for ev, seq in ((start, start_seq), (end, end_seq))
+             if ev is not None and _names_an_element(ev)]
+    if not sides:
+        return main
+
+    def aligned(ev: TEAlignmentEvidence) -> int:
+        return max(0, ev.te_query_end - ev.te_query_start)
+
+    sides.sort(key=lambda pair: -aligned(pair[0]))
+    best, _ = sides[0]
+    out = replace(best)
+    agree = len(sides) == 2 and sides[1][0].best_family == best.best_family
+    if agree:
+        total = sum(aligned(ev) for ev, _ in sides)
+        if total > 0:
+            out.best_identity = sum(ev.best_identity * aligned(ev) for ev, _ in sides) / total
+        out.te_query_start, out.te_query_end = 0, total
+        out.te_consensus_start = min(ev.te_consensus_start for ev, _ in sides
+                                     if ev.te_consensus_start >= 0)
+        out.te_consensus_end = max(ev.te_consensus_end for ev, _ in sides)
+        out.qc_reason = "PASS_INSERT_TE_ALIGNMENT_CLIP_SIDES"
+    else:
+        out.best_subfamily = "UNKNOWN"
+        out.qc_reason = "PASS_INSERT_TE_ALIGNMENT_CLIP_SIDES_FAMILY_ONLY"
+    out.annotation_confidence = "MEDIUM"
+    out.from_clip_sides = True
+    three_prime_seq = end_seq if out.te_strand == "+" else start_seq
+    if out.te_strand in ("+", "-") and three_prime_seq:
+        out.element_structure = measure_element_structure(
+            three_prime_seq, out.annotation_class, out.te_strand,
+            out.te_consensus_start, out.te_consensus_end, out.te_element_length,
+            superfamily=out.annotation_order)
+    return out

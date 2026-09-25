@@ -62,6 +62,8 @@ class EvidenceLedgerRow:
     polya_len: int = 0
     transduction_len: int = -1
     ltr_form: str = "NA"
+    #: Named from the insert's two ends, assembled from clips (no read spans it).
+    te_from_clip_sides: bool = False
     #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
     #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
     #: current decision so the two can be compared before one replaces the
@@ -211,6 +213,8 @@ class FinalCall:
     polya_len: int = 0
     transduction_len: int = -1
     ltr_form: str = "NA"
+    #: Named from the insert's two ends, assembled from clips (no read spans it).
+    te_from_clip_sides: bool = False
     #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
     #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
     #: current decision so the two can be compared before one replaces the

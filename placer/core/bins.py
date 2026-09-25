@@ -46,6 +46,7 @@ from placer.core import interval_cache as cache_module
 from placer.core import locus_evidence as locus_module
 from placer.core import policy as policy_module
 from placer.core import segmentation as seg_module
+from placer.core import te_classifier as te_classifier_module
 from placer.core.clustering import ComponentCall, build_component_calls
 from placer.core.contracts import StageHooks
 from placer.core.ledger import EvidenceLedgerRow, FinalCall
@@ -228,6 +229,7 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.polya_len = te_alignment.element_structure.polya_len
     row.transduction_len = te_alignment.element_structure.transduction_len
     row.ltr_form = te_alignment.ltr_form
+    row.te_from_clip_sides = te_alignment.from_clip_sides
     row.family_alignment_resolved = bool(getattr(te_alignment, "pass_", False))
     row.final_qc = _with_poa_cap_token(joint.final_qc, consensus)
     row.posterior_qc = joint.posterior_qc
@@ -364,6 +366,7 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.polya_len = te_alignment.element_structure.polya_len
     call.transduction_len = te_alignment.element_structure.transduction_len
     call.ltr_form = te_alignment.ltr_form
+    call.te_from_clip_sides = te_alignment.from_clip_sides
     call.te_sequence_model_label = te_alignment.sequence_model_label
     call.te_sequence_model_score = te_alignment.sequence_model_score
     call.te_sequence_model_gc = te_alignment.sequence_model_gc
@@ -467,11 +470,22 @@ class _PreparedEvaluation:
     seg_evidence: policy_module.EventSegmentationEvidence
     existence: policy_module.EventExistenceEvidence
     genotype: object
+    #: The insert's two ends assembled separately from clips, when no read
+    #: spans it (`consensus.build_side_consensuses`); None otherwise.
+    sides: consensus_module.SideConsensus | None = None
 
     @property
     def insert_seq_to_align(self) -> str | None:
         return (self.segmentation.insert_seq if self.seg_evidence.has_insert_seq
                 else None)
+
+    @property
+    def seqs_to_align(self) -> list[str | None]:
+        """The insert, then its start and end sides (None where absent)."""
+        sides = self.sides
+        return [self.insert_seq_to_align,
+                (sides.start_seq or None) if sides else None,
+                (sides.end_seq or None) if sides else None]
 
 
 def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRead],
@@ -551,6 +565,17 @@ def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRe
                 consensus = partial_consensus
                 segmentation = partial_segmentation
 
+    # NO READ SPANS IT: assemble the insert's two ends separately from the
+    # clips that reach into them, so the element can still be named. Only when
+    # the event consensus came from partial reads or did not segment -- a
+    # spanning read's insert is better evidence than either end.
+    sides = None
+    if not consensus.used_full_context or not segmentation.pass_:
+        sides = consensus_module.build_side_consensuses(
+            local_records, fragments, evidence, consensus_fn=hooks.consensus_fn)
+        if not (sides.start_seq or sides.end_seq):
+            sides = None
+
     seg_evidence = policy_module.analyze_event_segmentation(
         consensus.qc_pass, segmentation.left_flank_align_len,
         segmentation.right_flank_align_len, segmentation.left_flank_identity,
@@ -561,12 +586,23 @@ def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRe
         component=component, local_records=local_records, fragments=fragments,
         shortlisted=shortlisted, evidence=evidence, consensus=consensus,
         segmentation=segmentation, seg_evidence=seg_evidence, existence=existence,
-        genotype=genotype)
+        genotype=genotype, sides=sides)
 
 
-def _finish_shortlisted(prepared: _PreparedEvaluation, te_alignment: TEAlignmentEvidence,
+def _finish_shortlisted(prepared: _PreparedEvaluation,
+                        alignments: list[TEAlignmentEvidence | None],
                         config: PipelineConfig):
-    """The rest of the expensive stages, once the insert has been aligned."""
+    """The rest of the expensive stages, once the insert has been aligned.
+
+    `alignments` is `[insert, start side, end side]`, None where there was
+    nothing to align; the sides can name an element the insert cannot.
+    """
+    main, start, end = alignments
+    te_alignment = main if main is not None else TEAlignmentEvidence()
+    if prepared.sides is not None:
+        te_alignment = te_classifier_module.combine_side_alignments(
+            te_alignment, start, prepared.sides.start_seq,
+            end, prepared.sides.end_seq)
     evidence = prepared.evidence
     segmentation = prepared.segmentation
     fragments = prepared.fragments
@@ -770,9 +806,16 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                     for shortlisted in shortlist]
         pending.append((component, summary_rows, prepared, anchors))
 
-    alignments = _align_bin_inserts(
-        [item.insert_seq_to_align for _, _, prepared, _ in pending for item in prepared],
-        hooks)
+    # Up to three sequences per hypothesis (insert, start side, end side), all
+    # in the bin's one alignment request.
+    flat = _align_bin_inserts(
+        [seq for _, _, prepared, _ in pending for item in prepared
+         for seq in item.seqs_to_align], hooks)
+    flat_seqs = [seq for _, _, prepared, _ in pending for item in prepared
+                 for seq in item.seqs_to_align]
+    alignments = iter([[flat[i] if flat_seqs[i] is not None else None
+                        for i in range(k, k + 3)]
+                       for k in range(0, len(flat), 3)])
 
     # ONE ROW PER OBSERVATION. Neighbouring components of one locus often
     # triage or evaluate the SAME hypothesis from the same reads, and each used
@@ -791,7 +834,6 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
         bin_rows.append(row)
         result.evidence_ledger.append(row)
 
-    next_alignment = iter(alignments)
     for component, summary_rows, prepared, anchors in pending:
         for row in summary_rows:
             append_row(row)
@@ -799,7 +841,7 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
         for item in prepared:
             shortlisted = item.shortlisted
             (evidence, consensus, segmentation, te_alignment, joint, genotype,
-             seg_evidence) = _finish_shortlisted(item, next(next_alignment), config)
+             seg_evidence) = _finish_shortlisted(item, next(alignments), config)
             shadow = locus_module.score_evaluated_locus(
                 component.chrom, evidence.bp_left, evidence.bp_right,
                 segmentation.insert_seq, te_alignment, evidence.alt_struct_reads,
