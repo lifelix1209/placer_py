@@ -364,8 +364,10 @@ def tsd_term(obs: LocusObservation, model: TsdModel) -> float:
     # (a tandem duplication, a VNTR expansion) or lands beside a copy of the
     # same element, and then chance duplications are everywhere nearby: on the
     # human dev slice the shifted breakpoints scored a mean exp(linkage) of
-    # 3.7e5 under 4^-tau. Where the locus's own shifts find duplications this
-    # long, their rate is the null.
+    # 3.7e5 under 4^-tau. The locus's own shifted breakpoints measure the
+    # rate, with the permutation floor 1/(n+1) -- so a TSD is worth at most
+    # what n shifts can certify, a few nats, and the evidence that an
+    # insertion is HERE rests mainly on the read counts.
     if obs.tsd_empirical_null > 0.0:
         p_null = max(p_null, obs.tsd_empirical_null)
     out = model.log_p_length(tau) - math.log(max(p_null, 1e-300))

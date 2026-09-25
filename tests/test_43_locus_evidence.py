@@ -75,6 +75,7 @@ def test_decoys_are_scored_at_shifted_breakpoints_and_summarised():
     scored = L.score_evaluated_locus("c", bp, bp, "G" * 800 + "A" * 30 + tsd,
                                      _alignment(), 10, 10, fetch, detect)
     assert scored.decoy_count == L.DECOY_COUNT
+    assert scored.observation.tsd_empirical_null == pytest.approx(1 / (L.DECOY_COUNT + 1))
     # No duplication at any decoy: each scores the "no TSD" term, and the EN
     # motif against random flanks, so the mean sits well under 1.
     assert 0.0 < scored.decoy_mean_exp_linkage < 1.0

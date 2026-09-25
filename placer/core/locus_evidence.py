@@ -43,8 +43,8 @@ LOCAL_WINDOW_BP = 100
 #: near enough to be the same neighbourhood, far enough apart (> the longest
 #: TSD searched) that two shifts do not re-find one duplication. They serve
 #: twice -- as the locus's own empirical TSD null, and as its decoys.
-DECOY_COUNT = 40
-DECOY_STEP_BP = 60
+DECOY_COUNT = 100
+DECOY_STEP_BP = 30
 DECOY_RANGE_BP = 1500
 
 _EN_CLASSES = (TeClass.LINE, TeClass.SINE, TeClass.RETROPOSON)
@@ -217,11 +217,19 @@ def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
     lengths = [decoy.tsd_len for decoy in shifted]
 
     def rate_at_least(tau: int, exclude: int = -1) -> float:
+        """(1 + hits) / (n + 1): the permutation estimate, never below 1/(n+1).
+
+        With n shifts the locus can only certify a duplication as rarer than
+        1/(n+1). Letting a zero count fall back to the analytic 4^-tau -- as
+        the first version did -- claimed 1e-12 at loci where 1 shift in 40
+        found a duplication, and the decoys scored a mean exp(linkage) of
+        2.9e10 for SVA and 125 for LTR elements.
+        """
         pool = [n for i, n in enumerate(lengths) if i != exclude]
         if tau <= 0 or not pool:
             return -1.0
         hits = sum(1 for n in pool if n >= tau)
-        return hits / len(pool) if hits else -1.0
+        return (1 + hits) / (1 + len(pool))
 
     obs.tsd_empirical_null = rate_at_least(obs.tsd_len)
     out = LocusScore(observation=obs, score=mech.score_locus(obs, params))
