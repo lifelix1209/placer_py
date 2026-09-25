@@ -1,11 +1,11 @@
-"""Genotype likelihood and GQ behaviour of `placer_py.core.genotype`."""
+"""Genotype likelihood and GQ behaviour of `placer.core.genotype`."""
 
 from __future__ import annotations
 
 import pytest
 from conftest import call_or_skip
 
-from placer_py.core import genotype
+from placer.core import genotype
 
 
 @pytest.mark.regression

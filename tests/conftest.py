@@ -4,7 +4,7 @@ Shared fixtures, and the skip mechanism left over from the migration.
 HOW THIS SUITE IS MEANT TO BE USED
 
 THE PORT IS COMPLETE and this file used to open by saying the opposite --
-"Nothing in `placer_py` is implemented yet" -- which was true when it was
+"Nothing in `placer` is implemented yet" -- which was true when it was
 written and has not been for a long time. `run_tests_without_pytest.py`
 reports `0 skipped (unported)` on every run, so the migration surface it was
 built to measure is empty.

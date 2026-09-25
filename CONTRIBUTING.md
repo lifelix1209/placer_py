@@ -51,7 +51,7 @@ change introduced. Which rules are on — and which are deliberately off, with
 the count of findings each would produce and why that count is noise rather
 than signal — is in `pyproject.toml` next to the settings themselves.
 
-`placer_py/py.typed` is what makes the annotations visible downstream. Without
+`placer/py.typed` is what makes the annotations visible downstream. Without
 it a consumer's own mypy treats every import from this package as `Any`,
 however well annotated it is; the packaging job checks it survives into the
 installed wheel, because a marker present only in the source tree marks
@@ -80,7 +80,7 @@ between a port and a rewrite.
 
 ## What is deliberately not here
 
-- **abPOA.** `placer_py/core/consensus.py` takes the consensus function as an
+- **abPOA.** `placer/core/consensus.py` takes the consensus function as an
   argument and raises rather than approximating. A worse consensus changes the
   insert sequence, the TE identity and the structure decode without changing
   any QC field — the run would look clean and every call would be wrong.

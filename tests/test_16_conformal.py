@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.core import conformal as C
+from placer.core import conformal as C
 
 
 def _build(n_nulls: int, n_candidates: int, contexts: int):

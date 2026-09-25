@@ -15,7 +15,7 @@ that file says what it cost.
 **0.1.0 has never been published.** The version in `pyproject.toml` is the one
 this package was extracted at; there is no release on PyPI or bioconda yet, so
 everything below is the state of `main` rather than an upgrade path. (The
-`0.0.5` mentioned in `placer_py/config.py` is a *PLACER* release — the C++
+`0.0.5` mentioned in `placer/config.py` is a *PLACER* release — the C++
 project's numbering, not this package's.)
 
 ### Added
@@ -39,7 +39,7 @@ project's numbering, not this package's.)
   abstained and appear in no other output.
 - Extracted into a standalone repository with an MIT `LICENSE`, making the code
   legally usable and publishable at all.
-- `placer-py --version`, and `python -m placer_py` as an equivalent entry point.
+- `placer --version`, and `python -m placer` as an equivalent entry point.
 - A runnable example dataset (`examples/make_example_data.py`) with a known
   truth set, and the first end-to-end run of the pipeline on real files rather
   than on literals in a test.
@@ -59,20 +59,20 @@ project's numbering, not this package's.)
   recently fetched reads). See "Speed" in the README for where the time went.
   `rapidfuzz` joins the `scan` extra; without it the pure-Python edit
   distance is used and the answer is the same.
-- **The package is now three named stages**: `placer_py/io/` (everything that
-  talks to something outside the process — pysam, BLAST, abPOA), `placer_py/
-  core/` (everything that decides something) and `placer_py/report/`
+- **The package is now three named stages**: `placer/io/` (everything that
+  talks to something outside the process — pysam, BLAST, abPOA), `placer/
+  core/` (everything that decides something) and `placer/report/`
   (everything that renders). `core` may import neither of the other two, at
   module scope or inside a function body, and `tests/test_37_layering.py`
   enforces that rather than leaving it to a comment. **Import paths changed**:
-  `placer_py.finalization` is now `placer_py.core.finalization`,
-  `placer_py.outputs` is `placer_py.report.tsv`, `placer_py.bam_io` is
-  `placer_py.io.bam`, and so on. No shims were left behind, so a stale import
+  `placer.finalization` is now `placer.core.finalization`,
+  `placer.outputs` is `placer.report.tsv`, `placer.bam_io` is
+  `placer.io.bam`, and so on. No shims were left behind, so a stale import
   fails loudly instead of resolving to something that no longer means what it
   did. Every existing output file is byte-identical across the whole move.
-- Gate-1 is no longer a closure inside the orchestrator: `placer_py/io/gate.py`
+- Gate-1 is no longer a closure inside the orchestrator: `placer/io/gate.py`
   applies it and can be run, counted and replaced on its own. The predicate and
-  its thresholds in `placer_py/reads.py` are unchanged to the byte.
+  its thresholds in `placer/reads.py` are unchanged to the byte.
 - `run_pipeline` is now a composition of `core.scan.run_scan` and
   `core.finalize.finalize_run`, so a caller can scan without calibrating, or
   re-calibrate a scan it already has. Its own signature and behaviour are
@@ -93,6 +93,13 @@ project's numbering, not this package's.)
   the packaging job installs the built wheel into a clean environment and runs
   the console script.
 
+### Changed
+
+- **Renamed to PLACER.** The package is `placer` (was `placer_py`), the
+  command is `placer` (was `placer-py`), and the distribution is `placer-te`,
+  because `placer` on PyPI belongs to an unrelated project. Version
+  `1.0.0.dev0`: this implementation replaces the C++ rather than porting it.
+
 ### Removed
 
 - The C++ golden-vector oracle (`tests/oracle/cpp_reference.json`,
@@ -103,7 +110,7 @@ project's numbering, not this package's.)
 - **`placer-py denovo`** (trio de novo calling) and `placer_py/redesign/` (the
   pre-port implementation that took candidates from a Sniffles VCF). The one
   piece of the redesign nothing else had -- the L1 endonuclease motif -- moved
-  to `placer_py/core/endonuclease.py` first; see Fixed.
+  to `placer/core/endonuclease.py` first; see Fixed.
 
 ### Fixed
 

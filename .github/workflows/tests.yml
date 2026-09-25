@@ -110,15 +110,15 @@ jobs:
           /tmp/clean/bin/pip install dist/*.whl
       - name: The console script must resolve and the package must import
         run: |
-          /tmp/clean/bin/placer-py --version
-          /tmp/clean/bin/python -m placer_py --version
+          /tmp/clean/bin/placer --version
+          /tmp/clean/bin/python -m placer --version
           # No third-party dependency: importing the decision layer in an
           # environment with nothing else installed is the claim `dependencies
           # = []` makes, and this is where it is checked.
-          /tmp/clean/bin/python -c "import placer_py.core.finalization, placer_py.core.policy"
+          /tmp/clean/bin/python -c "import placer.core.finalization, placer.core.policy"
       - name: The typing marker must survive into the installed package
         # `py.typed` present in the source tree and absent from the wheel marks
         # nothing at all: a downstream checker reads the INSTALLED package, and
         # without the marker it treats every import from here as `Any`.
         run: |
-          /tmp/clean/bin/python -c "import placer_py, pathlib; p = pathlib.Path(placer_py.__file__).parent / 'py.typed'; assert p.is_file(), f'py.typed missing from the installed package at {p}'"
+          /tmp/clean/bin/python -c "import placer, pathlib; p = pathlib.Path(placer.__file__).parent / 'py.typed'; assert p.is_file(), f'py.typed missing from the installed package at {p}'"

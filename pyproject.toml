@@ -3,8 +3,8 @@ requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "placer-py"
-version = "0.1.0"
+name = "placer-te"
+version = "1.0.0.dev0"
 description = "Python port of the PLACER pipeline: BAM to TE insertion calls"
 readme = "README.md"
 # 3.9 works and is what the suite is run on: every module uses
@@ -36,15 +36,15 @@ Changelog = "https://github.com/lifelix1209/placer-py/blob/main/CHANGELOG.md"
 "Reference implementation" = "https://github.com/lifelix1209/PLACER"
 
 [project.scripts]
-placer-py = "placer_py.main:main"
+placer = "placer.main:main"
 
 [project.optional-dependencies]
-# The decision layer needs nothing at all: `placer_py.finalization` and
+# The decision layer needs nothing at all: `placer.finalization` and
 # everything it imports run on a ledger alone, which is why these are optional
 # rather than required.
 #
 #   pysam      reading the BAM and the indexed reference
-#   pyabpoa    the event consensus -- see placer_py/consensus.py for why there
+#   pyabpoa    the event consensus -- see placer/consensus.py for why there
 #              is no pure-Python fallback
 #   rapidfuzz  the flank-placement edit distance, which was ~60% of a real run
 #              in pure Python. OPTIONAL even here: `core/breakpoints.py` falls
@@ -57,18 +57,18 @@ scan = ["pysam>=0.22", "pyabpoa>=1.4", "rapidfuzz>=3.0"]
 dev = ["pytest>=7.4", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.5"]
 
 [tool.setuptools.packages.find]
-include = ["placer_py*"]
+include = ["placer*"]
 
 # `py.typed` has to be listed or it is not in the wheel, and a marker that
 # ships only in the source tree marks nothing: without it in the installed
-# package, a downstream mypy or pyright treats every `placer_py` import as
+# package, a downstream mypy or pyright treats every `placer` import as
 # `Any` and none of the annotations below are visible to anyone but us.
 [tool.setuptools.package-data]
-placer_py = ["py.typed"]
+placer = ["py.typed"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# The suite imports `placer_py` and the tests import each other's helpers via
+# The suite imports `placer` and the tests import each other's helpers via
 # conftest, so both the root and tests/ have to be importable.
 pythonpath = [".", "tests"]
 # -r s prints the skip reasons, which is how any remaining migration surface is
@@ -93,7 +93,7 @@ markers = [
 # are checked against -- a 3.10-only stdlib signature would otherwise pass here
 # and fail for a user on the version this package claims to support.
 python_version = "3.9"
-files = ["placer_py"]
+files = ["placer"]
 
 # What is ON is the set that was already clean, or was made clean in the commit
 # that adopted mypy: the gate starts green, so any finding is new. The first

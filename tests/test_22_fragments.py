@@ -15,10 +15,10 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py.alignment import CIGAR_D, CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
-from placer_py.config import PipelineConfig
-from placer_py.core import clustering as C
-from placer_py.core import fragments as F
+from placer.alignment import CIGAR_D, CIGAR_I, CIGAR_M, CIGAR_S, AlignedRead
+from placer.config import PipelineConfig
+from placer.core import clustering as C
+from placer.core import fragments as F
 
 pytestmark = pytest.mark.invariant
 
@@ -192,7 +192,7 @@ def test_a_clip_below_the_floor_produces_no_fragment():
 def test_a_fragment_with_no_bases_is_dropped_silently():
     """A hard-clipped record has coordinates but no sequence, and there is
     nothing to classify."""
-    from placer_py.alignment import CIGAR_H
+    from placer.alignment import CIGAR_H
     read = AlignedRead(qname="hard", tid=0, pos=2000, mapq=60,
                        cigar=[(CIGAR_H, 120), (M, 400)], seq="")
     assert F.extract_fragments(component(anchor=2000), [read], PipelineConfig()) == []

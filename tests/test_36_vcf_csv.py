@@ -1,8 +1,8 @@
 """
 The two new outputs: `calls.vcf` and `calls.csv`.
 
-Where to look: `placer_py/report/vcf.py`, `placer_py/report/csv_table.py` and
-the `ReportContext` in `placer_py/report/context.py`.
+Where to look: `placer/report/vcf.py`, `placer/report/csv_table.py` and
+the `ReportContext` in `placer/report/context.py`.
 
 EVERY TEST HERE RUNS ON A STRING, with no BAM and no reference, because
 `ReportContext` is a frozen record of plain data rather than a callable. That
@@ -25,13 +25,13 @@ import io
 import pytest
 from conftest import call_or_skip
 
-from placer_py import schema
-from placer_py.core.ledger import FinalCall
-from placer_py.core.result import PipelineResult
-from placer_py.report import csv_table as C
-from placer_py.report import tsv as O
-from placer_py.report import vcf as V
-from placer_py.report.context import Contig, ReportContext
+from placer import schema
+from placer.core.ledger import FinalCall
+from placer.core.result import PipelineResult
+from placer.report import csv_table as C
+from placer.report import tsv as O
+from placer.report import vcf as V
+from placer.report.context import Contig, ReportContext
 
 pytestmark = pytest.mark.invariant
 

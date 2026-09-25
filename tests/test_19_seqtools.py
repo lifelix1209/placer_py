@@ -15,7 +15,7 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.core import seqtools as S
+from placer.core import seqtools as S
 
 pytestmark = pytest.mark.invariant
 

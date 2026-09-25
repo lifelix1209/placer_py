@@ -27,7 +27,7 @@ import random
 import pytest
 from conftest import call_or_skip
 
-from placer_py.core import decoys, integrate, tprt
+from placer.core import decoys, integrate, tprt
 
 pytestmark = pytest.mark.invariant
 

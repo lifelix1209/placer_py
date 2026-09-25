@@ -4,7 +4,7 @@ The pytest surface the suite is allowed to use, pinned in both runners.
 `tools/run_tests_without_pytest.py` reimplements part of pytest, and the CI
 gates on BOTH of them, so every feature it implements is a place the two can
 drift apart. This file is the only test module whose subject is the runners
-rather than `placer_py`: each test below passes only if pytest and the
+rather than `placer`: each test below passes only if pytest and the
 zero-dependency runner agree about what a decorator means.
 
 It exists because the runner's limits were previously enforced by a sentence

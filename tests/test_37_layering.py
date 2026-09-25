@@ -1,14 +1,14 @@
 """
 The dependency rule, as an assertion rather than a comment.
 
-Where to look: `placer_py/core/__init__.py` states the rule; this file is what
-makes it true. The three stages are `placer_py/io/` (everything that talks to
-something outside the process), `placer_py/core/` (everything that decides
-something) and `placer_py/report/` (everything that renders).
+Where to look: `placer/core/__init__.py` states the rule; this file is what
+makes it true. The three stages are `placer/io/` (everything that talks to
+something outside the process), `placer/core/` (everything that decides
+something) and `placer/report/` (everything that renders).
 
 WHY THIS IS WORTH A TEST FILE. The rule is what the whole refactor buys, and
 it is the kind of rule that decays silently: one convenient import inside one
-function body, and `placer_py.core.finalization` stops being importable in an
+function body, and `placer.core.finalization` stops being importable in an
 environment with no pysam. Nothing else in the suite would notice, because
 every existing test either has pysam available or never reaches that module.
 
@@ -32,12 +32,12 @@ import pytest
 
 pytestmark = pytest.mark.contract
 
-PACKAGE = pathlib.Path(__file__).resolve().parent.parent / "placer_py"
+PACKAGE = pathlib.Path(__file__).resolve().parent.parent / "placer"
 
 #: `core` may not reach the stages on either side of it, nor the composition
 #: root that joins them.
-FORBIDDEN_FOR_CORE = ("placer_py.io", "placer_py.report", "placer_py.pipeline",
-                      "placer_py.wiring", "placer_py.parallel", "placer_py.main")
+FORBIDDEN_FOR_CORE = ("placer.io", "placer.report", "placer.pipeline",
+                      "placer.wiring", "placer.parallel", "placer.main")
 
 #: Nor anything that would put a compiled or external dependency in front of
 #: the decision layer. `subprocess` and `tempfile` are stdlib and so do not
@@ -107,13 +107,13 @@ def test_report_never_imports_the_input_stage():
     zero-dependency runner.
     """
     found = violations(modules_under("report"),
-                       ("placer_py.io",), {"pysam", "pyabpoa"})
+                       ("placer.io",), {"pysam", "pyabpoa"})
     assert not found, "\n".join(found)
 
 
 def test_the_external_tools_live_only_in_the_input_stage():
     """The positive half of the rule: pysam, pyabpoa, subprocess and tempfile
-    appear SOMEWHERE, and that somewhere is `placer_py/io/`."""
+    appear SOMEWHERE, and that somewhere is `placer/io/`."""
     reached = set()
     for path in modules_under("io"):
         for _, name in imported_modules(ast.parse(path.read_text())):
@@ -127,10 +127,10 @@ def test_the_external_tools_live_only_in_the_input_stage():
 @pytest.mark.parametrize("package", ["core", "io", "report"])
 def test_a_stage_package_re_exports_nothing(package):
     """
-    `import placer_py.io.gate` is pure Python and is exercised by the
+    `import placer.io.gate` is pure Python and is exercised by the
     zero-dependency runner. A `from . import bam` in `io/__init__.py` would
     make it drag pysam in and fail in exactly the locked-down environment the
-    design is for. The top-level `placer_py/__init__.py` has said so since
+    design is for. The top-level `placer/__init__.py` has said so since
     before this refactor; the three stage packages inherit the rule.
     """
     init = PACKAGE / package / "__init__.py"
@@ -150,7 +150,7 @@ def test_the_top_level_holds_only_the_shared_vocabulary_and_the_composition():
 
     `reads.py` is here rather than in `io/` even though gating is input-stage
     work: `alignment.py` depends on it for the CIGAR and flag constants, so it
-    is vocabulary. `placer_py/io/gate.py` holds the APPLICATION of the
+    is vocabulary. `placer/io/gate.py` holds the APPLICATION of the
     predicate, which is the part that is actually a stage.
 
     `pipeline.py`, `wiring.py`, `parallel.py` and `main.py` are

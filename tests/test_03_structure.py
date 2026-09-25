@@ -1,4 +1,4 @@
-"""Structural decode behaviour of `placer_py.core.structure`."""
+"""Structural decode behaviour of `placer.core.structure`."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import math
 import pytest
 from conftest import call_or_skip
 
-from placer_py.core import structure
+from placer.core import structure
 
 SEQS = {
     "core_plus_polya": ("G" * 220 + "A" * 30, 0.96, 0.88, 0.12, 0.0, 0.18,

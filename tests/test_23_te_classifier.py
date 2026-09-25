@@ -7,8 +7,8 @@ margin tests -- but WITHOUT the external BLAST process. The C++ has to install
 a fake `blastn` shell script to test any of this; the port splits the parsing
 and aggregation away from the subprocess, so the decisions can be pinned
 directly and only the process plumbing needs an executable. That split is
-now the file layout: the parsing is `placer_py/core/te_classifier.py` and the
-process is `placer_py/io/blast.py`.
+now the file layout: the parsing is `placer/core/te_classifier.py` and the
+process is `placer/io/blast.py`.
 """
 
 from __future__ import annotations
@@ -16,12 +16,12 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.config import PipelineConfig
-from placer_py.core import te_classifier as T
-from placer_py.core.fragments import InsertionFragment, InsertionFragmentSource
-from placer_py.core.seqtools import build_te_sequence_background
-from placer_py.io import blast as B
-from placer_py.io import te_library as L
+from placer.config import PipelineConfig
+from placer.core import te_classifier as T
+from placer.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer.core.seqtools import build_te_sequence_background
+from placer.io import blast as B
+from placer.io import te_library as L
 
 pytestmark = pytest.mark.invariant
 
@@ -568,7 +568,7 @@ def test_a_short_hit_names_no_element():
 def test_an_impure_repeat_array_is_still_a_simple_repeat():
     """(AAAG)n with a GAAAG or GGAAAG every few units has no exact run long
     enough for the microsatellite test; the low-complexity window catches it."""
-    from placer_py.core.seqtools import simple_repeat_mask
+    from placer.core.seqtools import simple_repeat_mask
 
     impure = "AGAAAGGAAAGAATGGAAAGAAAGGAAGAGAAAGGAAAGAAAGGAAGAAAAAGAAAGAAAGAAAGAAAGAAAG"
     assert all(simple_repeat_mask(impure))
@@ -585,7 +585,7 @@ def test_collinear_pieces_of_one_copy_all_count():
 
 
 def test_the_microsatellite_mask_marks_arrays_not_short_runs():
-    from placer_py.core.seqtools import microsatellite_mask
+    from placer.core.seqtools import microsatellite_mask
 
     assert all(microsatellite_mask("AT" * 10))
     assert all(microsatellite_mask("A" * 12))

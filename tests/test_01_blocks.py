@@ -1,5 +1,5 @@
 """
-Evidence-certificate behaviour of `placer_py.core.blocks`.
+Evidence-certificate behaviour of `placer.core.blocks`.
 """
 
 from __future__ import annotations
@@ -9,9 +9,9 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.core import blocks
-from placer_py.core import policy as P
-from placer_py.core.te_classifier import TEAlignmentEvidence
+from placer.core import blocks
+from placer.core import policy as P
+from placer.core.te_classifier import TEAlignmentEvidence
 
 
 def _ex(alt, split, indel, lclip, rclip, ref, af, gq):

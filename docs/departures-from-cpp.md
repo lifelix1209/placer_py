@@ -25,7 +25,7 @@ find one that is not listed, treat it as a bug until someone proves otherwise.
 
 **Where** `log_choose_count`, `binomial_log_pmf`, `beta_binomial_log_pmf` —
 formerly three copies in `genotype.py`, `policy.py` and `finalization.py`, now
-one in `placer_py/core/mathx.py`.
+one in `placer/core/mathx.py`.
 
 **Was** `-1e300` in `genotype.py` and `policy.py`; `-inf` in `finalization.py`.
 The three copies never agreed.
@@ -51,7 +51,7 @@ divergence is confined to inputs the functions reject.
 
 ## 2. Target-site duplication geometry
 
-**Where** `placer_py/core/tsd.py::detect`.
+**Where** `placer/core/tsd.py::detect`.
 
 **Was** An unconditional `if left_bp > right_bp: swap` at the top, which made
 `right_bp - left_bp` non-negative always.
@@ -79,7 +79,7 @@ was never caught.
 ## 3. `log_sum_exp` of an all-impossible set: NaN → -inf
 
 **Where** `genotype._logsumexp3`, `policy.logsumexp_values` / `logsumexp_pair`
-/ `logsumexp3`, now `placer_py/mathx.log_sum_exp`.
+/ `logsumexp3`, now `placer/mathx.log_sum_exp`.
 
 **Was** `max(a,b,c)` of three `-inf` is `-inf`, and `exp(-inf - -inf)` is
 `exp(nan)`. Both modules returned **NaN** for a locus where every hypothesis

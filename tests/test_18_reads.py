@@ -10,7 +10,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py import reads as R
+from placer import reads as R
 
 pytestmark = pytest.mark.invariant
 

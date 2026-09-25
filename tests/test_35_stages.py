@@ -1,8 +1,8 @@
 """
 The three stages, and the seams between them.
 
-Where to look: `placer_py/io/gate.py` for the input stage's filter, and
-`placer_py/pipeline.py` for the composition that joins gate, scan and
+Where to look: `placer/io/gate.py` for the input stage's filter, and
+`placer/pipeline.py` for the composition that joins gate, scan and
 finalize.
 
 WHAT THIS FILE IS FOR that no other file covers. `tests/test_18_reads.py` pins
@@ -25,9 +25,9 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py.alignment import AlignedRead
-from placer_py.io.gate import gate_reads
-from placer_py.reads import Gate1SignalConfig
+from placer.alignment import AlignedRead
+from placer.io.gate import gate_reads
+from placer.reads import Gate1SignalConfig
 
 pytestmark = pytest.mark.invariant
 
@@ -149,7 +149,7 @@ def test_the_scan_leaves_the_run_uncalibrated():
     null expectation measured across every candidate, so a scan that had
     already applied it would have measured it from a partial run.
     """
-    from placer_py.core.result import PipelineResult
+    from placer.core.result import PipelineResult
 
     result = PipelineResult()
     assert result.dependency_penalty_estimated is False
@@ -169,12 +169,12 @@ def test_scan_then_finalize_is_the_same_run_as_run_pipeline():
     """
     from test_32_pipeline import hooks, synthetic_reads
 
-    from placer_py.config import PipelineConfig
-    from placer_py.core.contracts import ReadSource
-    from placer_py.core.finalize import finalize_run
-    from placer_py.core.result import PipelineResult
-    from placer_py.core.scan import run_scan
-    from placer_py.pipeline import run_pipeline
+    from placer.config import PipelineConfig
+    from placer.core.contracts import ReadSource
+    from placer.core.finalize import finalize_run
+    from placer.core.result import PipelineResult
+    from placer.core.scan import run_scan
+    from placer.pipeline import run_pipeline
 
     config = PipelineConfig(bin_size=100000)
     reads = synthetic_reads()

@@ -17,8 +17,8 @@ import random
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.config import PipelineConfig
-from placer_py.core import segmentation as S
+from placer.config import PipelineConfig
+from placer.core import segmentation as S
 
 pytestmark = pytest.mark.invariant
 
@@ -79,7 +79,7 @@ def test_segmentation_does_not_discover_a_tsd_it_follows_the_given_breakpoints()
     duplicated bases end up INSIDE the insert.
 
     So a TSD reaches the ledger only when the breakpoint stage already proposed
-    two separated positions -- or from `placer_py/core/tsd.py`, which reads the
+    two separated positions -- or from `placer/core/tsd.py`, which reads the
     reference around the breakpoints directly and is the component actually
     responsible for finding one.
     """
@@ -194,7 +194,7 @@ def test_a_consensus_assembled_the_wrong_way_round_is_retried_reversed():
     has nothing to do with the locus, so the whole search is retried on the
     reverse complement -- once, guarded so it cannot recurse.
     """
-    from placer_py.core.seqtools import reverse_complement
+    from placer.core.seqtools import reverse_complement
 
     forward = REFERENCE[900:1000] + INSERT + REFERENCE[1000:1100]
     stats = S.SegmentationSearchStats()

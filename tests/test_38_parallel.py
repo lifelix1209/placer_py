@@ -1,7 +1,7 @@
 """
 The parallel scan must give the answer the single stream gives.
 
-Where to look: `placer_py/parallel.py` argues WHY the answer is the same -- a
+Where to look: `placer/parallel.py` argues WHY the answer is the same -- a
 bin depends only on the reads that start in it, so the run can be cut at bin
 boundaries and rejoined in genome order before finalization. This file holds
 the three places that argument could fail:
@@ -28,11 +28,11 @@ from pathlib import Path
 
 import pytest
 
-from placer_py.alignment import AlignedRead
-from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
-from placer_py.core.result import PipelineResult
-from placer_py.core.scan import merge_scan_results
-from placer_py.parallel import auto_chunk_bp, plan_chunks, round_up_to_bins
+from placer.alignment import AlignedRead
+from placer.core.ledger import EvidenceLedgerRow, FinalCall
+from placer.core.result import PipelineResult
+from placer.core.scan import merge_scan_results
+from placer.parallel import auto_chunk_bp, plan_chunks, round_up_to_bins
 
 pytestmark = pytest.mark.invariant
 
@@ -157,8 +157,8 @@ def _real_run_available() -> str:
 
 
 def _run(out_dir: str, workers: int, region: str | None) -> None:
-    from placer_py.config import PipelineConfig
-    from placer_py.main import parse_region_scope, run_pipeline_once
+    from placer.config import PipelineConfig
+    from placer.main import parse_region_scope, run_pipeline_once
 
     config = PipelineConfig(bam_path=str(EXAMPLE / "mini.bam"),
                             reference_fasta_path=str(EXAMPLE / "mini_ref.fa"),

@@ -1,5 +1,5 @@
 """
-The seam. Runs today, because `placer_py.schema` is implemented.
+The seam. Runs today, because `placer.schema` is implemented.
 
 `evidence_ledger.tsv` is the interface between the compiled scanner and the
 Python decision layer, which is why the migration can start in the middle: both
@@ -12,8 +12,8 @@ from __future__ import annotations
 
 import pytest
 
-from placer_py import schema
-from placer_py.report import tsv as outputs
+from placer import schema
+from placer.report import tsv as outputs
 
 pytestmark = pytest.mark.contract
 
@@ -133,7 +133,7 @@ def test_every_ledger_column_is_a_field_or_a_declared_derivation():
     """
     import dataclasses
 
-    from placer_py.core.ledger import EvidenceLedgerRow
+    from placer.core.ledger import EvidenceLedgerRow
 
     fields = {f.name for f in dataclasses.fields(EvidenceLedgerRow)}
     unexplained = [c for c in outputs.EVIDENCE_LEDGER_COLUMNS
@@ -145,7 +145,7 @@ def test_every_ledger_column_is_a_field_or_a_declared_derivation():
 def test_every_call_column_is_a_field_or_a_declared_rename():
     import dataclasses
 
-    from placer_py.core.ledger import FinalCall
+    from placer.core.ledger import FinalCall
 
     fields = {f.name for f in dataclasses.fields(FinalCall)}
     unexplained = [c for c in outputs.FINAL_CALL_COLUMNS
@@ -162,7 +162,7 @@ def test_the_header_and_the_row_stay_the_same_length():
     that fails to parse: every value is present and every value is under the
     wrong name.
     """
-    from placer_py.core.ledger import EvidenceLedgerRow, FinalCall
+    from placer.core.ledger import EvidenceLedgerRow, FinalCall
 
     row = EvidenceLedgerRow()
     for insert_seq in (False, True):

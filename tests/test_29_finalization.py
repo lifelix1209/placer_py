@@ -14,9 +14,9 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.core import finalization as F
-from placer_py.core import result as R
-from placer_py.core.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
+from placer.core import finalization as F
+from placer.core import result as R
+from placer.core.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
 
 pytestmark = pytest.mark.invariant
 
@@ -787,7 +787,7 @@ def test_the_poa_budget_scales_reads_down_as_the_event_grows():
     which is what made an 800 kb region of ultra-long ONT peak at 4.6 GB and
     spend 1975 s of wall clock on 1006 s of CPU.
     """
-    from placer_py.core.consensus import poa_reads_within_budget
+    from placer.core.consensus import poa_reads_within_budget
 
     budget = 1024 * 1024 * 1024
     counts = [poa_reads_within_budget(length, budget)
@@ -807,7 +807,7 @@ def test_the_poa_budget_never_returns_zero_reads():
     read -- and at n=1 the measured cost of an 18 kb string is 19 MB, not the
     ~2 GB the quadratic would predict.
     """
-    from placer_py.core.consensus import poa_reads_within_budget
+    from placer.core.consensus import poa_reads_within_budget
 
     for length in (10_000, 100_000, 1_000_000):
         assert poa_reads_within_budget(length, 1024 * 1024) == 1
@@ -818,7 +818,7 @@ def test_dropping_reads_for_memory_is_recorded_rather_than_silent():
     """`consensus.py` exists on the principle that a quietly worse consensus
     is the most damaging thing this stage can produce, so the count of
     withheld strings is carried on the result."""
-    from placer_py.core.segmentation import EventConsensus
+    from placer.core.segmentation import EventConsensus
 
     assert EventConsensus().poa_reads_dropped_for_memory == 0
 
@@ -831,8 +831,8 @@ def test_a_memory_capped_consensus_is_visible_in_the_output():
     what makes the degradation legible in `final_qc`, which both the ledger
     and the call files carry.
     """
-    from placer_py.core import bins as pipeline_module
-    from placer_py.core.segmentation import EventConsensus
+    from placer.core import bins as pipeline_module
+    from placer.core.segmentation import EventConsensus
 
     intact = EventConsensus()
     assert pipeline_module._with_poa_cap_token("PASS_TE_CLOSED", intact) == "PASS_TE_CLOSED"

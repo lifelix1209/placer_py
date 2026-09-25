@@ -17,7 +17,7 @@
 #SBATCH --output=%x_%j.log
 set -euo pipefail
 
-REPO=${REPO:-/mnt/beegfs6/home1/miska/hl725/placer_py}
+REPO=${REPO:-/mnt/beegfs6/home1/miska/hl725/placer}
 PY=${PY:-$HOME/anaconda3/envs/te_bench/bin/python}
 TEBENCH=${TEBENCH:-/mnt/home1/miska/hl725/scratch/projects/TE_bechmark}
 OUT_ROOT=${OUT_ROOT:-/mnt/home1/miska/hl725/scratch/placer_dev/runs}
@@ -52,13 +52,17 @@ if [ -e "$MOUSE_BAM" ]; then
     SLICES+=("mouse_b6x129_f1 $MOUSE_BAM $MOUSE_REF $TEBENCH/resources/mouse/dfam_mouse.freeze.fa chr1:10000001-20000000")
 fi
 
+# The package was placer_py before the 1.0 rename; run either, so a baseline
+# commit and a current one go through the same script.
+if [ -d "$REPO/placer" ]; then MODULE=placer.main; else MODULE=placer_py.main; fi
+
 cd "$REPO"
 for slice in "${SLICES[@]}"; do
     read -r name bam ref lib region <<<"$slice"
     dest="$out/$name"
     mkdir -p "$dest"
     echo "== $name $region -> $dest"
-    /usr/bin/time -v "$PY" -m placer_py.main "$bam" "$ref" "$lib" \
+    /usr/bin/time -v "$PY" -m "$MODULE" "$bam" "$ref" "$lib" \
         --region "$region" --threads "$THREADS" --output-dir "$dest" \
         2> "$dest/stderr.log" || echo "FAILED: $name (see $dest/stderr.log)"
     grep -E "Elapsed|Maximum resident" "$dest/stderr.log" || true

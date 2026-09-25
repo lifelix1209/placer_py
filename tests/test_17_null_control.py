@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.core import null_control as N
+from placer.core import null_control as N
 
 
 @pytest.mark.invariant

@@ -1,4 +1,4 @@
-# placer-py
+# PLACER
 
 A Python implementation of [PLACER](https://github.com/lifelix1209/PLACER),
 the long-read transposable-element insertion caller. It runs end to end — BAM
@@ -22,23 +22,23 @@ the decision layer alone.** The first pass ported `decision_policy.cpp`,
 and `null_control.cpp` against golden vectors. The second ported everything
 upstream of them -- the BAM scan, clustering, fragment extraction, TE
 classification, consensus, segmentation, the joint decision and the whole
-finalization stage -- so `placer_py` now runs end to end from reads to
+finalization stage -- so `placer` now runs end to end from reads to
 `scientific.txt` without the compiled binary.
 
 Two things are deliberately NOT ported, and both are documented where they
 would be used rather than silently stubbed (the second now has a replacement
 of its own; see [Speed](#speed)):
 
-  * **abPOA.** `placer_py/core/consensus.py` takes the consensus function as an
+  * **abPOA.** `placer/core/consensus.py` takes the consensus function as an
     argument. `single_sequence_consensus` handles the cases needing no
     alignment and RAISES otherwise; `pyabpoa_consensus` uses the same library
     the C++ links. A worse consensus would change the insert sequence, the TE
     identity, the poly(A) call and the structure decode without changing any QC
     field -- the run would look clean and every call would be subtly wrong.
-  * **The C++ parallel executor.** `placer_py` has its own instead:
+  * **The C++ parallel executor.** `placer` has its own instead:
     `--threads N` cuts the scan at bin boundaries, runs the pieces on N
     processes and rejoins them in genome order before finalization, with
-    byte-identical output (`placer_py/parallel.py`, `tests/test_38_parallel.py`).
+    byte-identical output (`placer/parallel.py`, `tests/test_38_parallel.py`).
 
 Every other C++ translation unit has a Python counterpart, and each module's
 docstring names the file it was ported from — so the map can be regenerated
@@ -94,7 +94,7 @@ precision. That oracle has since been removed; see
 ## Layout
 
 ```
-placer_py/
+placer/
   THREE STAGES, and the rule between them: core/ may import neither io/ nor
   report/, at module scope or inside a function body. That is what keeps the
   decision layer runnable with no pysam, no BLAST and no abPOA installed, and
@@ -183,17 +183,17 @@ changes cost numerically.
 ## Running the whole pipeline
 
 ```bash
-placer-py sample.bam reference.fa te_library.fa --output-dir out/ --threads 8
+placer sample.bam reference.fa te_library.fa --output-dir out/ --threads 8
 ```
 
 `--threads N` (`-t`) scans on N processes. It changes how long the run takes
 and nothing else: the five files are the same bytes for any N.
 
-or, without installing, `python3 -m placer_py.main ...` from the repository
+or, without installing, `python3 -m placer.main ...` from the repository
 root.
 
 The decision layer needs none of the scan dependencies:
-`placer_py.core.finalization` and everything it imports run on a ledger alone,
+`placer.core.finalization` and everything it imports run on a ledger alone,
 which is why they are optional rather than required.
 
 ## Speed
@@ -461,7 +461,7 @@ Measured on the TPRT terms over 20,000 simulated nulls: `E_null[e^score] =
 penalty, and e-BH works.
 
 What remains for a null set is **verification, not estimation** — a likelihood
-approach's real risk is misspecification, so `placer_py/core/decoys.py` checks
+approach's real risk is misspecification, so `placer/core/decoys.py` checks
 `E_null[e^score] <= 1` and refuses to proceed if it fails. That is a far weaker
 requirement than calibration: an approximate null set can still falsify the
 inequality, whereas estimating sigma from one would need a faithful draw.
@@ -512,11 +512,11 @@ their call sets could be diffed**. That made this a rewrite with a ground truth 
 the safest kind.
 
 The Python side now produces the ledger too, so the diff runs in both
-directions and `placer_py/report/tsv.py` pins the column order both halves have to
+directions and `placer/report/tsv.py` pins the column order both halves have to
 agree on. The synthetic end-to-end test in `test_32_pipeline.py` shows the
 stages compose, not that they agree with the C++ on real data.
 
-`placer_py.schema.MISSING_FOR_TPRT` lists eight observables the current ledger
+`placer.schema.MISSING_FOR_TPRT` lists eight observables the current ledger
 does *not* carry and the TPRT model needs. The important one is the pair of
 **element coordinates**: the ledger keeps only `best_te_query_coverage`, a
 ratio, which discards about 8.5 nats of 3'-anchoring evidence for a 1 kb

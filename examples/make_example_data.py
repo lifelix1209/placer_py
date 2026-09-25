@@ -199,7 +199,7 @@ def write_bam(path: Path, reference: str, insertions: list[Insertion],
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Generate the placer-py mini example dataset.")
+        description="Generate the PLACER mini example dataset.")
     parser.add_argument("--out-dir", default=str(Path(__file__).parent / "data"))
     parser.add_argument("--seed", type=int, default=20260921)
     args = parser.parse_args()

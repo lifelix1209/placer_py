@@ -10,13 +10,13 @@ import math
 
 import pytest
 
-from placer_py.core.endonuclease import (
+from placer.core.endonuclease import (
     EN_CONSENSUS,
     endonuclease_motif_log_odds,
     junction_windows,
     pwm_log_odds,
 )
-from placer_py.core.seqtools import reverse_complement
+from placer.core.seqtools import reverse_complement
 
 PERFECT = 6 * math.log(0.85 / 0.25)
 

@@ -12,7 +12,7 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer_py.core import dependency
+from placer.core import dependency
 
 
 @pytest.mark.invariant

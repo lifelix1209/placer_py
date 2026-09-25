@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 from conftest import call_or_skip
 
-from placer_py.core import explanation as E
+from placer.core import explanation as E
 
 
 def _res(s, m, u, b, r, rc, a, la, pc):
