@@ -162,3 +162,16 @@ def test_the_termini_terms_have_null_expectation_at_most_one():
         k = sum(rng.random() < 0.25 for _ in range(20))
         values.append(M.termini_term(obs(te_class=TeClass.DNA, tir_identity=k / 20)))
     assert _mean_exp(values) <= 1.02
+
+
+def test_three_prime_anchoring_tolerates_an_unaligned_consensus_tail():
+    """Dfam's Alu ends in its own poly(A), which does not align: a complete
+    Alu reaching element position 282 of 311 is 3'-complete."""
+    complete = M.score_locus(obs(te_class=TeClass.SINE, superfamily="Alu",
+                                 element_start=0, element_end=282, element_length=311,
+                                 three_prime_complete=True))
+    fragment = M.score_locus(obs(te_class=TeClass.SINE, superfamily="Alu",
+                                 element_start=46, element_end=187, element_length=311,
+                                 three_prime_complete=False))
+    assert complete.terms["anchoring"] >= 0.0
+    assert fragment.terms["anchoring"] < 0.0

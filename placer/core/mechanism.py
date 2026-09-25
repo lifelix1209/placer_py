@@ -411,8 +411,14 @@ def _class_terms(obs: LocusObservation, cls: TeClass,
     linkage: dict[str, float] = {}
     if cls in _TPRT:
         if obs.element_length > 0 and obs.element_end > obs.element_start:
+            # tprt's own test calls the 3' end complete within 5 bp. A library
+            # consensus often ends in its own poly(A), which does not align
+            # (Dfam's Alu does), so a complete Alu read as 3'-truncated and
+            # scored -3.9. element_structure's tolerance (30 bp or 3%) decides.
+            end = obs.element_length if obs.three_prime_complete else obs.element_end
+            start = min(obs.element_start, end - 1)
             internal["anchoring"] = tprt.log_bf_three_prime_anchoring(
-                obs.element_start, obs.element_end, float(obs.element_length))
+                start, end, float(obs.element_length))
         internal["tail"] = tail_term(obs, params)
         if cls in (TeClass.LINE, TeClass.SINE, TeClass.RETROPOSON):
             linkage["en_motif"] = en_term(obs)
