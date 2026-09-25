@@ -75,26 +75,30 @@ def _aligned(pos, identity, length=600, artifact=20.0):
     return r
 
 
-def test_the_identity_priors_move_to_the_sample_s_own_two_populations():
-    young = [_aligned(i * 1000, 0.90) for i in range(40)]
-    old = [_aligned(100_000 + i * 1000, 0.76) for i in range(40)]
+def test_the_age_distribution_moves_to_the_sample_and_the_null_stays_chance():
+    young = [_aligned(i * 1000, 0.97) for i in range(40)]
+    old = [_aligned(100_000 + i * 1000, 0.85) for i in range(40)]
     priors = S.estimate_identity_priors(young + old)
-    assert priors.loci == 80
-    assert 0.89 < priors.q_young < 0.92          # pulled from 0.95 to the data
-    assert 0.75 < priors.q_ambient < 0.80
+    assert priors.loci == 80 and priors.q_ambient == S.Q_AMBIENT
+    def mass_near(q, width=0.02):
+        return sum(w for g, w in zip(S.Q_GRID, priors.weights) if abs(g - q) <= width)
+    # Each population's 40 loci of 90 (prior included) land near its identity,
+    # spread over a few grid points by 600 bases' worth of binomial noise.
+    assert mass_near(0.97) > 0.35 and mass_near(0.85) > 0.35
+    assert mass_near(0.78, 0.01) < 0.02
     few = S.estimate_identity_priors(young[:5])
-    assert (few.q_young, few.q_ambient, few.loci) == (S.Q_YOUNG, S.Q_AMBIENT, 0)
+    assert few.loci == 0 and few.weights is None
 
 
-def test_rescoring_with_the_sample_s_priors_changes_only_the_sequence_term():
-    from placer.core import tprt
+def test_rescoring_with_the_sample_s_distribution_changes_only_the_sequence_term():
+    from placer.core.mechanism import log_bf_te_derived
     r = _aligned(1000, 0.90)
-    r.mech_sequence_term = tprt.log_bf_sequence(600, 0.90)
+    r.mech_sequence_term = log_bf_te_derived(600, 0.90)
     before_non_te = r.mech_log_lr_vs_non_te
-    priors = S.IdentityPriors(q_young=0.90, q_ambient=0.76, loci=50)
+    priors = S.estimate_identity_priors([_aligned(i * 1000, 0.90) for i in range(30)])
     S.apply_identity_priors([r], priors)
-    expected = tprt.log_bf_sequence(600, 0.90, q_young=0.90, q_ambient=0.76)
+    expected = log_bf_te_derived(600, 0.90, priors.weights, priors.q_ambient)
     assert r.mech_sequence_term == pytest.approx(expected)
     assert r.mech_log_lr_vs_non_te == pytest.approx(
-        before_non_te + expected - tprt.log_bf_sequence(600, 0.90))
+        before_non_te + expected - log_bf_te_derived(600, 0.90))
     assert r.mech_log_lr_vs_artifact == 20.0

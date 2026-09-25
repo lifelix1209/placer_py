@@ -103,10 +103,13 @@ def test_the_score_is_the_minimum_of_the_two_questions():
     assert M.score_locus(obs(n_alt=0, n_ref=30, tsd_len=0, en_log_odds=None)).vs_artifact < 0
 
 
-def test_a_diverged_old_copy_is_not_called_a_new_insertion():
+def test_te_derived_sequence_counts_and_chance_level_identity_does_not():
+    """The TE question is whether the insert is TE-DERIVED: an old element's
+    sequence (0.82) counts, a chance-level alignment (0.68) does not."""
     young = M.score_locus(obs(te_class=TeClass.LTR, superfamily="Gypsy", identity=0.93))
     old = M.score_locus(obs(te_class=TeClass.LTR, superfamily="Gypsy", identity=0.82))
-    assert young.terms["sequence"] > 0 > old.terms["sequence"]
+    chance = M.score_locus(obs(te_class=TeClass.LTR, superfamily="Gypsy", identity=0.68))
+    assert young.terms["sequence"] > old.terms["sequence"] > 0 > chance.terms["sequence"]
 
 
 def test_a_non_te_repeat_is_never_a_te_call():

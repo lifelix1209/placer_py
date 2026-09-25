@@ -149,9 +149,53 @@ CLASS_TSD: dict[TeClass, TsdModel] = {
 TAIL_P_PRESENT = 0.85
 TAIL_MEAN_BP = 25.0
 
+#: P(no library element aligns | the insert is TE-derived): what an insert
+#: that aligns to nothing says against being a TE. Small for a curated
+#: library; the whole term is the evidence, since there is no alignment to
+#: weigh.
+P_NO_HIT_GIVEN_TE = 0.05
+
 #: See `MechanismParameters.q_young`.
 Q_YOUNG = 0.95
-Q_AMBIENT = 0.80
+#: The identity at which sequence that is NOT TE-derived aligns to a library
+#: consensus by chance, over the >= 50 informative bases a hit must have
+#: (`te_classifier.MIN_ELEMENT_ALIGNED_BP`): local alignment of unrelated
+#: sequence settles around 0.65-0.75.
+Q_AMBIENT = 0.70
+
+#: TE-derived sequence spans every age, so under H_TE the identity to the
+#: consensus is not one number but a distribution: a grid over
+#: [Q_TE_MIN, Q_TE_MAX], weighted uniformly by default and fitted to the
+#: sample by `mechanism_selection.estimate_identity_priors`.
+Q_TE_MIN = 0.75
+Q_TE_MAX = 0.995
+Q_GRID = tuple(round(Q_TE_MIN + 0.005 * i, 3) for i in range(int((Q_TE_MAX - Q_TE_MIN) / 0.005) + 1))
+
+
+def log_bf_te_derived(length: int, identity: float,
+                      weights: tuple[float, ...] | None = None,
+                      q_null: float = Q_AMBIENT) -> float:
+    """Is this TE-derived sequence, or non-TE sequence aligning by chance?
+
+    H_TE: identity q drawn from the age distribution (`weights` over
+    `Q_GRID`), matches ~ Binomial(length, q). H_nonTE: matches ~
+    Binomial(length, q_null), the chance level. The binomial coefficient
+    cancels. A single-q H_TE, as first written here, scored an 800 bp insert
+    at 0.82 identity -57 nats against q_young = 0.95, though it is plainly
+    TE-derived.
+    """
+    n = max(0, length)
+    if n <= 0:
+        return 0.0
+    k = min(max(identity, 0.0), 1.0) * n
+    w = weights if weights is not None else tuple(1.0 / len(Q_GRID) for _ in Q_GRID)
+    terms = [math.log(wj) + k * math.log(q) + (n - k) * math.log(1.0 - q)
+             for q, wj in zip(Q_GRID, w) if wj > 0.0]
+    m = max(terms)
+    ll_te = m + math.log(sum(math.exp(t - m) for t in terms))
+    ll_null = k * math.log(q_null) + (n - k) * math.log(1.0 - q_null)
+    return ll_te - ll_null
+
 
 #: Weights for the robust hallmark mixtures (see the module docstring).
 W_TAIL = 0.85
@@ -172,15 +216,22 @@ class MechanismParameters:
         default_factory=lambda: dict(SUPERFAMILY_TSD))
     class_tsd: dict[TeClass, TsdModel] = field(default_factory=lambda: dict(CLASS_TSD))
     tail_mean_bp: float = TAIL_MEAN_BP
-    #: Identity of a new insertion to its consensus (an ACTIVE copy) against
-    #: the identity of the genome's resident old copies. `tprt` uses 0.98 /
-    #: 0.88, which are young human L1 numbers: at 0.93 they score a 450 bp
-    #: Gypsy at -11 nats, and active elements in non-model genomes, or against
-    #: a de novo library's consensus, are routinely 2-7% diverged. These are
-    #: looser cross-species priors; `update_parameters` moves `q_young` to the
-    #: sample's own high-confidence calls.
+    #: The sequence term asks whether the insert is TE-DERIVED: identity to
+    #: its consensus under a TE insertion (`q_young`) against the identity at
+    #: which non-TE sequence aligns by chance (`q_ambient`). An insertion of an
+    #: old element's sequence therefore counts as a TE insertion, as GIAB's and
+    #: TEBench's TE truth sets count it (RepeatMasker names it). The first
+    #: version asked instead whether the insert was a YOUNG copy, against the
+    #: genome's resident old copies (tprt's 0.98 / 0.88, then 0.95 / 0.80), and
+    #: fitting that from the sample moved q_ambient to 0.86 on the human dev
+    #: slice and rejected its truth Alus at 0.85-0.92. `q_young` is updated
+    #: from the sample (`mechanism_selection.estimate_identity_priors`), which
+    #: absorbs consensus error; `q_ambient` is a property of alignment, not of
+    #: the sample, and stays fixed.
     q_young: float = Q_YOUNG
     q_ambient: float = Q_AMBIENT
+    #: The age distribution over `Q_GRID`; None is uniform.
+    identity_weights: tuple[float, ...] | None = None
     #: How many high-confidence calls each update drew on, for the run log.
     updated_from: dict[str, int] = field(default_factory=dict)
 
@@ -436,8 +487,8 @@ def score_locus(obs: LocusObservation,
     """Both ratios for one locus."""
     params = params or MechanismParameters()
     out = MechanismScore()
-    sequence = tprt.log_bf_sequence(max(0, obs.aligned_len), obs.identity,
-                                    q_young=params.q_young, q_ambient=params.q_ambient)
+    sequence = log_bf_te_derived(max(0, obs.aligned_len), obs.identity,
+                                 params.identity_weights, params.q_ambient)
     counts = counts_term(obs)
 
     if obs.te_class is TeClass.NON_TE:
@@ -458,8 +509,9 @@ def score_locus(obs: LocusObservation,
         # them. The TE question rests on the sequence term; the insertion can
         # still be a structural call on the artifact question.
         linkage = tsd_term(obs, params.tsd_model(TeClass.UNKNOWN, ""))
-        out.terms = {"sequence": sequence, "counts": counts, "tsd": linkage}
-        out.vs_non_te = sequence
+        no_hit = math.log(P_NO_HIT_GIVEN_TE)
+        out.terms = {"no_te_alignment": no_hit, "counts": counts, "tsd": linkage}
+        out.vs_non_te = no_hit
         out.vs_artifact = counts + linkage
         return out
 

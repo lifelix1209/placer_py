@@ -76,6 +76,7 @@ FINAL_CALL_COLUMNS: tuple[str, ...] = (
     "polya_len", "transduction_len", "ltr_form", "te_from_clip_sides",
     "mech_log_lr_vs_non_te", "mech_log_lr_vs_artifact",
     "mech_decoy_count", "mech_decoy_mean_exp_linkage", "mech_terms",
+    "mech_aligned_len", "mech_sequence_term",
 )
 
 #: Where `insert_seq` goes when enabled.
@@ -113,6 +114,7 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "polya_len", "transduction_len", "ltr_form", "te_from_clip_sides",
     "mech_log_lr_vs_non_te", "mech_log_lr_vs_artifact",
     "mech_decoy_count", "mech_decoy_mean_exp_linkage", "mech_terms",
+    "mech_aligned_len", "mech_sequence_term",
     "mech_e_value", "mech_ebh_selected", "mech_structural_selected",
 )
 
@@ -228,6 +230,7 @@ def final_call_row(call: FinalCall, include_insert_seq: bool = False) -> list[st
         call.polya_len, call.transduction_len, call.ltr_form, call.te_from_clip_sides,
         call.mech_log_lr_vs_non_te, call.mech_log_lr_vs_artifact,
         call.mech_decoy_count, call.mech_decoy_mean_exp_linkage, call.mech_terms,
+        call.mech_aligned_len, call.mech_sequence_term,
     ]
     return [_number(value) for value in values]
 
@@ -273,6 +276,7 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.polya_len, row.transduction_len, row.ltr_form, row.te_from_clip_sides,
         row.mech_log_lr_vs_non_te, row.mech_log_lr_vs_artifact,
         row.mech_decoy_count, row.mech_decoy_mean_exp_linkage, row.mech_terms,
+        row.mech_aligned_len, row.mech_sequence_term,
         row.mech_e_value, row.mech_ebh_selected, row.mech_structural_selected,
     ]
     return [_number(value) for value in values]
@@ -315,8 +319,8 @@ def _shadow_lines(result) -> list[str]:
     shadow = getattr(result, "mech_shadow", None)
     if shadow is None:
         return []
-    lines = [f"mech_identity_priors\tq_young={_number(shadow.identity.q_young)}"
-             f";q_ambient={_number(shadow.identity.q_ambient)}"
+    lines = [f"mech_identity_priors\tmean_identity={_number(shadow.identity.mean_identity)}"
+             f";q_null={_number(shadow.identity.q_ambient)}"
              f";loci={shadow.identity.loci}",
              f"mech_shadow_loci\t{shadow.loci}",
              f"mech_shadow_te_selected\t{shadow.te_selected}",
