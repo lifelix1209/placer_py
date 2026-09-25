@@ -61,6 +61,15 @@ class EvidenceLedgerRow:
     #: The oriented poly(A) and 3' transduction (`core/element_structure.py`).
     polya_len: int = 0
     transduction_len: int = -1
+    #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
+    #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
+    #: current decision so the two can be compared before one replaces the
+    #: other. They decide nothing yet.
+    mech_log_lr_vs_non_te: float = 0.0
+    mech_log_lr_vs_artifact: float = 0.0
+    mech_decoy_count: int = 0
+    mech_decoy_mean_exp_linkage: float = 0.0
+    mech_terms: str = "NA"
     family_alignment_resolved: bool = False
     final_qc: str = "NA"
     posterior_qc: str = "NA"
@@ -190,6 +199,15 @@ class FinalCall:
     te_element_length: int = -1
     polya_len: int = 0
     transduction_len: int = -1
+    #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
+    #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
+    #: current decision so the two can be compared before one replaces the
+    #: other. They decide nothing yet.
+    mech_log_lr_vs_non_te: float = 0.0
+    mech_log_lr_vs_artifact: float = 0.0
+    mech_decoy_count: int = 0
+    mech_decoy_mean_exp_linkage: float = 0.0
+    mech_terms: str = "NA"
     te_sequence_model_label: str = "TE_MODEL_UNAVAILABLE"
     te_sequence_model_score: float = 0.0
     te_sequence_model_gc: float = 0.0

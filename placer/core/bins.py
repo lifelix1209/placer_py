@@ -43,6 +43,7 @@ from placer.core import events as events_module
 from placer.core import fragments as fragments_module
 from placer.core import hypotheses as hyp_module
 from placer.core import interval_cache as cache_module
+from placer.core import locus_evidence as locus_module
 from placer.core import policy as policy_module
 from placer.core import segmentation as seg_module
 from placer.core.clustering import ComponentCall, build_component_calls
@@ -600,6 +601,17 @@ def _finish_shortlisted(prepared: _PreparedEvaluation, te_alignment: TEAlignment
     return evidence, consensus, segmentation, te_alignment, joint, genotype, seg_evidence
 
 
+def _record_shadow(target: EvidenceLedgerRow | FinalCall,
+                   shadow: locus_module.LocusScore) -> None:
+    """The shadow decision's numbers, on a row or a call (same field names)."""
+    target.mech_log_lr_vs_non_te = shadow.score.vs_non_te
+    target.mech_log_lr_vs_artifact = shadow.score.vs_artifact
+    target.mech_decoy_count = shadow.decoy_count
+    target.mech_decoy_mean_exp_linkage = shadow.decoy_mean_exp_linkage
+    target.mech_terms = ";".join(f"{name}={value:.3f}"
+                                 for name, value in shadow.score.terms.items()) or "NA"
+
+
 def _align_bin_inserts(insert_seqs: list[str | None],
                        hooks: StageHooks) -> list[TEAlignmentEvidence]:
     """One alignment per entry, in order; `None` means "nothing to align".
@@ -784,13 +796,20 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
             shortlisted = item.shortlisted
             (evidence, consensus, segmentation, te_alignment, joint, genotype,
              seg_evidence) = _finish_shortlisted(item, next(next_alignment), config)
-            append_row(_evaluated_ledger_row(
+            shadow = locus_module.score_evaluated_locus(
+                component.chrom, evidence.bp_left, evidence.bp_right,
+                segmentation.insert_seq, te_alignment, evidence.alt_struct_reads,
+                evidence.ref_span_reads, hooks.fetch_reference, hooks.detect_tsd)
+            row = _evaluated_ledger_row(
                 component, evidence, consensus, segmentation, te_alignment, joint,
-                owner_bin_start, owner_bin_end))
+                owner_bin_start, owner_bin_end)
+            _record_shadow(row, shadow)
+            append_row(row)
 
             call = _final_call_from_evaluation(component, evidence, consensus,
                                                segmentation, te_alignment, joint,
                                                genotype, config, hooks)
+            _record_shadow(call, shadow)
             summary = shortlisted.validator.summary
             candidate = selection_module.ComponentFinalCallCandidate(
                 pos=call.pos, anchor_pos=summary.bp_left,

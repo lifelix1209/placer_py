@@ -74,6 +74,8 @@ FINAL_CALL_COLUMNS: tuple[str, ...] = (
     "bp_ci_width", "bp_posterior_entropy",
     "te_consensus_start", "te_consensus_end", "te_element_length",
     "polya_len", "transduction_len",
+    "mech_log_lr_vs_non_te", "mech_log_lr_vs_artifact",
+    "mech_decoy_count", "mech_decoy_mean_exp_linkage", "mech_terms",
 )
 
 #: Where `insert_seq` goes when enabled.
@@ -109,6 +111,8 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "te_annotation_class", "te_annotation_order", "te_strand",
     "te_consensus_start", "te_consensus_end", "te_element_length",
     "polya_len", "transduction_len",
+    "mech_log_lr_vs_non_te", "mech_log_lr_vs_artifact",
+    "mech_decoy_count", "mech_decoy_mean_exp_linkage", "mech_terms",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -221,6 +225,8 @@ def final_call_row(call: FinalCall, include_insert_seq: bool = False) -> list[st
         call.bp_ci_width, call.bp_posterior_entropy,
         call.te_consensus_start, call.te_consensus_end, call.te_element_length,
         call.polya_len, call.transduction_len,
+        call.mech_log_lr_vs_non_te, call.mech_log_lr_vs_artifact,
+        call.mech_decoy_count, call.mech_decoy_mean_exp_linkage, call.mech_terms,
     ]
     return [_number(value) for value in values]
 
@@ -264,6 +270,8 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.te_annotation_class, row.te_annotation_order, row.te_strand,
         row.te_consensus_start, row.te_consensus_end, row.te_element_length,
         row.polya_len, row.transduction_len,
+        row.mech_log_lr_vs_non_te, row.mech_log_lr_vs_artifact,
+        row.mech_decoy_count, row.mech_decoy_mean_exp_linkage, row.mech_terms,
     ]
     return [_number(value) for value in values]
 
