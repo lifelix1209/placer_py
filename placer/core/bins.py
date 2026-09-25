@@ -719,7 +719,7 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
         for order, hypothesis in enumerate(hypotheses):
             evidence = events_module.collect_event_read_evidence_for_bounds(
                 component, local_records, read_spans, fragments,
-                hypothesis.left, hypothesis.right)
+                hypothesis.left, hypothesis.right, config.alt_signal_min_mapq)
             summaries.append(hyp_module.build_hypothesis_summary(
                 component, evidence, order, hypothesis.support, hypothesis.priority))
 

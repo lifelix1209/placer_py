@@ -96,13 +96,20 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
                                            local_records: list[AlignedRead],
                                            read_spans: list[ReadReferenceSpan],
                                            fragments: list[InsertionFragment],
-                                           bp_left: int, bp_right: int
+                                           bp_left: int, bp_right: int,
+                                           min_signal_mapq: int = 0
                                            ) -> EventReadEvidence:
     """Tally alt and reference support for ONE breakpoint hypothesis.
 
     Called once per hypothesis, which is why it takes the bounds rather than
     reading them off the component: the hypotheses compete on the evidence each
     of them gathers, and a hypothesis in the wrong place collects less.
+
+    `min_signal_mapq`: a clip or split read below this MAPQ is not counted as
+    alt support. An insertion already has to come from a uniquely mapped read
+    (`INSERTION_CANDIDATE_REQUIRED_MAPQ`), but clips and splits counted at any
+    MAPQ, so in a repeat-rich genome multi-mapping reads -- MAPQ 0 -- added to
+    a candidate's support. 0 keeps that behaviour.
     """
     evidence = EventReadEvidence()
     left = min(bp_left, bp_right)
@@ -149,6 +156,8 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
         qname = read.qname
         signal = classify_local_event_signal(read, component.chrom, alt_signal_start,
                                              alt_signal_end)
+        if read.mapq < min_signal_mapq:
+            signal.split = signal.left_clip = signal.right_clip = False
         if signal.split:
             split_qnames.add(qname)
         # An insertion is believed as PRECISE evidence only from a uniquely

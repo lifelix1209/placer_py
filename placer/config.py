@@ -62,6 +62,9 @@ class PipelineConfig:
     #: that is evidence against a TE (`TE_MODEL_OUTLIER`); in a de novo one it
     #: may be a real element the library never saw, so it is left neutral.
     te_library_completeness: str = "curated"
+    #: Clip and split reads below this MAPQ do not count as alt support
+    #: (`events.collect_event_read_evidence_for_bounds`). 0 counts them all.
+    alt_signal_min_mapq: int = 0
     bam_region_scope: BamRegionScope = field(default_factory=BamRegionScope)
 
     bam_threads: int = 2

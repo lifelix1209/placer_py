@@ -577,3 +577,19 @@ def test_a_local_component_is_reindexed_against_the_fetched_reads():
     assert local.soft_clip_read_indices == [1]
     assert local.insertion_read_indices == [2]
     assert local.chrom == "chr1" and local.anchor_pos == 1500
+
+
+def test_a_multi_mapping_clip_read_counts_only_without_a_mapq_floor():
+    """Insertions already need a uniquely mapped read; clips counted at any
+    MAPQ. `min_signal_mapq` lets a run require the same of clip support."""
+    clipped = read("clip0", pos=1000, cigar=[(M, 500), (S, 400)], mapq=0,
+                   seq="A" * 900)
+    comp = component()
+    records = [clipped]
+    loose = E.collect_event_read_evidence_for_bounds(
+        comp, records, E.read_reference_spans(records), [], 1500, 1500)
+    strict = E.collect_event_read_evidence_for_bounds(
+        comp, records, E.read_reference_spans(records), [], 1500, 1500,
+        min_signal_mapq=20)
+    assert loose.alt_right_clip_reads == 1 or loose.alt_left_clip_reads == 1
+    assert strict.alt_left_clip_reads == strict.alt_right_clip_reads == 0

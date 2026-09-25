@@ -50,6 +50,7 @@ _ENV_INT_FIELDS = {
     "PLACER_TSD_FLANK_WINDOW": "tsd_flank_window",
     "PLACER_EVENT_CONSENSUS_POA_MIN_READS": "event_consensus_poa_min_reads",
     "PLACER_EVENT_CONSENSUS_POA_MAX_READS": "event_consensus_poa_max_reads",
+    "PLACER_ALT_SIGNAL_MIN_MAPQ": "alt_signal_min_mapq",
 }
 _ENV_FLOAT_FIELDS = {
     "PLACER_GENOTYPE_ERROR_RATE": "genotype_error_rate",
