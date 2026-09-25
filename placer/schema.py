@@ -79,6 +79,15 @@ SEQUENCE_COLUMNS: dict[str, str] = {
     "cross_family_margin": "float64",
     "annotation_residual_fraction": "float64",
     "annotation_masked_fraction": "float64",
+    # The class and superfamily (`core/taxonomy.py`), and the element geometry
+    # the TPRT terms need: which strand, where on the element, of what length.
+    # These were the first four entries of MISSING_FOR_TPRT.
+    "te_annotation_class": "str",
+    "te_annotation_order": "str",
+    "te_strand": "str",
+    "te_consensus_start": "int32",
+    "te_consensus_end": "int32",
+    "te_element_length": "int32",
 }
 
 #: Breakpoint geometry and TSD.
@@ -128,16 +137,13 @@ LEDGER_COLUMNS: dict[str, str] = {
 #: This list is the concrete cost of the current schema's information loss, and
 #: it is pinned here so the port cannot quietly proceed without deciding what to
 #: do about it. The scanner has to emit these, or the TPRT terms cannot be
-#: computed at all:
+#: computed at all.
 #:
-#:   te_elem_start / te_elem_end
-#:       Where the insert aligns in ELEMENT coordinates. The current ledger
-#:       keeps only `best_te_query_coverage`, a ratio -- which throws away the
-#:       ln(L - l + 1) nats of the 3'-anchoring term. Two integers instead of
-#:       one ratio is the entire cost of recovering it.
-#:   te_elem_length, te_strand
-#:       Needed to know whether the 3' end is the element's 3' end, and on which
-#:       strand the poly(A) must sit.
+#: The element geometry that used to head the list -- where the insert aligns in
+#: element coordinates, the element's length, and its strand -- is now in the
+#: ledger as `te_consensus_start`, `te_consensus_end`, `te_element_length` and
+#: `te_strand` (SEQUENCE_COLUMNS). What remains:
+#:
 #:   polya_len
 #:       Length of the terminal A/T run at the 3' junction, in the orientation
 #:       implied by te_strand. A and T must NOT be conflated: which one appears
@@ -151,10 +157,6 @@ LEDGER_COLUMNS: dict[str, str] = {
 #:       assume a background, which is exactly what makes a model fragile in
 #:       VNTRs and A-rich tracts.
 MISSING_FOR_TPRT: dict[str, str] = {
-    "te_elem_start": "int32",
-    "te_elem_end": "int32",
-    "te_elem_length": "int32",
-    "te_strand": "str",
     "polya_len": "int32",
     "flank_t_tract_len": "int32",
     "local_repeat_frac": "float64",

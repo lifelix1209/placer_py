@@ -290,18 +290,36 @@ def test_no_info_value_can_break_an_info_parser():
 
 
 # -------------------------------------------------------------- MEINFO tripwire
-def test_meinfo_stays_unemitted_while_te_strand_is_missing_from_the_contract():
+def test_meinfo_is_emitted_exactly_where_the_polarity_is_known():
     """
-    THE TRIPWIRE. `MEINFO`'s fourth field is a polarity, it is not optional,
-    and this build never resolves insertion orientation -- `strand` is set to
-    "NA" unconditionally and `schema.MISSING_FOR_TPRT` lists `te_strand`.
-    Whoever wires orientation in gets a failing test telling them to turn
-    MEINFO on in the same commit.
+    `MEINFO`'s fourth field is a polarity, it is not optional, and the spec has
+    no value for unknown. The strand now reaches the call from the TE
+    alignment, so a call with one gets MEINFO -- 1-based on the consensus --
+    and a call without one gets none rather than an invented `+`.
     """
     assert ("te_strand" in schema.MISSING_FOR_TPRT) is not V.POLARITY_RESOLVED
-    text = V.render_vcf(a_result([a_call()]), ctx())
-    assert "##INFO=<ID=MEINFO" in text, "it must stay declared"
-    assert not any("MEINFO=" in row[7] for row in records(text))
+    oriented = a_call(strand="-")
+    unoriented = a_call(bp_left=5000, bp_right=5012, pos=5000, strand="NA")
+    rows = records(V.render_vcf(a_result([oriented, unoriented]), ctx()))
+    assert "##INFO=<ID=MEINFO" in V.render_vcf(a_result([oriented]), ctx())
+    assert info_of(rows[0])["MEINFO"] == "AluY,2,311,-"
+    assert "MEINFO" not in info_of(rows[1])
+
+
+def test_the_class_and_superfamily_are_emitted_when_known():
+    call = a_call(te_annotation_class="SINE", te_annotation_order="Alu")
+    info = info_of(records(V.render_vcf(a_result([call]), ctx()))[0])
+    assert (info["TE_CLASS"], info["TE_SUPERFAMILY"]) == ("SINE", "Alu")
+    bare = info_of(records(V.render_vcf(a_result([a_call()]), ctx()))[0])
+    assert "TE_CLASS" not in bare
+
+
+def test_an_abstaining_call_names_no_class_and_no_polarity():
+    call = a_call(family_committed=False, strand="+", te_name="UNKNOWN",
+                  te_annotation_class="SINE", te_annotation_order="Alu")
+    info = info_of(records(V.render_vcf(a_result([call]), ctx()))[0])
+    assert info["FAMSTATUS"] == "ABSTAINED"
+    assert "TE_CLASS" not in info and "MEINFO" not in info
 
 
 def test_the_known_element_coordinates_are_emitted_under_their_own_keys():

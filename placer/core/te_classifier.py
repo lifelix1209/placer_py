@@ -442,7 +442,7 @@ def fragment_hits_tsv(hits: list[FragmentTEHit]) -> str:
 # The BLAST half: the classification the decision policy actually reads.
 # ---------------------------------------------------------------------------
 #: Columns requested from blastn, in order. Changing this changes the parser.
-BLAST_OUTFMT = "6 qseqid sseqid pident length qlen qstart qend sstart send bitscore evalue"
+BLAST_OUTFMT = "6 qseqid sseqid pident length qlen qstart qend sstart send bitscore evalue slen"
 #: Reported subjects per query. A redundant library means the top 25 copies are
 #: often the same family; the per-family aggregation below is what makes that
 #: harmless.
@@ -464,6 +464,11 @@ class BlastHsp:
     target_end: int = -1
     bitscore: float = 0.0
     evalue: float = 1.0
+    #: "+" when the insert aligns to the element's own orientation, "-" when to
+    #: its reverse complement (BLAST reports `send < sstart`).
+    strand: str = "+"
+    #: The library entry's length (`slen`); -1 when the row predates the column.
+    subject_length: int = -1
 
 
 @dataclass
@@ -484,6 +489,10 @@ class BlastSubjectHit:
     #: Every HSP's query interval, 0-based half-open. Empty for a hit built by
     #: hand, which is then treated as one interval `[query_start, query_end)`.
     query_intervals: list[tuple[int, int]] = field(default_factory=list)
+    #: The orientation of the highest-bitscore HSP: the one that says the most
+    #: about which way round the element is. "NA" for a hit built by hand.
+    strand: str = "NA"
+    subject_length: int = -1
 
 
 def parse_blast_hsp_line(line: str) -> BlastHsp | None:
@@ -495,10 +504,14 @@ def parse_blast_hsp_line(line: str) -> BlastHsp | None:
       * pident is a PERCENTAGE; identity is a fraction.
       * BLAST coordinates are 1-based INCLUSIVE; the port's are 0-based half
         open, hence `min(a,b) - 1` and `max(a,b)`.
-      * a minus-strand hit reports `send < sstart`. Taking min/max normalises
-        the interval and DISCARDS the orientation -- which is correct here,
-        because the consensus interval is used for 5'-truncation geometry and
-        the strand is already carried by the fragment.
+      * a minus-strand hit reports `send < sstart`. The interval is normalised
+        with min/max for the 5'-truncation geometry, and the orientation is
+        kept separately in `strand`. (It used to be discarded, on the grounds
+        that "the strand is already carried by the fragment" -- nothing
+        carried it, and every call's strand was NA.)
+
+    The twelfth column, `slen`, is optional so that output written with the
+    older eleven-column format still parses.
     """
     fields = line.split()
     if len(fields) < 11:
@@ -516,6 +529,9 @@ def parse_blast_hsp_line(line: str) -> BlastHsp | None:
         out.target_end = max(ta, tb)
         out.bitscore = float(fields[9])
         out.evalue = float(fields[10])
+        out.strand = "+" if ta <= tb else "-"
+        if len(fields) >= 12:
+            out.subject_length = max(-1, int(fields[11]))
     except ValueError:
         return None
     if not (out.query_length > 0 and out.alignment_length > 0
@@ -582,13 +598,18 @@ def collapse_blast_hsps(hsps: list[BlastHsp], query_len: int) -> list[BlastSubje
             acc = {"subject_id": hsp.subject_id, "query_intervals": [],
                    "identity_weighted": 0.0, "aligned_bases": 0, "bitscore": 0.0,
                    "best_evalue": hsp.evalue, "query_start": -1, "query_end": -1,
-                   "target_start": -1, "target_end": -1}
+                   "target_start": -1, "target_end": -1,
+                   "strand": hsp.strand, "strand_bitscore": hsp.bitscore,
+                   "subject_length": hsp.subject_length}
             by_subject[hsp.subject_id] = acc
         acc["query_intervals"].append((hsp.query_start, hsp.query_end))
         acc["identity_weighted"] += hsp.identity * hsp.alignment_length
         acc["aligned_bases"] += hsp.alignment_length
         acc["bitscore"] += hsp.bitscore
         acc["best_evalue"] = min(acc["best_evalue"], hsp.evalue)
+        if hsp.bitscore > acc["strand_bitscore"]:
+            acc["strand"], acc["strand_bitscore"] = hsp.strand, hsp.bitscore
+        acc["subject_length"] = max(acc["subject_length"], hsp.subject_length)
         if acc["query_start"] < 0 or hsp.query_start < acc["query_start"]:
             acc["query_start"] = hsp.query_start
         acc["query_end"] = max(acc["query_end"], hsp.query_end)
@@ -609,7 +630,8 @@ def collapse_blast_hsps(hsps: list[BlastHsp], query_len: int) -> list[BlastSubje
             bitscore=acc["bitscore"], best_evalue=acc["best_evalue"],
             query_start=acc["query_start"], query_end=acc["query_end"],
             target_start=acc["target_start"], target_end=acc["target_end"],
-            query_intervals=sorted(acc["query_intervals"]))
+            query_intervals=sorted(acc["query_intervals"]),
+            strand=acc["strand"], subject_length=acc["subject_length"])
         #: The DISCRIMINATIVE score: a high-identity match over 5% of the insert
         #: and a mediocre one over all of it are both bad in different ways, and
         #: the product refuses to call either good.
@@ -634,6 +656,11 @@ class TEAlignmentEvidence:
     #: 5'-truncated L1 starts thousands of bp in. -1 when unknown.
     te_consensus_start: int = -1
     te_consensus_end: int = -1
+    #: Which way round the element sits relative to the reference's plus
+    #: strand -- the insert is in reference orientation, so this is the best
+    #: hit's strand -- and the element's full length. "NA" / -1 when unknown.
+    te_strand: str = "NA"
+    te_element_length: int = -1
     coarse_prefilter_score: float = 0.0
     coarse_chain_coverage: float = 0.0
     second_family: str = "NA"
@@ -830,6 +857,8 @@ def build_insert_alignment_evidence_from_blast_hits(
     evidence.best_score = best_hit.identity * evidence.best_query_coverage
     evidence.te_consensus_start = best_hit.target_start
     evidence.te_consensus_end = best_hit.target_end
+    evidence.te_strand = best_hit.strand
+    evidence.te_element_length = best_hit.subject_length
     effective_query_coverage = evidence.best_query_coverage
     evidence.annotation_class = best_hit.name_parts.te_class.value
     evidence.annotation_order = best_hit.name_parts.superfamily

@@ -2025,6 +2025,12 @@ def promoted_call_from_ledger_row(row: EvidenceLedgerRow) -> FinalCall:
     call.best_te_identity = row.best_te_identity
     call.best_te_query_coverage = row.best_te_query_coverage
     call.cross_family_margin = row.cross_family_margin
+    call.te_annotation_class = row.te_annotation_class
+    call.te_annotation_order = row.te_annotation_order
+    call.strand = row.te_strand
+    call.te_consensus_start = row.te_consensus_start
+    call.te_consensus_end = row.te_consensus_end
+    call.te_element_length = row.te_element_length
     call.te_structure_path = row.te_structure_path
     call.te_structure_log_evidence = row.te_structure_log_evidence
     call.nonte_structure_log_evidence = row.nonte_structure_log_evidence

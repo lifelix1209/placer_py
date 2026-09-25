@@ -263,13 +263,13 @@ whole-genome run, where the TSVs default `insert_seq` off for that reason.
 record with `ALT=<INS>` and `FILTER=ALTSEQ_MISSING`, rather than being dropped,
 so the VCF and `scientific.txt` never disagree about how many calls there were.
 
-**`MEINFO` is declared in the header and emitted on no record.** Its fourth
+**`MEINFO` goes only where all four of its fields are known.** Its fourth
 field is a polarity, it is not optional, and the spec has no value for
-unknown — but this build never resolves insertion orientation, so `+` would
-invent a measurement and `.` would be read as a real one. The three components
-that *are* known go out as `MEI`, `MEISTART` and `MEIEND`. A test ties that
-decision to `schema.MISSING_FOR_TPRT`, so whoever wires orientation in gets a
-failing test telling them to turn `MEINFO` back on in the same commit.
+unknown, so a call with no oriented TE alignment -- or whose family abstained --
+gets no `MEINFO` rather than an invented `+`. The polarity is the strand of the
+best TE alignment relative to the reference, and START/END are 1-based on the
+element consensus. `MEI`, `MEISTART` and `MEIEND` go out on every record, and
+`TE_CLASS` / `TE_SUPERFAMILY` on every committed one.
 
 `QUAL` is the phred transform of the local FDR, and `.` rather than `0.00`
 when none was computed — a zero QUAL asserts "certainly wrong", which is a

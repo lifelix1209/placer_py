@@ -13,6 +13,8 @@ process is `placer/io/blast.py`.
 
 from __future__ import annotations
 
+import random
+
 import pytest
 from conftest import call_or_skip, close
 
@@ -642,3 +644,29 @@ def test_a_miss_against_a_de_novo_library_is_not_held_against_the_insert():
     assert denovo.qc_reason == "NO_TE_ALIGNMENT_MATCH"
     assert denovo.sequence_model_label == "TE_MODEL_UNAVAILABLE"
     close(denovo.sequence_model_score, 0.0, "de novo miss")
+
+
+def test_a_minus_strand_hsp_keeps_its_orientation_and_the_element_length():
+    """BLAST reports a reverse-complement hit as `send < sstart`. The interval
+    is normalised for the truncation geometry, but the orientation used to be
+    thrown away with it, so every call's strand was NA."""
+    plus = T.parse_blast_hsp_line("q0\tAluY#SINE/Alu\t95.0\t300\t310\t1\t300\t10\t309\t500\t1e-100\t311")
+    minus = T.parse_blast_hsp_line("q0\tAluY#SINE/Alu\t95.0\t300\t310\t1\t300\t309\t10\t500\t1e-100\t311")
+    assert (plus.strand, minus.strand) == ("+", "-")
+    assert (minus.target_start, minus.target_end) == (9, 309)
+    assert minus.subject_length == 311
+    old_format = T.parse_blast_hsp_line("q0\tAluY#SINE/Alu\t95.0\t300\t310\t1\t300\t309\t10\t500\t1e-100")
+    assert old_format.strand == "-" and old_format.subject_length == -1
+
+
+def test_the_subject_takes_the_strand_of_its_strongest_hsp():
+    weak_plus = T.parse_blast_hsp_line("q0\tL1HS#LINE/L1\t80.0\t60\t900\t1\t60\t100\t159\t40\t1e-5\t6000")
+    strong_minus = T.parse_blast_hsp_line("q0\tL1HS#LINE/L1\t97.0\t800\t900\t80\t879\t6000\t5201\t1400\t0\t6000")
+    (hit,) = T.collapse_blast_hsps([weak_plus, strong_minus], 900)
+    assert hit.strand == "-"
+    assert hit.subject_length == 6000
+    rng = random.Random(7)   # not "ACGT" * n: that is a simple repeat, masked out
+    insert = "".join(rng.choice("ACGT") for _ in range(900))
+    evidence = T.build_insert_alignment_evidence_from_blast_hits(insert, True, [hit], 0.04)
+    assert evidence.te_strand == "-"
+    assert evidence.te_element_length == 6000

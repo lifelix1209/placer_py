@@ -46,9 +46,10 @@ project's numbering, not this package's.)
   written out as the ALT allele rather than a symbolic `<INS:ME:*>`, because the
   sequence is the evidence; a call whose sequence could not be assembled keeps
   its record as `<INS>` with `FILTER=ALTSEQ_MISSING` rather than disappearing.
-  `MEINFO` is declared and emitted on no record — its polarity field is not
-  optional and this build does not resolve insertion orientation, so `MEI`,
-  `MEISTART` and `MEIEND` carry the three components that are known.
+  `MEINFO` (name, 1-based start and end on the consensus, polarity) is
+  emitted on every committed call whose orientation is known; `MEI`,
+  `MEISTART` and `MEIEND` go on every record. `TE_CLASS` and `TE_SUPERFAMILY`
+  name the element's class and superfamily.
 - **`calls.csv`** — the full flat table, both call sets in one file
   distinguished by a `call_set` column, plus `te_qc` and the three
   `sequence_family_*` fields, which are the only record of *why* a family
@@ -72,6 +73,13 @@ project's numbering, not this package's.)
 - `te_annotation_class` and `te_annotation_order` in the ledger and TSVs are the
   normalised class and superfamily, where they used to be the raw text of the
   header (and `NA` for any library not in `#Class/Superfamily` form).
+- **Every call has a strand.** The orientation of the best TE alignment used
+  to be discarded while parsing, so `strand` was `NA` on every call; it is now
+  the strand of the strongest HSP, relative to the reference, and it reaches
+  `strand`, the ledger's new `te_strand`, and the VCF's `MEINFO` polarity. The
+  ledger also gains `te_annotation_class`, `te_annotation_order`,
+  `te_consensus_start`, `te_consensus_end` and `te_element_length` (from
+  BLAST's `slen`), so a call promoted from a ledger row keeps them.
 - The latent-mechanism model's family kind (`policy.family_kind`) is read from
   the class instead of from substrings of the element's name. Elements the old
   token match missed now get their mechanism prior -- SINE/MIR and tRNA-derived

@@ -73,10 +73,20 @@ def test_the_tprt_observables_are_absent_from_the_current_ledger():
     for column in schema.MISSING_FOR_TPRT:
         assert column not in schema.LEDGER_COLUMNS, (
             f"{column} is now in the ledger -- move it out of MISSING_FOR_TPRT")
-    for column in ("te_elem_start", "te_elem_end", "te_elem_length",
-                   "polya_len", "flank_t_tract_len",
+    for column in ("polya_len", "flank_t_tract_len",
                    "local_repeat_frac", "local_at_frac"):
         assert column in schema.MISSING_FOR_TPRT, column
+
+
+def test_the_element_geometry_is_now_in_the_ledger():
+    """The first four TPRT observables: the element-coordinate pair (worth
+    ln(L - l + 1) nats of 3'-anchoring, about 8.5 for a 1 kb fragment of a
+    6 kb L1), the element length and the strand. The writer emits all four."""
+    from placer.report import tsv
+    for column in ("te_consensus_start", "te_consensus_end", "te_element_length",
+                   "te_strand"):
+        assert column in schema.LEDGER_COLUMNS, column
+        assert column in tsv.EVIDENCE_LEDGER_COLUMNS, column
 
 
 def test_a_and_t_are_not_conflated_in_the_polya_contract():
@@ -92,7 +102,7 @@ def test_a_and_t_are_not_conflated_in_the_polya_contract():
     luck, so throwing it away is throwing away nearly free discrimination.
     """
     assert "polya_len" in schema.MISSING_FOR_TPRT
-    assert "te_strand" in schema.MISSING_FOR_TPRT
+    assert "te_strand" in schema.LEDGER_COLUMNS
 
 
 # ------------------------------------------- the WRITER contract

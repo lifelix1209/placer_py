@@ -49,6 +49,15 @@ class EvidenceLedgerRow:
     owner_context_right: int = -1
     family: str = "NA"
     subfamily: str = "NA"
+    #: The best hit's class and superfamily (`core/taxonomy.py`), its strand
+    #: relative to the reference, and where it lands on an element of what
+    #: length -- carried on the row so a call promoted from it keeps them.
+    te_annotation_class: str = "NA"
+    te_annotation_order: str = "NA"
+    te_strand: str = "NA"
+    te_consensus_start: int = -1
+    te_consensus_end: int = -1
+    te_element_length: int = -1
     family_alignment_resolved: bool = False
     final_qc: str = "NA"
     posterior_qc: str = "NA"
@@ -175,6 +184,7 @@ class FinalCall:
     cross_family_margin: float = 0.0
     te_consensus_start: int = -1
     te_consensus_end: int = -1
+    te_element_length: int = -1
     te_sequence_model_label: str = "TE_MODEL_UNAVAILABLE"
     te_sequence_model_score: float = 0.0
     te_sequence_model_gc: float = 0.0

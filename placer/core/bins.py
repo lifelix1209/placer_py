@@ -182,6 +182,12 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.coverage_right = max(row.bp_left, row.bp_right) if row.bp_right >= 0 else row.pos
     row.family = te_alignment.best_family or "NA"
     row.subfamily = te_alignment.best_subfamily or "NA"
+    row.te_annotation_class = te_alignment.annotation_class
+    row.te_annotation_order = te_alignment.annotation_order
+    row.te_strand = te_alignment.te_strand
+    row.te_consensus_start = te_alignment.te_consensus_start
+    row.te_consensus_end = te_alignment.te_consensus_end
+    row.te_element_length = te_alignment.te_element_length
     row.family_alignment_resolved = bool(getattr(te_alignment, "pass_", False))
     row.final_qc = _with_poa_cap_token(joint.final_qc, consensus)
     row.posterior_qc = joint.posterior_qc
@@ -305,7 +311,7 @@ def _final_call_from_evaluation(component: ComponentCall,
         call.sequence_subfamily_candidate = te_alignment.best_subfamily
         call.sequence_family_commit_eligible = True
     call.te_name = call.subfamily if call.subfamily != "NA" else call.family
-    call.strand = "NA"
+    call.strand = te_alignment.te_strand
 
     call.insert_len = len(segmentation.insert_seq)
     call.insert_seq = segmentation.insert_seq
@@ -314,6 +320,7 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.cross_family_margin = te_alignment.cross_family_margin
     call.te_consensus_start = te_alignment.te_consensus_start
     call.te_consensus_end = te_alignment.te_consensus_end
+    call.te_element_length = te_alignment.te_element_length
     call.te_sequence_model_label = te_alignment.sequence_model_label
     call.te_sequence_model_score = te_alignment.sequence_model_score
     call.te_sequence_model_gc = te_alignment.sequence_model_gc

@@ -24,18 +24,16 @@ first base past it. So:
 Getting this backwards would shift every record by one base and break no test,
 which is why it is written down here and pinned in `tests/test_36_vcf_csv.py`.
 
-MEINFO IS DECLARED AND NEVER EMITTED, and this is the one place the writer
-refuses to say something the tool does not know. `MEINFO`'s fourth field is a
-polarity, it is not optional, and the spec has no value for "unknown".
-`placer/core/bins.py` sets `FinalCall.strand` to "NA" unconditionally --
-this port never resolves insertion orientation, and `placer/schema.py` lists
-`te_strand` among the observables the ledger does not carry. Writing `+` would
-invent a measurement; writing `.` produces a `Number=4` field that a MEI-aware
-parser will read as a real polarity. So the three components that ARE known go
-out under their own keys -- `MEI`, `MEISTART`, `MEIEND` -- and `MEINFO` returns
-unchanged the moment `POLARITY_RESOLVED` flips. `tests/test_36_vcf_csv.py` ties
-those two facts together so the next person cannot turn one on without the
-other.
+MEINFO IS EMITTED ONLY WHERE ITS FOUR FIELDS ARE ALL KNOWN. Its fourth field
+is a polarity, it is not optional, and the spec has no value for "unknown":
+writing `+` for an unresolved call would invent a measurement, and `.` makes a
+`Number=4` field that a MEI-aware parser reads as a real polarity. The polarity
+is the strand of the best TE alignment (`FinalCall.strand`, "+" or "-"; the
+insert is in reference orientation), so a call with no oriented hit, or no
+consensus interval, gets no MEINFO. `MEI`, `MEISTART` and `MEIEND` go out on
+every record regardless. MEINFO's START/END are 1-based inclusive on the
+element consensus, the convention MELT writes; MEISTART/MEIEND keep their
+declared 0-based half-open form.
 
 SVLEN COMES FROM THE ALT, NOT FROM `insert_len`. The cluster-promoted path in
 `placer/core/finalization.py` once set `insert_seq` without `insert_len`, so
@@ -57,9 +55,10 @@ MISSING_ANCHOR_BASE = "N"
 #: `lfdr == 0.0` phred-transforms to +inf, which is not a VCF number.
 QUAL_CAP = 1000.0
 
-#: Flip when `TEAlignmentEvidence` starts carrying an orientation. Pinned
-#: against `schema.MISSING_FOR_TPRT["te_strand"]` so the two cannot diverge.
-POLARITY_RESOLVED = False
+#: `TEAlignmentEvidence` carries the alignment strand, so MEINFO is emitted
+#: where it is known. Pinned against `schema.MISSING_FOR_TPRT` in
+#: `tests/test_36_vcf_csv.py` so the two cannot diverge again.
+POLARITY_RESOLVED = True
 
 #: Emitted in this order so a FILTER field is stable across runs.
 FILTER_ORDER = ("STRUCTURAL", "FAM_ABSTAIN", "IMPRECISE", "UNCALIB",
@@ -73,9 +72,14 @@ _INFO_KEYS = (
     ("SVLEN", "1", "Integer", "Inserted length in bp, from the ALT allele"),
     ("CIPOS", "2", "Integer", "Offsets from POS bracketing the insertion point"),
     ("MEINFO", "4", "String",
-     "Mobile element name,start,end,polarity. NEVER EMITTED by this build: "
-     "polarity is unresolved. Use MEI, MEISTART and MEIEND."),
+     "Mobile element name,start,end,polarity: start and end 1-based inclusive "
+     "on the element consensus, polarity the strand of the element relative "
+     "to the reference. Only on records where all four are known"),
     ("MEI", "1", "String", "Mobile element name"),
+    ("TE_CLASS", "1", "String",
+     "RepeatMasker class of the element: LINE, SINE, Retroposon, PLE, LTR, "
+     "DNA, RC, Unknown or NonTE"),
+    ("TE_SUPERFAMILY", "1", "String", "Superfamily of the element"),
     ("FAM", "1", "String", "TE family"),
     ("SUBFAM", "1", "String", "TE subfamily"),
     ("FAMSTATUS", "1", "String",
@@ -227,11 +231,38 @@ def vcf_filters(call: FinalCall, *, structural: bool,
     return [name for name in FILTER_ORDER if name in flags]
 
 
+def _meinfo(call: FinalCall) -> str:
+    """`NAME,START,END,POLARITY`, or "" when any of the four is unknown.
+
+    A call whose family ABSTAINED has no name it stands behind, so it gets no
+    MEINFO either, whatever the alignment strand was.
+    """
+    if not POLARITY_RESOLVED or call.strand not in ("+", "-"):
+        return ""
+    if not call.family_committed:
+        return ""
+    if not (0 <= call.te_consensus_start < call.te_consensus_end):
+        return ""
+    name = call.te_name or "UNKNOWN"
+    return (f"{name},{call.te_consensus_start + 1},{call.te_consensus_end},"
+            f"{call.strand}")
+
+
 def _info_pairs(call: FinalCall, *, svlen: int) -> list[str]:
     out = ["SVTYPE=INS", f"SVLEN={svlen}"]
     if call.bp_right > call.bp_left >= 0:
         out.append(f"CIPOS=0,{call.bp_right - call.bp_left}")
     out.append(f"MEI={call.te_name or 'UNKNOWN'}")
+    meinfo = _meinfo(call)
+    if meinfo:
+        out.append(f"MEINFO={meinfo}")
+    # Class and superfamily are claims about the element, so they follow the
+    # family's commitment: an abstaining call does not name what it inserted.
+    if call.family_committed:
+        if call.te_annotation_class and call.te_annotation_class != "NA":
+            out.append(f"TE_CLASS={call.te_annotation_class}")
+        if call.te_annotation_order and call.te_annotation_order != "NA":
+            out.append(f"TE_SUPERFAMILY={call.te_annotation_order}")
     out.append(f"FAM={call.family}")
     out.append(f"SUBFAM={call.subfamily}")
     out.append("FAMSTATUS=" + ("COMMITTED" if call.family_committed
