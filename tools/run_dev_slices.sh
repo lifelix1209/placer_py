@@ -18,7 +18,10 @@
 set -euo pipefail
 
 REPO=${REPO:-/mnt/beegfs6/home1/miska/hl725/placer}
-PY=${PY:-$HOME/anaconda3/envs/te_bench/bin/python}
+# placer-dev, not te_bench: te_bench has the bioconda pyabpoa 1.5.3 build, which
+# dies of SIGILL on these AMD EPYC nodes (see placer/parallel.py).
+PY=${PY:-$HOME/anaconda3/envs/placer-dev/bin/python}
+export PATH="$(dirname "$PY"):$PATH"
 TEBENCH=${TEBENCH:-/mnt/home1/miska/hl725/scratch/projects/TE_bechmark}
 OUT_ROOT=${OUT_ROOT:-/mnt/home1/miska/hl725/scratch/placer_dev/runs}
 REF_DIR=${REF_DIR:-/mnt/home1/miska/hl725/scratch/placer_dev/ref}

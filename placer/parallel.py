@@ -24,6 +24,15 @@ returns reads that start BEFORE the region and overlap it, and those go to the
 first chunk, as they go to the first bins of a sequential run. The filter is
 applied before the gate, so the gate's tallies count every read once.
 
+A WORKER THAT DIES FAILS THE RUN. `multiprocessing.Pool` does not notice a
+worker killed by a signal: the task it held is never answered and the parent
+waits forever. That happened on the first cluster run -- a pyabpoa build
+compiled for a CPU the node did not have died of SIGILL in every worker, and the
+job sat idle for an hour with no output (bioconda pyabpoa 1.5.3 on AMD
+EPYC Zen 3; 1.5.4-1.5.7 run, hence the `!=1.5.3` in pyproject.toml). `ProcessPoolExecutor` raises
+`BrokenProcessPool` instead, and `run_pipeline_parallel` turns that into
+`WorkerDiedError` with a message saying what to check.
+
 `tests/test_38_parallel.py` holds both halves to that: the chunk planner and
 the merge on literals, and a real BAM run in which `--threads 3` must write
 byte-identical files to `--threads 1`.
@@ -35,6 +44,8 @@ import multiprocessing
 import sys
 import time
 from collections.abc import Iterator
+from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 
 from placer.alignment import AlignedRead
@@ -175,6 +186,29 @@ def _scan_chunk_in_worker(chunk: ScanChunk) -> PipelineResult:
 
 
 # ------------------------------------------------------------------ the parent
+class WorkerDiedError(RuntimeError):
+    """A scan worker process died without returning its chunk."""
+
+
+def map_in_worker_processes(fn, items, workers: int, initializer=None,
+                            initargs: tuple = ()) -> Iterator:
+    """`map(fn, items)` on `workers` spawned processes, in input order.
+
+    Raises `WorkerDiedError` if a worker process dies -- killed by a signal,
+    or exited -- where `multiprocessing.Pool` would wait for it forever.
+    """
+    context = multiprocessing.get_context("spawn")
+    try:
+        with ProcessPoolExecutor(max_workers=workers, mp_context=context,
+                                 initializer=initializer,
+                                 initargs=initargs) as pool:
+            # `map` yields in submission order, so a caller that merges by
+            # appending gets genome order.
+            yield from pool.map(fn, items)
+    except BrokenProcessPool as error:
+        raise WorkerDiedError(str(error)) from error
+
+
 def run_pipeline_parallel(reader, config: PipelineConfig, workers: int,
                           target_fdr: float | None = None,
                           progress: bool = True) -> PipelineResult:
@@ -188,12 +222,11 @@ def run_pipeline_parallel(reader, config: PipelineConfig, workers: int,
     chunks = plan_run_chunks(reader, config, workers)
     merged = PipelineResult()
     started = time.perf_counter()
-    context = multiprocessing.get_context("spawn")
-    with context.Pool(processes=workers, initializer=_init_worker,
-                      initargs=(config,)) as pool:
-        # `imap`, not `imap_unordered`: results arrive in chunk order, which
-        # is genome order, so the merge is a plain append.
-        for done, part in enumerate(pool.imap(_scan_chunk_in_worker, chunks), 1):
+    done = 0
+    try:
+        for part in map_in_worker_processes(_scan_chunk_in_worker, chunks, workers,
+                                            _init_worker, (config,)):
+            done += 1
             merge_scan_results(merged, part)
             if progress:
                 print(f"[PLACER] scanned chunk {done}/{len(chunks)} "
@@ -202,4 +235,12 @@ def run_pipeline_parallel(reader, config: PipelineConfig, workers: int,
                       f"(ledger rows {len(merged.evidence_ledger)}, "
                       f"{time.perf_counter() - started:.0f}s)",
                       file=sys.stderr, flush=True)
+    except WorkerDiedError as error:
+        raise WorkerDiedError(
+            f"a scan worker died after {done} of {len(chunks)} chunks. A worker "
+            "killed by a signal leaves no Python traceback: run once with "
+            "--threads 1 on the same region to see the crash, and check the "
+            "compiled dependencies (pysam, pyabpoa) import and run on this "
+            "machine's CPU -- the bioconda pyabpoa 1.5.3 build dies of SIGILL "
+            "on AMD EPYC (Zen 3) nodes; 1.5.4 and later do not.") from error.__cause__
     return finalize_run(merged, config, target_fdr)

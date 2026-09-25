@@ -139,6 +139,16 @@ project's numbering, not this package's.)
 
 ### Fixed
 
+- **`--threads N` no longer hangs forever when a worker dies.** A scan worker
+  killed by a signal left `multiprocessing.Pool` waiting on a result that would
+  never come; on the first cluster run every worker died of SIGILL inside
+  pyabpoa and the job sat idle for an hour. The pool is now a
+  `ProcessPoolExecutor`, and a dead worker ends the run with exit code 1 and a
+  message saying what to check.
+- `pyabpoa` 1.5.3 is excluded (`pyabpoa>=1.4,!=1.5.3`): that bioconda build
+  dies of SIGILL as soon as an aligner is created on AMD EPYC Zen 3 nodes.
+  1.5.4 to 1.5.7 run on the same machines.
+
 - The L1 endonuclease motif's minus-strand window was assembled in the wrong
   order (`revcomp(right[:4] + left[-2:])`), so a perfect bottom-strand
   5'-TTTT|AA-3' site scored as four mismatches out of six. It is now

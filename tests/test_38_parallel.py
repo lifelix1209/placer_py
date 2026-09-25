@@ -187,3 +187,29 @@ def test_three_workers_write_the_same_bytes_as_one(region):
         # Not vacuous: the dataset plants four insertions and the run calls some.
         assert os.path.getsize(Path(one, "calls.vcf")) > 0
         assert b"\nchr1\t" in Path(one, "scientific.txt").read_bytes()
+
+
+# ------------------------------------------------------------- a dying worker
+def test_the_worker_map_returns_results_in_input_order():
+    from _worker_helpers import square
+
+    from placer.parallel import map_in_worker_processes
+    assert list(map_in_worker_processes(square, [5, 1, 4, 2, 3], 2)) == [25, 1, 16, 4, 9]
+
+
+def test_a_worker_killed_by_a_signal_fails_the_run_instead_of_hanging_it():
+    """
+    The regression. `multiprocessing.Pool` never answers the task a killed
+    worker held, and the parent waits forever: the first cluster run sat idle
+    for an hour when pyabpoa died of SIGILL in every worker. The replacement
+    has to raise, and promptly.
+    """
+    import time
+
+    from _worker_helpers import square_unless_three
+
+    from placer.parallel import WorkerDiedError, map_in_worker_processes
+    started = time.perf_counter()
+    with pytest.raises(WorkerDiedError):
+        list(map_in_worker_processes(square_unless_three, [1, 2, 3, 4], 2))
+    assert time.perf_counter() - started < 60

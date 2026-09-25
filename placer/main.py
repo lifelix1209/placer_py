@@ -290,13 +290,17 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     try:
         if config.scan_workers > 1:
             from placer.io.te_library import TeLibraryAligner
-            from placer.parallel import run_pipeline_parallel
+            from placer.parallel import WorkerDiedError, run_pipeline_parallel
 
             # The parent scans nothing, so it builds no hooks -- each worker
             # builds its own. It does build the BLAST database, once, so the
             # workers find it on disk rather than racing to create it.
             TeLibraryAligner(config, entries).prepare()
-            result = run_pipeline_parallel(reader, config, config.scan_workers)
+            try:
+                result = run_pipeline_parallel(reader, config, config.scan_workers)
+            except WorkerDiedError as error:
+                print(f"[PLACER] {error}", file=sys.stderr)
+                return 1
         else:
             hooks = build_stage_hooks(config, reference, entries)
             result = run_pipeline(reader.stream(), reader.chromosome_name,

@@ -45,7 +45,9 @@ placer = "placer.main:main"
 #
 #   pysam      reading the BAM and the indexed reference
 #   pyabpoa    the event consensus -- see placer/consensus.py for why there
-#              is no pure-Python fallback
+#              is no pure-Python fallback. Not 1.5.3: that bioconda build
+#              dies of SIGILL when the aligner is created on AMD EPYC Zen 3
+#              (measured; 1.5.4 through 1.5.7 run on the same machines).
 #   rapidfuzz  the flank-placement edit distance, which was ~60% of a real run
 #              in pure Python. OPTIONAL even here: `core/breakpoints.py` falls
 #              back to the pure-Python DP, which gives the same answer, so
@@ -53,7 +55,7 @@ placer = "placer.main:main"
 #
 # BLAST+ (blastn, makeblastdb) is also needed for the TE alignment, and is not
 # a Python package: it has to be on PATH, or `te_blastn_path` set.
-scan = ["pysam>=0.22", "pyabpoa>=1.4", "rapidfuzz>=3.0"]
+scan = ["pysam>=0.22", "pyabpoa>=1.4,!=1.5.3", "rapidfuzz>=3.0"]
 dev = ["pytest>=7.4", "ruff>=0.6", "mypy>=1.11", "pre-commit>=3.5"]
 
 [tool.setuptools.packages.find]
