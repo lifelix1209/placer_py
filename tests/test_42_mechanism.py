@@ -175,3 +175,13 @@ def test_three_prime_anchoring_tolerates_an_unaligned_consensus_tail():
                                  three_prime_complete=False))
     assert complete.terms["anchoring"] >= 0.0
     assert fragment.terms["anchoring"] < 0.0
+
+
+def test_an_insert_no_element_aligned_to_is_never_a_te_call_whatever_its_ends():
+    """An A-rich end is not a TE without a TE: the hallmark terms need an
+    aligned element to be evidence about."""
+    s = M.score_locus(obs(te_class=TeClass.UNKNOWN, identity=0.0, aligned_len=0,
+                          polya_len=40, ltr_start_matches=2, ltr_end_matches=2))
+    assert s.vs_non_te < 0
+    assert "tail" not in s.terms
+    assert s.vs_artifact > 0            # it can still be a structural call

@@ -450,6 +450,19 @@ def score_locus(obs: LocusObservation,
         out.vs_artifact = counts
         return out
 
+    if obs.aligned_len <= 0 or obs.identity <= 0.0:
+        # No element aligned. The hallmarks (a tail, TG...CA, TIRs) are
+        # evidence about WHICH element was inserted, and there is none: on the
+        # cichlid dev slice the Unknown-class mixture's tail and termini terms
+        # alone gave unaligned inserts +10 to +23 nats and made TE calls of
+        # them. The TE question rests on the sequence term; the insertion can
+        # still be a structural call on the artifact question.
+        linkage = tsd_term(obs, params.tsd_model(TeClass.UNKNOWN, ""))
+        out.terms = {"sequence": sequence, "counts": counts, "tsd": linkage}
+        out.vs_non_te = sequence
+        out.vs_artifact = counts + linkage
+        return out
+
     if obs.te_class is TeClass.UNKNOWN:
         internal_mix, linkage_mix = [], []
         for cls, prior in UNKNOWN_CLASS_PRIOR.items():
