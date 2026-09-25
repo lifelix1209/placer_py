@@ -315,7 +315,10 @@ def _shadow_lines(result) -> list[str]:
     shadow = getattr(result, "mech_shadow", None)
     if shadow is None:
         return []
-    lines = [f"mech_shadow_loci\t{shadow.loci}",
+    lines = [f"mech_identity_priors\tq_young={_number(shadow.identity.q_young)}"
+             f";q_ambient={_number(shadow.identity.q_ambient)}"
+             f";loci={shadow.identity.loci}",
+             f"mech_shadow_loci\t{shadow.loci}",
              f"mech_shadow_te_selected\t{shadow.te_selected}",
              f"mech_shadow_structural_selected\t{shadow.structural_selected}"]
     for name, check in shadow.checks.items():

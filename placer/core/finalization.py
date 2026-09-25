@@ -2040,6 +2040,8 @@ def promoted_call_from_ledger_row(row: EvidenceLedgerRow) -> FinalCall:
     call.mech_decoy_count = row.mech_decoy_count
     call.mech_decoy_mean_exp_linkage = row.mech_decoy_mean_exp_linkage
     call.mech_terms = row.mech_terms
+    call.mech_aligned_len = row.mech_aligned_len
+    call.mech_sequence_term = row.mech_sequence_term
     call.te_structure_path = row.te_structure_path
     call.te_structure_log_evidence = row.te_structure_log_evidence
     call.nonte_structure_log_evidence = row.nonte_structure_log_evidence

@@ -30,7 +30,9 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+from placer.core import tprt
 from placer.core.ledger import EvidenceLedgerRow
+from placer.core.mechanism import Q_AMBIENT, Q_YOUNG
 from placer.core.selection import ebh_select
 
 #: Rows this close are one locus. 50 bp split one Alu into three loci 88-94 bp
@@ -56,7 +58,95 @@ class DecoyCheck:
 
 
 @dataclass
+class IdentityPriors:
+    """The sequence term's two identities, as estimated from this sample."""
+
+    q_young: float = Q_YOUNG
+    q_ambient: float = Q_AMBIENT
+    #: Loci the estimate drew on; 0 means the literature values were kept.
+    loci: int = 0
+
+
+#: What a locus must show to enter the identity estimate: an insertion is
+#: certainly there (artifact ratio at least this many nats), a TE class, and
+#: enough aligned bases for its identity to mean something.
+IDENTITY_FIT_MIN_ARTIFACT = 10.0
+IDENTITY_FIT_MIN_ALIGNED = 100
+IDENTITY_FIT_MIN_LOCI = 20
+#: Weight of each literature value, in pseudo-bases: enough to hold the fit
+#: where the sample says little, small against a real sample's evidence.
+IDENTITY_PRIOR_BASES = 2000.0
+
+
+def estimate_identity_priors(items: list) -> IdentityPriors:
+    """Fit (q_young, q_ambient) to the sample: literature prior, sample update.
+
+    Among loci that certainly carry an insertion, identity to the consensus is
+    a mixture of two populations -- new copies of an active element, and
+    copies of the genome's resident old elements (a duplication carrying one,
+    an old element re-inserted in trans) -- which is the distinction the TE
+    question needs. What sets the observed identity of a NEW copy is not only
+    the element's youth but the consensus's own accuracy: ONT error survives
+    in an insert consensus, and a de novo library's consensus is itself
+    approximate. On the cichlid dev slice real insertions called by tldr
+    aligned at 0.83-0.91, which the literature 0.95/0.80 scored as old
+    copies.
+
+    A two-component per-base binomial mixture, fitted by EM with Beta priors
+    at the literature values (IDENTITY_PRIOR_BASES each), keeping
+    q_young > q_ambient. Too few loci: the literature values stand.
+    """
+    data = [(item.best_te_identity, item.mech_aligned_len) for item in items
+            if item.mech_aligned_len >= IDENTITY_FIT_MIN_ALIGNED
+            and item.mech_log_lr_vs_artifact >= IDENTITY_FIT_MIN_ARTIFACT
+            and (item.te_annotation_class or "") not in _NOT_TE_CLASSES
+            and 0.5 < item.best_te_identity <= 1.0]
+    if len(data) < IDENTITY_FIT_MIN_LOCI:
+        return IdentityPriors()
+    qy, qa, w = Q_YOUNG, Q_AMBIENT, 0.5
+    n0 = IDENTITY_PRIOR_BASES
+    for _ in range(100):
+        ky = ny = ka = na = 0.0
+        wy = 0.0
+        for identity, n in data:
+            k = identity * n
+            ly = math.log(w) + k * math.log(qy) + (n - k) * math.log(1.0 - qy)
+            la = math.log(1.0 - w) + k * math.log(qa) + (n - k) * math.log(1.0 - qa)
+            m = max(ly, la)
+            r = math.exp(ly - m) / (math.exp(ly - m) + math.exp(la - m))
+            ky += r * k
+            ny += r * n
+            ka += (1 - r) * k
+            na += (1 - r) * n
+            wy += r
+        new_qy = (Q_YOUNG * n0 + ky) / (n0 + ny)
+        new_qa = (Q_AMBIENT * n0 + ka) / (n0 + na)
+        new_w = min(0.99, max(0.01, wy / len(data)))
+        if new_qy <= new_qa + 0.01:
+            new_qa = new_qy - 0.01
+        if abs(new_qy - qy) < 1e-6 and abs(new_qa - qa) < 1e-6:
+            qy, qa, w = new_qy, new_qa, new_w
+            break
+        qy, qa, w = new_qy, new_qa, new_w
+    return IdentityPriors(min(qy, 0.9995), max(qa, 0.61), len(data))
+
+
+def apply_identity_priors(items: list, priors: IdentityPriors) -> None:
+    """Recompute each item's sequence term, and so its TE ratio, with them."""
+    if priors.loci == 0:
+        return
+    for item in items:
+        if item.mech_aligned_len <= 0:
+            continue
+        new = tprt.log_bf_sequence(item.mech_aligned_len, item.best_te_identity,
+                                   q_young=priors.q_young, q_ambient=priors.q_ambient)
+        item.mech_log_lr_vs_non_te += new - item.mech_sequence_term
+        item.mech_sequence_term = new
+
+
+@dataclass
 class ShadowSelection:
+    identity: IdentityPriors = field(default_factory=IdentityPriors)
     checks: dict[str, DecoyCheck] = field(default_factory=dict)
     loci: int = 0
     te_selected: int = 0
@@ -121,8 +211,13 @@ def _loci(rows: list) -> list[list]:
 def select_loci(items: list, q: float) -> ShadowSelection:
     """The decoy check and both e-BH passes over `items` -- ledger rows or
     calls, anything with the `mech_*` fields, `te_annotation_class`, `chrom`,
-    `tid` and `pos`. Marks each locus's representative item."""
-    out = ShadowSelection(checks=decoy_checks(items))
+    `tid` and `pos`. Marks each locus's representative item.
+
+    First updates the identity priors from the sample and rescores the TE
+    ratio with them (`estimate_identity_priors`)."""
+    priors = estimate_identity_priors(items)
+    apply_identity_priors(items, priors)
+    out = ShadowSelection(identity=priors, checks=decoy_checks(items))
 
     def adjusted_artifact(item) -> float:
         check = out.checks.get(item.te_annotation_class or "NA", out.checks["ALL"])

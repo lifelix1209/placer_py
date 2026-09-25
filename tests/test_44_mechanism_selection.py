@@ -67,3 +67,34 @@ def test_rows_that_were_not_evaluated_are_not_tested():
     triaged.candidate_retention_reason = "LEDGER_ONLY_PRE_EXPENSIVE_STAGE"
     shadow = S.apply_mechanism_shadow_selection([triaged, row(1000, 30, 30)], 0.1)
     assert shadow.loci == 1 and not triaged.mech_ebh_selected
+
+
+def _aligned(pos, identity, length=600, artifact=20.0):
+    r = row(pos, 5.0, artifact)
+    r.best_te_identity, r.mech_aligned_len = identity, length
+    return r
+
+
+def test_the_identity_priors_move_to_the_sample_s_own_two_populations():
+    young = [_aligned(i * 1000, 0.90) for i in range(40)]
+    old = [_aligned(100_000 + i * 1000, 0.76) for i in range(40)]
+    priors = S.estimate_identity_priors(young + old)
+    assert priors.loci == 80
+    assert 0.89 < priors.q_young < 0.92          # pulled from 0.95 to the data
+    assert 0.75 < priors.q_ambient < 0.80
+    few = S.estimate_identity_priors(young[:5])
+    assert (few.q_young, few.q_ambient, few.loci) == (S.Q_YOUNG, S.Q_AMBIENT, 0)
+
+
+def test_rescoring_with_the_sample_s_priors_changes_only_the_sequence_term():
+    from placer.core import tprt
+    r = _aligned(1000, 0.90)
+    r.mech_sequence_term = tprt.log_bf_sequence(600, 0.90)
+    before_non_te = r.mech_log_lr_vs_non_te
+    priors = S.IdentityPriors(q_young=0.90, q_ambient=0.76, loci=50)
+    S.apply_identity_priors([r], priors)
+    expected = tprt.log_bf_sequence(600, 0.90, q_young=0.90, q_ambient=0.76)
+    assert r.mech_sequence_term == pytest.approx(expected)
+    assert r.mech_log_lr_vs_non_te == pytest.approx(
+        before_non_te + expected - tprt.log_bf_sequence(600, 0.90))
+    assert r.mech_log_lr_vs_artifact == 20.0

@@ -610,6 +610,8 @@ def _record_shadow(target: EvidenceLedgerRow | FinalCall,
     target.mech_log_lr_vs_artifact = shadow.score.vs_artifact
     target.mech_decoy_count = shadow.decoy_count
     target.mech_decoy_mean_exp_linkage = shadow.decoy_mean_exp_linkage
+    target.mech_aligned_len = shadow.observation.aligned_len
+    target.mech_sequence_term = shadow.score.terms.get("sequence", 0.0)
     target.mech_terms = ";".join(f"{name}={value:.3f}"
                                  for name, value in shadow.score.terms.items()) or "NA"
 
