@@ -38,6 +38,8 @@ from dataclasses import dataclass, field
 
 from placer.config import PipelineConfig
 from placer.core import mathx
+from placer.core.element_structure import ElementStructure
+from placer.core.element_structure import measure as measure_element_structure
 from placer.core.fragments import InsertionFragment, InsertionFragmentSource
 from placer.core.seqtools import (
     FNV1A_OFFSET_BASIS,
@@ -661,6 +663,11 @@ class TEAlignmentEvidence:
     #: hit's strand -- and the element's full length. "NA" / -1 when unknown.
     te_strand: str = "NA"
     te_element_length: int = -1
+    #: The best hit's interval on the insert, reference orientation, 0-based.
+    te_query_start: int = -1
+    te_query_end: int = -1
+    #: The class's structural hallmarks (`core/element_structure.py`).
+    element_structure: ElementStructure = field(default_factory=ElementStructure)
     coarse_prefilter_score: float = 0.0
     coarse_chain_coverage: float = 0.0
     second_family: str = "NA"
@@ -720,8 +727,26 @@ def _finalize_evidence(evidence: TEAlignmentEvidence, insert_seq: str,
         evidence.best_subfamily, evidence.best_identity, effective_query_coverage,
         evidence.annotation_residual_fraction, evidence.annotation_masked_fraction,
         evidence.cross_family_margin, evidence.second_score,
-        evidence.sequence_model_label, evidence.sequence_model_score)
+        evidence.sequence_model_label, evidence.sequence_model_score,
+        te_class=evidence.annotation_class, te_strand=evidence.te_strand)
+    evidence.element_structure = measure_element_structure(
+        insert_seq, evidence.annotation_class, evidence.te_strand,
+        evidence.te_consensus_start, evidence.te_consensus_end,
+        evidence.te_element_length, _core_end_in_element_orientation(evidence, insert_seq),
+        evidence.annotation_order)
     return evidence
+
+
+def _core_end_in_element_orientation(evidence: TEAlignmentEvidence,
+                                     insert_seq: str) -> int:
+    """Where the aligned core ends, counted in the element's orientation."""
+    if evidence.te_query_end <= evidence.te_query_start or evidence.te_query_start < 0:
+        return -1
+    if evidence.te_strand == "-":
+        return len(insert_seq) - evidence.te_query_start
+    if evidence.te_strand == "+":
+        return evidence.te_query_end
+    return -1
 
 
 #: A hit NAMES an element only if at least this many of the insert bases it
@@ -859,6 +884,8 @@ def build_insert_alignment_evidence_from_blast_hits(
     evidence.te_consensus_end = best_hit.target_end
     evidence.te_strand = best_hit.strand
     evidence.te_element_length = best_hit.subject_length
+    evidence.te_query_start = best_hit.query_start
+    evidence.te_query_end = best_hit.query_end
     effective_query_coverage = evidence.best_query_coverage
     evidence.annotation_class = best_hit.name_parts.te_class.value
     evidence.annotation_order = best_hit.name_parts.superfamily

@@ -58,6 +58,9 @@ class EvidenceLedgerRow:
     te_consensus_start: int = -1
     te_consensus_end: int = -1
     te_element_length: int = -1
+    #: The oriented poly(A) and 3' transduction (`core/element_structure.py`).
+    polya_len: int = 0
+    transduction_len: int = -1
     family_alignment_resolved: bool = False
     final_qc: str = "NA"
     posterior_qc: str = "NA"
@@ -185,6 +188,8 @@ class FinalCall:
     te_consensus_start: int = -1
     te_consensus_end: int = -1
     te_element_length: int = -1
+    polya_len: int = 0
+    transduction_len: int = -1
     te_sequence_model_label: str = "TE_MODEL_UNAVAILABLE"
     te_sequence_model_score: float = 0.0
     te_sequence_model_gc: float = 0.0

@@ -70,6 +70,17 @@ project's numbering, not this package's.)
 
 ### Changed
 
+- **The structure decode reads the insert in the element's orientation and
+  by class.** A minus-strand insert is reverse-complemented first, so a poly(T)
+  at the reference 5' end is recognised as the element's poly(A); the tail and
+  3' transduction states exist only for TPRT classes (LINE, SINE, Retroposon,
+  PLE) and elements of unknown class, so an LTR's or DNA transposon's A-rich
+  end is no longer credited as a tail. `core/element_structure.py` measures
+  each class's hallmarks -- the oriented poly(A) and transduction, 5'/3' end
+  completeness, LTR TG...CA termini, DNA terminal inverted repeats, Helitron
+  TC...CTRR -- for the decision layer, and the ledger and TSVs gain
+  `polya_len` and `transduction_len`.
+
 - **`blastn` is batched**: a bin's distinct inserts, sorted, 32 to a process,
   the batches of a bin run concurrently. On the 201 inserts of the human
   development slice this took the TE alignment from 116.6 s to 5.6 s. Batching

@@ -2031,6 +2031,8 @@ def promoted_call_from_ledger_row(row: EvidenceLedgerRow) -> FinalCall:
     call.te_consensus_start = row.te_consensus_start
     call.te_consensus_end = row.te_consensus_end
     call.te_element_length = row.te_element_length
+    call.polya_len = row.polya_len
+    call.transduction_len = row.transduction_len
     call.te_structure_path = row.te_structure_path
     call.te_structure_log_evidence = row.te_structure_log_evidence
     call.nonte_structure_log_evidence = row.nonte_structure_log_evidence

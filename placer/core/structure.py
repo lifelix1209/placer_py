@@ -26,10 +26,20 @@ tests so a later fix has to change them deliberately:
      high-complexity residual rises and costs 1.25*0.2, and the transduction
      posterior returns only +0.35. Net -0.39 nats.
 
-Note also that `terminal_poly_at_run` conflates A and T, discarding the
-insertion's orientation -- poly(A) on the + strand and poly(T) on the - strand
-are the same tail from opposite sides, and which one appears must agree with the
-element alignment strand and the TSD geometry.
+THE DECODE IS NOW CLASS- AND STRAND-AWARE when the caller knows both (the TE
+alignment's class and strand; `core/element_structure.py`):
+
+  * the chain is read in ELEMENT orientation -- a minus-strand insert is
+    reverse-complemented first, so its poly(T) at the reference 5' end is the
+    poly(A) at the element's 3' end, and its core is where the chain expects
+    it. The tail is then A only; A and T are no longer conflated.
+  * the TRANSDUCTION and POLYA states exist only for classes whose mechanism
+    makes them (TPRT: LINE, SINE, Retroposon, PLE) and for an element of
+    unknown class. An LTR, DNA or rolling-circle element has neither, so an
+    A-rich end or an unaligned stretch is not credited as one.
+
+With no strand (`te_strand` "NA") or no class, the decode is exactly the old
+one, including `terminal_poly_at_run`'s A-or-T run.
 """
 
 from __future__ import annotations
@@ -39,6 +49,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 from placer.core import mathx
+from placer.core.element_structure import oriented_insert
+from placer.core.taxonomy import MECHANISM_OF_CLASS, Mechanism, TeClass
 
 
 class TeAnnotationStatus(str, Enum):
@@ -142,6 +154,30 @@ def terminal_poly_at_run(seq: str) -> int:
     return run
 
 
+def terminal_homopolymer_run(seq: str, base: str) -> int:
+    """Length of the exact run of `base` ending the sequence."""
+    run = 0
+    for char in reversed(seq):
+        if char != base:
+            break
+        run += 1
+    return run
+
+
+def _class_has_tail_states(te_class: str) -> bool:
+    """TPRT classes make a poly(A) tail and 3' transductions; others do not.
+
+    An unknown class keeps the states: withholding them would penalise an
+    unclassified SINE, and granting them costs an unclassified DNA element
+    only what the class-blind decode always charged.
+    """
+    try:
+        cls = TeClass(te_class)
+    except ValueError:
+        return True
+    return MECHANISM_OF_CLASS[cls] in (Mechanism.TPRT, Mechanism.UNKNOWN)
+
+
 def interval_entropy_norm(seq: str, start: int, end: int) -> float:
     """Shannon entropy over ACGT in [start, end), normalised by log 4."""
     start = max(0, min(start, len(seq)))
@@ -213,9 +249,19 @@ def explain_te_sequence_structure(insert_seq: str, qc_reason: str, family: str,
                                   cross_family_margin: float,
                                   second_score: float,
                                   sequence_model_label: str,
-                                  sequence_model_score: float
+                                  sequence_model_score: float,
+                                  te_class: str = "NA",
+                                  te_strand: str = "NA"
                                   ) -> SequenceExplanation:
-    """Port of `placer::explain_te_sequence_structure`."""
+    """The chain decode; class- and strand-aware when both are given.
+
+    See the module docstring for what `te_class` and `te_strand` change. The
+    returned path is in ELEMENT orientation when the strand is known.
+    """
+    oriented = te_strand in ("+", "-")
+    if oriented:
+        insert_seq = oriented_insert(insert_seq, te_strand)
+    tail_states = _class_has_tail_states(te_class)
     insert_len = len(insert_seq)
     out = SequenceExplanation()
     out.status = status_from_qc(qc_reason, family, subfamily)
@@ -252,19 +298,28 @@ def explain_te_sequence_structure(insert_seq: str, qc_reason: str, family: str,
                      if insert_len > 0 and _has_te_path(out.status) else 0)
     residual_start = te_core_bases
     residual_len = max(0, insert_len - residual_start)
-    poly_bases = min(terminal_poly_at_run(insert_seq), residual_len)
+    if not tail_states:
+        poly_bases = 0
+    elif oriented:
+        poly_bases = min(terminal_homopolymer_run(insert_seq, "A"), residual_len)
+    else:
+        poly_bases = min(terminal_poly_at_run(insert_seq), residual_len)
     residual_before_poly = max(0, residual_len - poly_bases)
     residual_entropy = interval_entropy_norm(
         insert_seq, residual_start, residual_start + residual_before_poly)
 
     poly_state_score = (poly_bases * POLY_PER_BASE_LOG_LR
                         + POLY_OPEN_LOG_ODDS)
+    if not tail_states:
+        poly_state_score = -math.inf     # no state, so no residual 0.047 credit
     out.polyA_posterior = _logistic(poly_state_score)
 
     transduction_state_score = (
         residual_before_poly * 0.06 * (residual_entropy - TRANS_BASELINE_ENTROPY)
         + TRANS_OPEN_LOG_ODDS
         + 0.6 * _clamp01(best_identity))
+    if not tail_states:
+        transduction_state_score = -math.inf
     out.transduction_posterior = _logistic(transduction_state_score)
 
     identity = _clamp01(best_identity)

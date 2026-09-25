@@ -88,6 +88,10 @@ SEQUENCE_COLUMNS: dict[str, str] = {
     "te_consensus_start": "int32",
     "te_consensus_end": "int32",
     "te_element_length": "int32",
+    # The oriented poly(A): A at the element's 3' end, which is T at the
+    # reference 5' end on the minus strand. Only TPRT classes make one.
+    "polya_len": "int32",
+    "transduction_len": "int32",
 }
 
 #: Breakpoint geometry and TSD.
@@ -142,13 +146,9 @@ LEDGER_COLUMNS: dict[str, str] = {
 #: The element geometry that used to head the list -- where the insert aligns in
 #: element coordinates, the element's length, and its strand -- is now in the
 #: ledger as `te_consensus_start`, `te_consensus_end`, `te_element_length` and
-#: `te_strand` (SEQUENCE_COLUMNS). What remains:
+#: `te_strand` (SEQUENCE_COLUMNS), and so is the oriented `polya_len`, with A
+#: and T no longer conflated (`core/element_structure.py`). What remains:
 #:
-#:   polya_len
-#:       Length of the terminal A/T run at the 3' junction, in the orientation
-#:       implied by te_strand. A and T must NOT be conflated: which one appears
-#:       tells you the insertion's orientation, and that has to agree with the
-#:       TSD geometry.
 #:   flank_t_tract_len
 #:       Matching T's immediately 5' of the nick, in the reference. This is the
 #:       priming-site observable and it is free -- it is reference sequence.
@@ -157,7 +157,6 @@ LEDGER_COLUMNS: dict[str, str] = {
 #:       assume a background, which is exactly what makes a model fragile in
 #:       VNTRs and A-rich tracts.
 MISSING_FOR_TPRT: dict[str, str] = {
-    "polya_len": "int32",
     "flank_t_tract_len": "int32",
     "local_repeat_frac": "float64",
     "local_at_frac": "float64",

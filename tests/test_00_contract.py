@@ -73,8 +73,7 @@ def test_the_tprt_observables_are_absent_from_the_current_ledger():
     for column in schema.MISSING_FOR_TPRT:
         assert column not in schema.LEDGER_COLUMNS, (
             f"{column} is now in the ledger -- move it out of MISSING_FOR_TPRT")
-    for column in ("polya_len", "flank_t_tract_len",
-                   "local_repeat_frac", "local_at_frac"):
+    for column in ("flank_t_tract_len", "local_repeat_frac", "local_at_frac"):
         assert column in schema.MISSING_FOR_TPRT, column
 
 
@@ -101,7 +100,7 @@ def test_a_and_t_are_not_conflated_in_the_polya_contract():
     a real insertion satisfies and a mismapped reference copy satisfies only by
     luck, so throwing it away is throwing away nearly free discrimination.
     """
-    assert "polya_len" in schema.MISSING_FOR_TPRT
+    assert "polya_len" in schema.LEDGER_COLUMNS
     assert "te_strand" in schema.LEDGER_COLUMNS
 
 

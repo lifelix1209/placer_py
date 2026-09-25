@@ -73,6 +73,7 @@ FINAL_CALL_COLUMNS: tuple[str, ...] = (
     "conformal_null_count", "conformal_qc",
     "bp_ci_width", "bp_posterior_entropy",
     "te_consensus_start", "te_consensus_end", "te_element_length",
+    "polya_len", "transduction_len",
 )
 
 #: Where `insert_seq` goes when enabled.
@@ -107,6 +108,7 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "conformal_null_count", "conformal_qc",
     "te_annotation_class", "te_annotation_order", "te_strand",
     "te_consensus_start", "te_consensus_end", "te_element_length",
+    "polya_len", "transduction_len",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -218,6 +220,7 @@ def final_call_row(call: FinalCall, include_insert_seq: bool = False) -> list[st
         call.conformal_dominated_nulls, call.conformal_null_count, call.conformal_qc,
         call.bp_ci_width, call.bp_posterior_entropy,
         call.te_consensus_start, call.te_consensus_end, call.te_element_length,
+        call.polya_len, call.transduction_len,
     ]
     return [_number(value) for value in values]
 
@@ -260,6 +263,7 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.conformal_dominated_nulls, row.conformal_null_count, row.conformal_qc,
         row.te_annotation_class, row.te_annotation_order, row.te_strand,
         row.te_consensus_start, row.te_consensus_end, row.te_element_length,
+        row.polya_len, row.transduction_len,
     ]
     return [_number(value) for value in values]
 
