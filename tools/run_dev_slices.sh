@@ -62,6 +62,8 @@ if [ -d "$REPO/placer" ]; then MODULE=placer.main; else MODULE=placer_py.main; f
 cd "$REPO"
 for slice in "${SLICES[@]}"; do
     read -r name bam ref lib region <<<"$slice"
+    # ONLY=human_hg002 (or a space-separated list) runs just those slices.
+    if [ -n "${ONLY:-}" ] && [[ " $ONLY " != *" $name "* ]]; then continue; fi
     dest="$out/$name"
     mkdir -p "$dest"
     echo "== $name $region -> $dest"

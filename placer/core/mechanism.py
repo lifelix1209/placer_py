@@ -236,6 +236,11 @@ class LocusObservation:
     local_a_frac: float = 0.30
     local_t_frac: float = 0.30
     local_repeat_frac: float = 0.0
+    #: The fraction of this locus's shifted breakpoints at which the same
+    #: insert also finds a duplication at least `tsd_len` long -- the LOCAL,
+    #: measured chance of a TSD this long here (`core/locus_evidence.py`).
+    #: -1 when not measured.
+    tsd_empirical_null: float = -1.0
 
 
 @dataclass
@@ -354,6 +359,15 @@ def tsd_term(obs: LocusObservation, model: TsdModel) -> float:
         return model.log_p_length(0)
     p_null = tprt.p_null_tandem_duplication(tau, max(0, obs.tsd_mismatches),
                                             obs.local_repeat_frac)
+    # The analytic null assumes the insert's end and the flank are independent
+    # sequence. They are not when the insert was copied from this neighbourhood
+    # (a tandem duplication, a VNTR expansion) or lands beside a copy of the
+    # same element, and then chance duplications are everywhere nearby: on the
+    # human dev slice the shifted breakpoints scored a mean exp(linkage) of
+    # 3.7e5 under 4^-tau. Where the locus's own shifts find duplications this
+    # long, their rate is the null.
+    if obs.tsd_empirical_null > 0.0:
+        p_null = max(p_null, obs.tsd_empirical_null)
     out = model.log_p_length(tau) - math.log(max(p_null, 1e-300))
     if model.motif and len(model.motif) == tau and obs.tsd_seq:
         seq = obs.tsd_seq.upper()

@@ -39,12 +39,13 @@ from placer.core.taxonomy import TeClass
 #: composition and tandem-repeat content. Wide enough to hold a TSD search
 #: (`tsd_flank_window` is 60) and a few repeat units.
 LOCAL_WINDOW_BP = 100
-#: Decoys per locus, their spacing, and how far they may range. Far enough that
-#: a decoy's flanks share nothing with the real junction; near enough that the
-#: composition is the same neighbourhood's.
-DECOY_COUNT = 4
-DECOY_STEP_BP = 150
-DECOY_RANGE_BP = 1200
+#: Shifted breakpoints per locus, their spacing, and how far they may range:
+#: near enough to be the same neighbourhood, far enough apart (> the longest
+#: TSD searched) that two shifts do not re-find one duplication. They serve
+#: twice -- as the locus's own empirical TSD null, and as its decoys.
+DECOY_COUNT = 40
+DECOY_STEP_BP = 60
+DECOY_RANGE_BP = 1500
 
 _EN_CLASSES = (TeClass.LINE, TeClass.SINE, TeClass.RETROPOSON)
 
@@ -199,19 +200,41 @@ def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
         if trimmed != insert_seq:
             obs.polya_len = max(obs.polya_len, structure_module.measure(
                 trimmed, te_alignment.annotation_class, te_alignment.te_strand).polya_len)
-    out = LocusScore(observation=obs, score=mech.score_locus(obs, params))
     if not with_decoys or bp_left < 0:
-        return out
+        return LocusScore(observation=obs, score=mech.score_locus(obs, params))
 
+    # The shifted breakpoints: the same insert and reads, the breakpoint moved.
     width = max(0, bp_right - bp_left)
     controls = make_breakpoint_shift_controls(
         bp_left, bp_right, max(0, bp_left - DECOY_RANGE_BP),
         bp_right + DECOY_RANGE_BP, DECOY_STEP_BP, DECOY_COUNT)
-    values = []
+    shifted: list[mech.LocusObservation] = []
     for control in controls:
         decoy = mech.LocusObservation(**obs.__dict__)
-        _, linkage = _linkage_at(chrom, control.bp_left, control.bp_left + width,
-                                 insert_seq, decoy, params, fetch_reference, detect_tsd)
+        _linkage_at(chrom, control.bp_left, control.bp_left + width, insert_seq,
+                    decoy, params, fetch_reference, detect_tsd)
+        shifted.append(decoy)
+    lengths = [decoy.tsd_len for decoy in shifted]
+
+    def rate_at_least(tau: int, exclude: int = -1) -> float:
+        pool = [n for i, n in enumerate(lengths) if i != exclude]
+        if tau <= 0 or not pool:
+            return -1.0
+        hits = sum(1 for n in pool if n >= tau)
+        return hits / len(pool) if hits else -1.0
+
+    obs.tsd_empirical_null = rate_at_least(obs.tsd_len)
+    out = LocusScore(observation=obs, score=mech.score_locus(obs, params))
+
+    # Each shift as a decoy, scored exactly as the locus is -- against the
+    # empirical null of the OTHER shifts (leave-one-out), so the check tests
+    # the statistic actually used rather than the analytic one.
+    values = []
+    for index, decoy in enumerate(shifted):
+        decoy.tsd_empirical_null = rate_at_least(decoy.tsd_len, exclude=index)
+        linkage = mech.tsd_term(decoy, params.tsd_model(decoy.te_class, decoy.superfamily))
+        if decoy.te_class in _EN_CLASSES:
+            linkage += mech.en_term(decoy)
         values.append(math.exp(min(linkage, 700.0)))
     if values:
         out.decoy_count = len(values)

@@ -33,7 +33,9 @@ from dataclasses import dataclass, field
 from placer.core.ledger import EvidenceLedgerRow
 from placer.core.selection import ebh_select
 
-LOCUS_MERGE_BP = 50
+#: Rows this close are one locus. 50 bp split one Alu into three loci 88-94 bp
+#: apart on the human dev slice (its hypotheses' breakpoints spread that far).
+LOCUS_MERGE_BP = 300
 #: One-sided normal quantile for the decoy upper bound (95%).
 DECOY_UPPER_Z = 1.645
 #: Classes with fewer decoys than this share the pooled all-class estimate.
@@ -78,9 +80,16 @@ def _decoy_check(te_class: str, rows: list[EvidenceLedgerRow]) -> DecoyCheck:
     return DecoyCheck(te_class, n, mean, upper, max(1.0, upper))
 
 
+#: Rows whose insert names no TE class. They can only be structural calls, and
+#: their inserts are mostly local duplications, whose decoys say nothing about
+#: how the TE classes' linkage terms behave -- so they do not enter the pool.
+_NOT_TE_CLASSES = ("NA", "NonTE", "")
+
+
 def decoy_checks(rows: list[EvidenceLedgerRow]) -> dict[str, DecoyCheck]:
-    """Per class, with small classes falling back to the pooled estimate."""
-    pooled = _decoy_check("ALL", rows)
+    """Per class, with small classes falling back to the pooled TE estimate."""
+    pooled = _decoy_check("ALL", [row for row in rows
+                                  if (row.te_annotation_class or "") not in _NOT_TE_CLASSES])
     by_class: dict[str, list[EvidenceLedgerRow]] = {}
     for row in rows:
         by_class.setdefault(row.te_annotation_class or "NA", []).append(row)

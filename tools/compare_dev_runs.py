@@ -62,6 +62,27 @@ def parse_region(text: str) -> tuple[str, int, int]:
     return chrom, int(start) - 1, int(end)
 
 
+def read_shadow_calls(run_dir: Path) -> list[Call]:
+    """What the shadow (per-class likelihood-ratio) decision selected, from the
+    ledger's mech_ebh_selected / mech_structural_selected columns."""
+    import csv
+    calls = []
+    with open(run_dir / "evidence_ledger.tsv", newline="") as handle:
+        for row in csv.DictReader(handle, delimiter="\t"):
+            te = row.get("mech_ebh_selected") == "1"
+            sv = row.get("mech_structural_selected") == "1"
+            if not (te or sv):
+                continue
+            calls.append(Call(
+                chrom=row["chrom"], pos=int(row["pos"]),
+                call_set="final" if te else "structural",
+                label=row.get("subfamily") or row.get("family") or "NA",
+                te_class=row.get("te_annotation_class", "NA") or "NA",
+                strand=row.get("te_strand", "NA") or "NA", genotype="NA",
+                length=int(float(row.get("event_consensus_len", 0) or 0))))
+    return calls
+
+
 def read_calls(run_dir: Path) -> list[Call]:
     """From calls.csv, which carries both call sets and every column."""
     import csv
@@ -207,6 +228,9 @@ def main() -> int:
     parser.add_argument("--confident", type=Path)
     parser.add_argument("--region", default=None)
     parser.add_argument("--window", type=int, default=500)
+    parser.add_argument("--shadow", action="store_true",
+                        help="also score each run's shadow (per-class likelihood "
+                             "ratio) selection, read from the ledger")
     args = parser.parse_args()
 
     bed = read_bed(args.confident) if args.confident else None
@@ -221,6 +245,8 @@ def main() -> int:
         truth = dedupe_truth(truth, args.window)
 
     runs = [(str(path), read_calls(path)) for path in args.runs]
+    if args.shadow:
+        runs += [(f"{path} [shadow]", read_shadow_calls(path)) for path in args.runs]
     for name, calls in runs:
         print(summarise(name, calls, truth, bed, args.window))
     reference_name, reference = runs[0]
