@@ -54,6 +54,9 @@ class PipelineResult:
     #: The per-class decision's shadow selection and decoy check
     #: (`core/mechanism_selection.py`), recorded beside the current decision.
     mech_shadow: ShadowSelection = field(default_factory=ShadowSelection)
+    #: Every evaluated hypothesis's call, before any per-component selection:
+    #: what the mechanism decision selects from. Filled only in that mode.
+    candidate_calls: list[FinalCall] = field(default_factory=list)
 
     final_calls: list[FinalCall] = field(default_factory=list)
     #: Selected structural insertions the TE-calibrated mode sets aside. They

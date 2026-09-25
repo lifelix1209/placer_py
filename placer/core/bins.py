@@ -812,6 +812,10 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                                                segmentation, te_alignment, joint,
                                                genotype, config, hooks)
             _record_shadow(call, shadow)
+            call.te_best_family = te_alignment.best_family or "NA"
+            call.te_best_subfamily = te_alignment.best_subfamily or "NA"
+            if config.decision_mode == "mechanism":
+                result.candidate_calls.append(call)
             summary = shortlisted.validator.summary
             candidate = selection_module.ComponentFinalCallCandidate(
                 pos=call.pos, anchor_pos=summary.bp_left,

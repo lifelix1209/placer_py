@@ -146,6 +146,10 @@ class PipelineConfig:
     final_fdr_q: float = 0.10
     min_final_raw_cigar_insert_len_bp: int = 50
     final_report_mode: FinalReportMode = FinalReportMode.TE_CALIBRATED
+    #: "legacy": the policy's emission gates, the dependency bound and e-BH /
+    #: conformal selection decide. "mechanism": the per-class likelihood
+    #: ratios, checked by decoys, under e-BH (`core/mechanism_selection.py`).
+    decision_mode: str = "legacy"
 
     # ------------------------------------------------------------- consensus
     event_consensus_poa_min_reads: int = 2

@@ -63,7 +63,7 @@ class ShadowSelection:
     structural_selected: int = 0
 
 
-def _decoy_check(te_class: str, rows: list[EvidenceLedgerRow]) -> DecoyCheck:
+def _decoy_check(te_class: str, rows: list) -> DecoyCheck:
     samples = [(row.mech_decoy_count, row.mech_decoy_mean_exp_linkage)
                for row in rows if row.mech_decoy_count > 0]
     n = sum(count for count, _ in samples)
@@ -89,11 +89,11 @@ def _decoy_check(te_class: str, rows: list[EvidenceLedgerRow]) -> DecoyCheck:
 _NOT_TE_CLASSES = ("NA", "NonTE", "")
 
 
-def decoy_checks(rows: list[EvidenceLedgerRow]) -> dict[str, DecoyCheck]:
+def decoy_checks(rows: list) -> dict[str, DecoyCheck]:
     """Per class, with small classes falling back to the pooled TE estimate."""
     pooled = _decoy_check("ALL", [row for row in rows
                                   if (row.te_annotation_class or "") not in _NOT_TE_CLASSES])
-    by_class: dict[str, list[EvidenceLedgerRow]] = {}
+    by_class: dict[str, list] = {}
     for row in rows:
         by_class.setdefault(row.te_annotation_class or "NA", []).append(row)
     out = {"ALL": pooled}
@@ -106,7 +106,7 @@ def decoy_checks(rows: list[EvidenceLedgerRow]) -> dict[str, DecoyCheck]:
     return out
 
 
-def _loci(rows: list[EvidenceLedgerRow]) -> list[list[EvidenceLedgerRow]]:
+def _loci(rows: list) -> list[list]:
     ordered = sorted(rows, key=lambda r: (r.tid, r.chrom, r.pos))
     groups: list[list[EvidenceLedgerRow]] = []
     for row in ordered:
@@ -118,29 +118,29 @@ def _loci(rows: list[EvidenceLedgerRow]) -> list[list[EvidenceLedgerRow]]:
     return groups
 
 
-def apply_mechanism_shadow_selection(ledger: list[EvidenceLedgerRow],
-                                     q: float) -> ShadowSelection:
-    """Mark what the new decision would select; returns the run summary."""
-    evaluated = [row for row in ledger if row.candidate_retention_reason == "EVALUATED"]
-    out = ShadowSelection(checks=decoy_checks(evaluated))
+def select_loci(items: list, q: float) -> ShadowSelection:
+    """The decoy check and both e-BH passes over `items` -- ledger rows or
+    calls, anything with the `mech_*` fields, `te_annotation_class`, `chrom`,
+    `tid` and `pos`. Marks each locus's representative item."""
+    out = ShadowSelection(checks=decoy_checks(items))
 
-    def adjusted_artifact(row: EvidenceLedgerRow) -> float:
-        check = out.checks.get(row.te_annotation_class or "NA", out.checks["ALL"])
-        return row.mech_log_lr_vs_artifact - math.log(check.factor)
+    def adjusted_artifact(item) -> float:
+        check = out.checks.get(item.te_annotation_class or "NA", out.checks["ALL"])
+        return item.mech_log_lr_vs_artifact - math.log(check.factor)
 
-    def te_score(row: EvidenceLedgerRow) -> float:
-        return min(row.mech_log_lr_vs_non_te, adjusted_artifact(row))
+    def te_score(item) -> float:
+        return min(item.mech_log_lr_vs_non_te, adjusted_artifact(item))
 
-    loci = _loci(evaluated)
+    loci = _loci(items)
     out.loci = len(loci)
     best = [max(group, key=te_score) for group in loci]
-    for row in evaluated:
-        row.mech_e_value = 0.0
-        row.mech_ebh_selected = False
-        row.mech_structural_selected = False
-    e_values = [math.exp(min(te_score(row), 700.0)) for row in best]
-    for row, e in zip(best, e_values):
-        row.mech_e_value = e
+    for item in items:
+        item.mech_e_value = 0.0
+        item.mech_ebh_selected = False
+        item.mech_structural_selected = False
+    e_values = [math.exp(min(te_score(item), 700.0)) for item in best]
+    for item, e in zip(best, e_values):
+        item.mech_e_value = e
     for index in ebh_select(e_values, q):
         best[index].mech_ebh_selected = True
         out.te_selected += 1
@@ -148,9 +148,16 @@ def apply_mechanism_shadow_selection(ledger: list[EvidenceLedgerRow],
     # Structural: an insertion is here but it is not (shown to be) a TE.
     # Tested over ALL loci, with the TE-selected ones given e = 0, so m is the
     # same fixed set as above rather than a subset chosen by the first test.
-    structural_e = [0.0 if row.mech_ebh_selected
-                    else math.exp(min(adjusted_artifact(row), 700.0)) for row in best]
+    structural_e = [0.0 if item.mech_ebh_selected
+                    else math.exp(min(adjusted_artifact(item), 700.0)) for item in best]
     for index in ebh_select(structural_e, q):
         best[index].mech_structural_selected = True
         out.structural_selected += 1
     return out
+
+
+def apply_mechanism_shadow_selection(ledger: list[EvidenceLedgerRow],
+                                     q: float) -> ShadowSelection:
+    """Mark what the new decision would select over the ledger's evaluated rows."""
+    return select_loci([row for row in ledger
+                        if row.candidate_retention_reason == "EVALUATED"], q)

@@ -94,5 +94,6 @@ def merge_scan_results(into: PipelineResult, part: PipelineResult) -> PipelineRe
     for name in _SCAN_COUNTERS:
         setattr(into, name, getattr(into, name) + getattr(part, name))
     into.final_calls.extend(part.final_calls)
+    into.candidate_calls.extend(part.candidate_calls)
     into.evidence_ledger.extend(part.evidence_ledger)
     return into

@@ -193,6 +193,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         choices=("legacy", "te-calibrated"),
                         help="legacy keeps structural insertions in the main output")
     parser.add_argument("--min-final-raw-cigar-insert-len-bp", type=int, default=None)
+    parser.add_argument("--decision", default=None, choices=("legacy", "mechanism"),
+                        help="legacy (default): the policy gates and calibrated "
+                             "e-BH/conformal selection decide. mechanism: the "
+                             "per-class likelihood ratios, checked against "
+                             "shifted-breakpoint decoys, under e-BH")
     parser.add_argument("--library-completeness", default=None,
                         choices=("curated", "denovo"),
                         help="curated (default; Dfam, RepBase): an insert that "
@@ -234,6 +239,8 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
         config.min_final_raw_cigar_insert_len_bp = args.min_final_raw_cigar_insert_len_bp
     if args.library_completeness is not None:
         config.te_library_completeness = args.library_completeness
+    if args.decision is not None:
+        config.decision_mode = args.decision
     return config
 
 

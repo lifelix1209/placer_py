@@ -216,6 +216,14 @@ class FinalCall:
     mech_decoy_count: int = 0
     mech_decoy_mean_exp_linkage: float = 0.0
     mech_terms: str = "NA"
+    mech_e_value: float = 0.0
+    mech_ebh_selected: bool = False
+    mech_structural_selected: bool = False
+    #: The TE alignment's own best family and subfamily, whatever the legacy
+    #: decision then did to `family` (it overwrites it with UNKNOWN for a call
+    #: it deems structural). The mechanism decision names a TE call from these.
+    te_best_family: str = "NA"
+    te_best_subfamily: str = "NA"
     te_sequence_model_label: str = "TE_MODEL_UNAVAILABLE"
     te_sequence_model_score: float = 0.0
     te_sequence_model_gc: float = 0.0

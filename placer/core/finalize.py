@@ -35,10 +35,68 @@ def finalize_run(result: PipelineResult, config: PipelineConfig,
     Mutates `result` in place and also returns it, so it reads naturally at the
     end of a pipeline expression.
     """
+    q = target_fdr if target_fdr is not None else config.final_fdr_q
+    if config.decision_mode == "mechanism":
+        finalize_mechanism_calls(result, q)
+        return result
     finalize_final_calls(
         result,
-        target_fdr if target_fdr is not None else config.final_fdr_q,
+        q,
         FinalCallFilterConfig(
             min_raw_cigar_insert_len_bp=config.min_final_raw_cigar_insert_len_bp,
             report_mode=config.final_report_mode.value))
     return result
+
+
+def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
+    """The mechanism decision: decoy check and e-BH over every evaluated call.
+
+    Each locus's best call is tested once (`core/mechanism_selection.py`). The
+    TE-selected ones are the run's calls, named from their own alignment -- the
+    legacy decision overwrote the family of a call it judged structural -- and
+    the structural-selected ones go to `structural_calls`. The ledger gets the
+    same selection marked on its rows, for the summary and for audit.
+    """
+    from placer.core.finalization import (
+        apply_sample_overdispersion_calibration,
+        final_call_sort_less,
+    )
+    from placer.core.mechanism_selection import (
+        apply_mechanism_shadow_selection,
+        select_loci,
+    )
+    apply_mechanism_shadow_selection(result.evidence_ledger, q)
+    result.mech_shadow = select_loci(result.candidate_calls, q)
+    te_calls, structural = [], []
+    for call in result.candidate_calls:
+        if call.mech_ebh_selected:
+            call.family = call.te_best_family if call.te_best_family else "UNKNOWN"
+            call.subfamily = call.te_best_subfamily if call.te_best_subfamily else "NA"
+            call.te_name = call.subfamily if call.subfamily not in ("NA", "") else call.family
+            call.family_committed = call.te_annotation_class not in ("NA", "Unknown", "NonTE")
+            call.final_qc = _with_token(call.final_qc, "PASS_TE_MECHANISM")
+            call.ebh_selected, call.ebh_e_value = True, call.mech_e_value
+            # 1/e bounds a valid p-value (Markov), so the VCF's QUAL, the phred
+            # transform of this field, reads 10*log10(e).
+            call.lfdr = min(1.0, 1.0 / call.mech_e_value) if call.mech_e_value > 0 else 1.0
+            te_calls.append(call)
+        elif call.mech_structural_selected:
+            call.family, call.subfamily, call.te_name = "UNKNOWN", "UNKNOWN", "UNKNOWN"
+            call.family_committed = False
+            call.final_qc = _with_token(call.final_qc, "PASS_STRUCTURAL_MECHANISM")
+            # Selected by e-BH too, on the artifact question alone, so FDR-
+            # controlled -- not the UNCALIB route.
+            call.ebh_selected = True
+            structural.append(call)
+    result.final_calls = te_calls
+    apply_sample_overdispersion_calibration(result)
+    result.final_calls.sort(key=final_call_sort_less)
+    structural.sort(key=final_call_sort_less)
+    result.structural_calls = structural
+    result.candidate_calls = []
+    result.final_pass_calls = len(result.final_calls)
+
+
+def _with_token(qc: str, token: str) -> str:
+    """Append a decision token, keeping the evidence tokens (IMPRECISE...)."""
+    return token if not qc or qc == "NA" else f"{qc}|{token}"
