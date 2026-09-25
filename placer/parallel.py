@@ -15,14 +15,15 @@ genome order -- which is the order the single stream would have produced them
 in -- before `finalize_run` sees anything. Finalization, the only stage that
 looks at the run as a whole, runs once, in the parent, exactly as before.
 
-THE ONE PLACE THIS COULD GO WRONG is which reads a chunk gets. A worker reads
-its chunk with an indexed fetch, which returns every read OVERLAPPING the
-chunk, including long reads that start in an earlier one. Those belong to the
-earlier chunk's bins, so each chunk keeps only the reads that start inside it
--- with one exception that mirrors the single stream: a `--region` fetch also
-returns reads that start BEFORE the region and overlap it, and those go to the
-first chunk, as they go to the first bins of a sequential run. The filter is
-applied before the gate, so the gate's tallies count every read once.
+THE ONE PLACE THIS COULD GO WRONG is which reads a chunk gets. A bin is
+scanned with every read that OVERLAPS it (`group_reads_into_bins`), so a chunk
+needs the long reads that started in an earlier chunk as well as its own --
+which is exactly what its indexed fetch returns. Each chunk then scans only the
+bins it owns (`ScanChunk.bin_range`), and those are disjoint because chunks are
+cut at bin boundaries. The gate's tallies count only the reads a chunk `keeps`
+-- those starting inside it, plus, for the first chunk of a `--region`, the
+reads that start before the region, as the single stream counts them -- so
+every read is counted once.
 
 A WORKER THAT DIES FAILS THE RUN. `multiprocessing.Pool` does not notice a
 worker killed by a signal: the task it held is never answered and the parent
@@ -77,6 +78,15 @@ class ScanChunk:
     fetch_end: int
     keep_from: int | None
     keep_until: int | None
+
+    def bin_range(self, bin_size: int) -> tuple[int, int]:
+        """The bins this chunk owns: those intersecting `[fetch_start, fetch_end)`.
+
+        Chunks are cut at bin boundaries, so these are disjoint across the run
+        and together the bins a one-process run scans.
+        """
+        size = max(1, bin_size)
+        return self.fetch_start // size, (self.fetch_end - 1) // size + 1
 
     def keeps(self, read: AlignedRead) -> bool:
         if self.keep_from is not None and read.pos < self.keep_from:
@@ -169,16 +179,22 @@ def _init_worker(config: PipelineConfig) -> None:
 
 def scan_chunk(chunk: ScanChunk, reader, config: PipelineConfig,
                hooks: StageHooks) -> PipelineResult:
-    """One chunk, gated and scanned, UNFINALIZED."""
+    """One chunk, gated and scanned, UNFINALIZED.
+
+    The chunk is given EVERY read overlapping it, because its bins need the
+    reads that started in an earlier chunk too (`group_reads_into_bins`), and
+    it scans only its own bins. The gate's tallies count only the reads the
+    chunk `keeps` -- those starting inside it -- so each read is counted once
+    across the run.
+    """
     result = PipelineResult()
-    kept: Iterator[AlignedRead] = (
-        read for read in reader.stream_interval(chunk.chrom, chunk.fetch_start,
-                                                chunk.fetch_end)
-        if chunk.keeps(read))
-    source = ReadSource(reads=gate_reads(kept, result),
+    overlapping: Iterator[AlignedRead] = reader.stream_interval(
+        chunk.chrom, chunk.fetch_start, chunk.fetch_end)
+    source = ReadSource(reads=gate_reads(overlapping, result, count=chunk.keeps),
                         chromosome_name=reader.chromosome_name,
                         fetch_local=reader.fetch)
-    return run_scan(source, config, hooks, result)
+    return run_scan(source, config, hooks, result,
+                    bin_range=chunk.bin_range(config.bin_size))
 
 
 def _scan_chunk_in_worker(chunk: ScanChunk) -> PipelineResult:

@@ -76,17 +76,36 @@ def run(reads, **config_kw):
 
 
 # ----------------------------------------------------------------- binning
-def test_a_read_belongs_to_the_bin_of_its_start():
+def test_a_bin_gets_every_read_that_overlaps_it():
     """
-    A long read spanning several bins is processed once, in the bin it starts
-    in -- which is why windows may cross the bin edge and why components are
-    filtered by ANCHOR rather than by read overlap.
+    The regression. A bin used to get only the reads that START in it, and a
+    component is kept only by the bin that owns its anchor -- so an insertion
+    whose carriers started in the previous bin was discovered there, thrown
+    away there, and never seen by its own bin. On ultra-long reads that is
+    most carriers. A read spanning several bins now reaches each of them.
     """
-    reads = [AlignedRead(qname="a", tid=0, pos=5, cigar=[(CIGAR_M, 100000)]),
+    reads = [AlignedRead(qname="a", tid=0, pos=5, cigar=[(CIGAR_M, 25000)]),
              AlignedRead(qname="b", tid=0, pos=10005, cigar=[(CIGAR_M, 10)])]
     bins = call_or_skip(group_reads_into_bins, reads, 10000)
     assert [(tid, index, [r.qname for r in rs]) for tid, index, rs in bins] == [
-        (0, 0, ["a"]), (0, 1, ["b"])]
+        (0, 0, ["a"]), (0, 1, ["a", "b"]), (0, 2, ["a"])]
+
+
+def test_the_bin_range_limits_which_bins_are_emitted_not_which_reads_count():
+    """A chunk or a --region owns its own bins, whatever its reads overlap."""
+    reads = [AlignedRead(qname="a", tid=0, pos=5, cigar=[(CIGAR_M, 25000)]),
+             AlignedRead(qname="b", tid=0, pos=10005, cigar=[(CIGAR_M, 10)])]
+    bins = list(group_reads_into_bins(reads, 10000, (1, 2)))
+    assert [(index, [r.qname for r in rs]) for _, index, rs in bins] == [
+        (1, ["a", "b"])]
+    tail = list(group_reads_into_bins(reads, 10000, (2, None)))
+    assert [(index, [r.qname for r in rs]) for _, index, rs in tail] == [(2, ["a"])]
+
+
+def test_an_empty_stretch_between_reads_emits_no_bins():
+    reads = [AlignedRead(qname="a", tid=0, pos=5, cigar=[(CIGAR_M, 100)]),
+             AlignedRead(qname="b", tid=0, pos=90005, cigar=[(CIGAR_M, 100)])]
+    assert [index for _, index, _ in group_reads_into_bins(reads, 10000)] == [0, 9]
 
 
 def test_a_contig_change_always_starts_a_new_bin():

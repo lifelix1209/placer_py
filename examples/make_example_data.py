@@ -29,7 +29,7 @@ from pathlib import Path
 import pysam
 
 CHROM = "chr1"
-REF_LEN = 60_000
+REF_LEN = 108_000
 READ_LEN = 8_000
 MEAN_DEPTH = 24
 ERROR_RATE = 0.008  # long-read-ish substitution rate, low enough to stay callable
@@ -69,26 +69,38 @@ def _mutate(rng: random.Random, seq: str, divergence: float) -> str:
     return "".join(out)
 
 
-def build_te_library(rng: random.Random) -> dict[str, str]:
-    """Three elements, RepeatMasker-style headers (`name#class/order`).
+def _reverse_complement(seq: str) -> str:
+    return seq.translate(str.maketrans("ACGT", "TGCA"))[::-1]
 
-    `parse_te_name_parts` collapses the family onto a canonical key, so the
-    `#SINE/Alu` half is what the decision policy's family compatibility keys
-    on -- a library that omits it produces family `NA` and a weaker call.
+
+def build_te_library(rng: random.Random) -> dict[str, str]:
+    """Six elements, one per mechanism the caller models, RepeatMasker headers.
+
+    The `#Class/Superfamily` half is what `core/taxonomy.py` reads the class
+    from. The three non-TPRT elements carry their own class's hallmarks: the
+    LTR starts TG and ends CA, the hAT has 12 bp terminal inverted repeats,
+    and the Helitron starts TC and ends CTAG.
     """
     alu = _weighted_sequence(rng, 281) + "A" * 20
     line1 = _weighted_sequence(rng, 1_200)
     sva = _weighted_sequence(rng, 480)
+    ltr = "TG" + _weighted_sequence(rng, 446) + "CA"
+    tir = "CAGGGGTGTCCA"
+    hat = tir + _weighted_sequence(rng, 576) + _reverse_complement(tir)
+    helitron = "TC" + _weighted_sequence(rng, 494) + "CTAG"
     return {
         "AluY#SINE/Alu": alu,
         "L1HS#LINE/L1": line1,
         "SVA_E#Retroposon/SVA": sva,
+        "MLT1J#LTR/ERVL-MaLR": ltr,
+        "Charlie1#DNA/hAT-Charlie": hat,
+        "Helitron1#RC/Helitron": helitron,
     }
 
 
 class Insertion:
     def __init__(self, pos: int, te_name: str, te_seq: str, tsd_len: int,
-                 polya_len: int, af: float, label: str) -> None:
+                 polya_len: int, af: float, label: str, strand: str = "+") -> None:
         self.pos = pos                # 0-based reference position of the TSD start
         self.te_name = te_name
         self.te_seq = te_seq
@@ -96,23 +108,33 @@ class Insertion:
         self.polya_len = polya_len
         self.af = af                  # fraction of spanning reads carrying it
         self.label = label
+        self.strand = strand          # the element's orientation on the reference
 
     def inserted_sequence(self, reference: str) -> str:
         """TE body, poly(A), then the duplicated target site.
 
         The TSD is the reference segment at the insertion point appearing a
         SECOND time after the element, which is what target-primed reverse
-        transcription leaves behind and what `tsd.detect` looks for.
+        transcription leaves behind and what `tsd.detect` looks for. On the
+        minus strand the element and its tail are reverse-complemented, so a
+        poly(A) reads as a poly(T) BEFORE the body -- the case a caller that
+        reads the tail only at the insert's 3' end misses.
         """
         tsd = reference[self.pos:self.pos + self.tsd_len]
-        return self.te_seq + ("A" * self.polya_len) + tsd
+        element = self.te_seq + ("A" * self.polya_len)
+        if self.strand == "-":
+            element = _reverse_complement(element)
+        return element + tsd
 
 
 def build_insertions(rng: random.Random, library: dict[str, str]) -> list[Insertion]:
-    """Four events chosen to cover the cases the caller distinguishes."""
+    """Eight events chosen to cover the cases the caller distinguishes."""
     alu = library["AluY#SINE/Alu"]
     line1 = library["L1HS#LINE/L1"]
     sva = library["SVA_E#Retroposon/SVA"]
+    ltr = library["MLT1J#LTR/ERVL-MaLR"]
+    hat = library["Charlie1#DNA/hAT-Charlie"]
+    helitron = library["Helitron1#RC/Helitron"]
     return [
         # Full-length Alu, homozygous, clean 15 bp TSD: the easy positive.
         Insertion(12_000, "AluY#SINE/Alu", _mutate(rng, alu, 0.02),
@@ -128,6 +150,19 @@ def build_insertions(rng: random.Random, library: dict[str, str]) -> list[Insert
         # hard, and whose fate on a 24x mini dataset is genuinely informative.
         Insertion(48_000, "AluY#SINE/Alu", _mutate(rng, alu, 0.02),
                   tsd_len=16, polya_len=30, af=0.22, label="alu_low_af"),
+        # A 5'-truncated L1 on the MINUS strand: its poly(A) is a poly(T) at
+        # the reference 5' end of the insert.
+        Insertion(60_000, "L1HS#LINE/L1", _mutate(rng, line1[600:], 0.03),
+                  tsd_len=14, polya_len=30, af=0.50, label="l1_minus", strand="-"),
+        # An LTR element (solo LTR): integrase, a 5 bp TSD, no tail.
+        Insertion(72_000, "MLT1J#LTR/ERVL-MaLR", _mutate(rng, ltr, 0.03),
+                  tsd_len=5, polya_len=0, af=0.50, label="ltr_het"),
+        # A hAT DNA transposon: cut and paste, an 8 bp TSD, TIRs, no tail.
+        Insertion(84_000, "Charlie1#DNA/hAT-Charlie", _mutate(rng, hat, 0.03),
+                  tsd_len=8, polya_len=0, af=0.50, label="hat_het", strand="-"),
+        # A Helitron: rolling circle, no TSD and no tail.
+        Insertion(96_000, "Helitron1#RC/Helitron", _mutate(rng, helitron, 0.03),
+                  tsd_len=0, polya_len=0, af=0.95, label="helitron_hom"),
     ]
 
 
@@ -231,10 +266,12 @@ def main() -> int:
 
     truth_path = out / "truth.tsv"
     with truth_path.open("w") as handle:
-        handle.write("label\tchrom\tpos\tte_name\tte_len\ttsd_len\tpolya_len\taf\n")
+        handle.write("label\tchrom\tpos\tte_name\tte_len\ttsd_len\tpolya_len\taf"
+                     "\tstrand\n")
         for ins in insertions:
             handle.write(f"{ins.label}\t{CHROM}\t{ins.pos}\t{ins.te_name}\t"
-                         f"{len(ins.te_seq)}\t{ins.tsd_len}\t{ins.polya_len}\t{ins.af}\n")
+                         f"{len(ins.te_seq)}\t{ins.tsd_len}\t{ins.polya_len}\t{ins.af}"
+                         f"\t{ins.strand}\n")
 
     print(f"reference   {ref_path}  ({len(reference):,} bp)")
     print(f"TE library  {te_path}  ({len(library)} elements)")

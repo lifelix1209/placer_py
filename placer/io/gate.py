@@ -36,7 +36,7 @@ correct, but only because of an ordering argument this version does not need.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Callable, Iterable, Iterator
 from typing import Protocol
 
 from placer.alignment import AlignedRead
@@ -57,20 +57,31 @@ class GateCounters(Protocol):
 
 
 def gate_reads(stream: Iterable[AlignedRead], counters: GateCounters,
-               config: Gate1SignalConfig | None = None) -> Iterator[AlignedRead]:
+               config: Gate1SignalConfig | None = None,
+               count: Callable[[AlignedRead], bool] | None = None
+               ) -> Iterator[AlignedRead]:
     """Yield the reads worth carrying forward, tallying as it goes.
 
     `config` defaults to `Gate1SignalConfig()` and there is deliberately no way
     to reach it from `PipelineConfig` or the `PLACER_*` environment: the gate
     is not tunable today, and a knob whose default is silently a copy of
     another default is how two thresholds drift apart.
+
+    `count`, when given, says which reads the TALLIES cover; every read is
+    still gated and yielded. A parallel chunk is handed every read overlapping
+    it -- its bins need them -- but counts only the reads that start inside
+    it, so a read spanning two chunks is counted once and `total_reads` is the
+    same for any number of workers.
     """
     cfg = config if config is not None else Gate1SignalConfig()
     for read in stream:
-        counters.total_reads += 1
+        counted = count is None or count(read)
+        if counted:
+            counters.total_reads += 1
         nm = read.get_int_tag("NM")
         if not pass_preliminary(read.cigar, read.flag, read.seq_len,
                                 read.mapq, read.has_sa_tag(), nm, cfg):
             continue
-        counters.gate1_passed += 1
+        if counted:
+            counters.gate1_passed += 1
         yield read

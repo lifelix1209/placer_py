@@ -34,7 +34,7 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from typing import Callable
 
-from placer.alignment import AlignedRead
+from placer.alignment import AlignedRead, compute_ref_end
 from placer.config import PipelineConfig
 from placer.core import breakpoints as bp_module
 from placer.core import call_selection as selection_module
@@ -61,37 +61,73 @@ def _bin_index_for(read: AlignedRead, bin_size: int) -> int:
     return max(0, read.pos // max(1, bin_size))
 
 
-def group_reads_into_bins(reads: Iterable[AlignedRead], bin_size: int
+def _read_end(read: AlignedRead) -> int:
+    """The last reference base a read touches -- where its last signature can be."""
+    return max(read.pos, compute_ref_end(read))
+
+
+def group_reads_into_bins(reads: Iterable[AlignedRead], bin_size: int,
+                          bin_range: tuple[int, int | None] | None = None
                           ) -> Iterator[tuple[int, int, list[AlignedRead]]]:
     """Group a stream into `(tid, bin_index, reads)`, in order.
 
-    A read belongs to the bin of its START. A long read spanning several bins is
-    therefore processed once, in the bin it starts in -- which is why the
-    windowing stage allows candidate windows to extend `WINDOW_BIN_SLACK_BP`
-    past the bin edge, and why components are filtered by ANCHOR position
-    afterwards rather than by read overlap.
+    A BIN GETS EVERY READ THAT OVERLAPS IT, in stream order, and is handed over
+    once the stream has passed its end -- a read starting at or beyond the bin's
+    end can add nothing to it, since every signature a read carries lies inside
+    its own alignment. Components are then kept only by the bin that owns their
+    ANCHOR (`process_bin_records`), so each is processed once, with all of its
+    reads.
 
-    A GENERATOR, which the coordinate-sorted input is what makes possible: a
-    bin is complete the moment a read with a different key arrives, so it can
-    be handed over and dropped instead of accumulated. This used to return a
-    list of every bin, which -- together with the caller draining the read
-    stream into a list first -- meant the whole scanned region was resident as
-    Python objects. On a 10 Mb region of ultra-long ONT that was 2.2 GB and
-    thrashing; each AlignedRead holds its full `seq`, and 31,773 UL reads carry
-    ~590 Mbp between them.
+    It used to be "a read belongs to the bin of its START", as in the C++. Then
+    a component was discovered only from reads that started in its own bin, and
+    the reads that started earlier -- most of them, when reads are longer than
+    bins -- formed the same component in the bin they started in, where the
+    anchor filter threw it away. An insertion 14 bp into a bin whose ten
+    carriers all started in the previous one was never called at all
+    (`examples/make_example_data.py`, `l1_minus`); on ultra-long ONT, with reads
+    of tens of kb against 10 kb bins, typically about a tenth of an insertion's
+    carriers start in its own bin.
+
+    `bin_range` = `(first, last)` restricts the bins emitted to indices in
+    `[first, last)` (`last` None for unbounded): a chunk of a parallel run, or a
+    `--region`, owns only its own bins even though the reads it was given
+    overlap others.
+
+    A GENERATOR, which the coordinate-sorted input is what makes possible, and
+    what keeps the scan streaming. The reads held at any moment are those that
+    overlap a bin not yet emitted: bounded by depth times read length over bin
+    size, not by the region. Draining the stream into a list -- as the caller
+    once did -- made a 10 Mb region of ultra-long ONT cost 2.2 GB; each
+    AlignedRead holds its full `seq`.
     """
-    current_key: tuple[int, int] | None = None
-    batch: list[AlignedRead] = []
+    size = max(1, bin_size)
+    first, last = bin_range if bin_range is not None else (0, None)
+    tid: int | None = None
+    active: list[tuple[int, AlignedRead]] = []
+    next_bin = 0
+
+    def emit_until(limit: int | None) -> Iterator[tuple[int, int, list[AlignedRead]]]:
+        nonlocal active, next_bin
+        while active and (limit is None or next_bin < limit):
+            index = next_bin
+            lo, hi = index * size, (index + 1) * size
+            members = [read for end, read in active if read.pos < hi and end >= lo]
+            if members and index >= first and (last is None or index < last):
+                assert tid is not None
+                yield tid, index, members
+            next_bin += 1
+            active = [(end, read) for end, read in active if end >= next_bin * size]
+
     for read in reads:
-        key = (read.tid, _bin_index_for(read, bin_size))
-        if current_key is None:
-            current_key = key
-        elif key != current_key:
-            yield current_key[0], current_key[1], batch
-            current_key, batch = key, []
-        batch.append(read)
-    if current_key is not None:
-        yield current_key[0], current_key[1], batch
+        start_bin = _bin_index_for(read, size)
+        if read.tid != tid:
+            yield from emit_until(None)
+            tid, active = read.tid, []
+        if not active:
+            next_bin = start_bin
+        yield from emit_until(start_bin)
+        active.append((_read_end(read), read))
+    yield from emit_until(None)
 
 
 def _summary_ledger_row(component: ComponentCall, summary: hyp_module.HypothesisSummary,

@@ -164,7 +164,7 @@ def _run(out_dir: str, workers: int, region: str | None) -> None:
                             reference_fasta_path=str(EXAMPLE / "mini_ref.fa"),
                             te_fasta_path=str(EXAMPLE / "mini_te.fa"))
     config.scan_workers = workers
-    # One bin per chunk, so the 60 kb contig is cut five times and every
+    # One bin per chunk, so the 108 kb contig is cut many times and every
     # 8 kb read near a cut is handed to two chunks by the fetch.
     config.scan_chunk_bp = config.bin_size
     if region:
@@ -184,7 +184,7 @@ def test_three_workers_write_the_same_bytes_as_one(region):
             left = Path(one, name).read_bytes()
             right = Path(three, name).read_bytes()
             assert left == right, f"{name} differs between 1 and 3 workers"
-        # Not vacuous: the dataset plants four insertions and the run calls some.
+        # Not vacuous: the dataset plants eight insertions and the run calls some.
         assert os.path.getsize(Path(one, "calls.vcf")) > 0
         assert b"\nchr1\t" in Path(one, "scientific.txt").read_bytes()
 

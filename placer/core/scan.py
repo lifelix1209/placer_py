@@ -31,18 +31,42 @@ from placer.core.contracts import ReadSource, StageHooks
 from placer.core.result import PipelineResult
 
 
+def region_bin_range(config: PipelineConfig) -> tuple[int, int | None] | None:
+    """The bins a `--region` run owns, or None for the whole file.
+
+    The reads a region fetch returns overlap bins outside the region, and a bin
+    now receives every read overlapping it; without this, a region run would
+    also process the bins those reads reach into and call insertions outside
+    the region.
+    """
+    scope = config.bam_region_scope
+    if not scope.enabled:
+        return None
+    size = max(1, config.bin_size)
+    first = max(0, scope.start) // size
+    last = (scope.end - 1) // size + 1 if scope.end > 0 else None
+    return first, last
+
+
 def run_scan(source: ReadSource, config: PipelineConfig, hooks: StageHooks,
-             result: PipelineResult | None = None) -> PipelineResult:
+             result: PipelineResult | None = None,
+             bin_range: tuple[int, int | None] | None = None) -> PipelineResult:
     """Stream the gated reads through every per-bin stage.
 
     Returns the result UNFINALIZED: the calls are per-component selections, the
     ledger carries raw penalty-free aggregates, and nothing has been calibrated
     or de-duplicated across bins yet. `placer/core/finalize.py` is what turns
     that into an answer.
+
+    `bin_range` restricts the bins scanned (see `group_reads_into_bins`); by
+    default it is the region's, from `region_bin_range`.
     """
     result = result if result is not None else PipelineResult()
     bin_size = max(1, config.bin_size)
-    for tid, bin_index, bin_reads in group_reads_into_bins(source.reads, bin_size):
+    if bin_range is None:
+        bin_range = region_bin_range(config)
+    for tid, bin_index, bin_reads in group_reads_into_bins(source.reads, bin_size,
+                                                           bin_range):
         process_bin_records(bin_reads, source.chromosome_name(tid), tid,
                             bin_index * bin_size, (bin_index + 1) * bin_size,
                             config, hooks, result, source.fetch_local)

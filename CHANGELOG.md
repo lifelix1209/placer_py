@@ -57,6 +57,11 @@ project's numbering, not this package's.)
 - Extracted into a standalone repository with an MIT `LICENSE`, making the code
   legally usable and publishable at all.
 - `placer --version`, and `python -m placer` as an equivalent entry point.
+- The example dataset covers every class the caller models -- a minus-strand
+  L1, an LTR, a hAT DNA transposon and a Helitron join the four SINE, LINE and
+  SVA events -- and `truth.tsv` records each insertion's strand.
+- `tools/compare_dev_runs.py`: score runs of the development slices against a
+  TE truth set and list the TE calls one run gains or loses against another.
 - A runnable example dataset (`examples/make_example_data.py`) with a known
   truth set, and the first end-to-end run of the pipeline on real files rather
   than on literals in a test.
@@ -164,6 +169,15 @@ project's numbering, not this package's.)
   to `placer/core/endonuclease.py` first; see Fixed.
 
 ### Fixed
+
+- **Insertions whose supporting reads started in the previous scan bin were
+  never called.** A bin got only the reads that START in it, and a candidate
+  is kept only by the bin that owns its anchor, so a candidate formed from
+  reads that started earlier was discovered in their bin and discarded there.
+  With reads longer than the 10 kb bins -- all ultra-long ONT -- most of an
+  insertion's carriers start earlier. A bin now receives every read that
+  overlaps it. On the example data a minus-strand L1 14 bp into a bin, with
+  ten carriers, went from not called to called.
 
 - **`--threads N` no longer hangs forever when a worker dies.** A scan worker
   killed by a signal left `multiprocessing.Pool` waiting on a result that would
