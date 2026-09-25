@@ -18,11 +18,10 @@ depend on `core`, which is the one direction the split exists to prevent.
 
 THE TE ALIGNMENT IS HANDED OVER PER BIN. The bin loop takes every shortlisted
 hypothesis of a bin up to its alignment, then calls `align_inserts` once for
-the lot (`placer/core/bins.py`). `TeLibraryAligner` still gives each insert
-its own `blastn` -- packing them into one run changes blastn's answer for
-repetitive inserts -- but runs a bin's processes concurrently and remembers
-the hits per sequence across bins. BLAST+ 2.17 spends ~0.8 s of CPU starting
-up, more than the search, so overlapping the start-ups is where the time is.
+the lot (`placer/core/bins.py`). `TeLibraryAligner` packs them into sorted
+batches of `BLAST_QUERIES_PER_CALL` and runs a bin's batches concurrently.
+BLAST+ 2.17 spends ~0.8 s of CPU starting up, more than the search for a
+few-hundred-base insert, so the start-ups were where the time was.
 Handing over per BIN rather than per run keeps the streaming property -- no
 bin's reads are held past the bin.
 """

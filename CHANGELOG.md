@@ -70,6 +70,13 @@ project's numbering, not this package's.)
 
 ### Changed
 
+- **`blastn` is batched**: a bin's distinct inserts, sorted, 32 to a process,
+  the batches of a bin run concurrently. On the 201 inserts of the human
+  development slice this took the TE alignment from 116.6 s to 5.6 s. Batching
+  changed 8 of their raw hit lists and none of the evidence built from them.
+  The batches depend only on the bin, and the cross-bin memo is gone, so
+  `--threads N` still writes the same bytes for every N.
+
 - `te_annotation_class` and `te_annotation_order` in the ledger and TSVs are the
   normalised class and superfamily, where they used to be the raw text of the
   header (and `NA` for any library not in `#Class/Superfamily` form).

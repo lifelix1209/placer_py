@@ -9,18 +9,13 @@ evidence.
 
 `align_insert_sequences` is a batch API, with by-sequence de-duplication so a
 component with twenty supporting reads does not align twenty identical
-consensus strings. But a multi-query `blastn` run is NOT result-neutral -- see
-`run_blastn_batch_against_te_library` for the measured case -- so the CLI does
-not batch queries into one process. It uses `TeLibraryAligner`, which gives
-every insert its own `blastn`, exactly as a one-insert batch always did, and
-recovers the speed another way: the calls for a bin run concurrently, the
-database key is computed once per run, and the hits are remembered per
-sequence across bins.
+consensus strings. The CLI uses `TeLibraryAligner`, which aligns a bin's
+inserts in sorted, fixed-size `blastn` batches -- 21x faster than one process
+per insert, with the batches chosen so that `--threads` cannot change them.
 """
 
 from __future__ import annotations
 
-from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 from placer.config import PipelineConfig
@@ -110,39 +105,42 @@ def align_insert_sequences(config: PipelineConfig, entries: list[TeEntry],
         for seq in insert_seqs]
 
 
+#: Inserts per `blastn` process. Fixed, and applied to a bin's inserts in
+#: sorted order, so which inserts share a process depends only on the bin --
+#: never on `--threads`, the CPU count or what an earlier bin aligned.
+BLAST_QUERIES_PER_CALL = 32
+
+
 class TeLibraryAligner:
-    """`align_insert_sequences(config, entries, [seq])` for a whole run, faster.
+    """`align_insert_sequences(config, entries, seqs)` for a whole run, faster.
 
-    THE RESULT FOR EVERY INSERT IS WHAT A ONE-INSERT CALL RETURNS, byte for
-    byte: each insert still gets a `blastn` of its own, because packing
-    several into one run changes the HSPs blastn reports for repetitive ones
-    (measured; see `run_blastn_batch_against_te_library`). What changes is
-    what that costs.
+    INSERTS ARE BATCHED, `BLAST_QUERIES_PER_CALL` to a `blastn` process. BLAST+
+    2.17 spends ~0.8 s of CPU starting up, whatever the query, and one process
+    per insert made that start-up about half of a run. Measured on the 201
+    distinct inserts of the human development slice (HG002, GRCh38
+    chr1:10-20 Mb, Dfam 3.8 human): one process each took 116.6 s, groups of 32
+    took 5.6 s, groups of 128 took 2.8 s.
 
-      * `blastn`'s start-up. BLAST+ 2.17 spends ~0.8 s of CPU before it reads
-        a query (`blastn -version` alone costs that), more than the search for
-        a few-hundred-base insert. That CPU cannot be avoided without sharing
-        a process between inserts, which is the thing that changes answers --
-        but it need not be spent one launch after another. The bin loop hands
-        over every insert of a bin at once and their processes run
-        CONCURRENTLY, `jobs` at a time, so the scan process is not idle while
-        they start.
-      * The database key. `build_te_library_cache_key` hashes every library
-        sequence byte by byte in Python -- 0.3 s for a 1,400-family Dfam
-        library -- and the library does not change during a run.
-      * Repeated inserts. Neighbouring components of one locus assemble the
-        same insert, and the hits for a sequence alone depend only on that
-        sequence and the database. They are remembered, bounded, per sequence.
+    BATCHING IS NOT HIT-NEUTRAL, and the design follows from that. Which HSPs
+    blastn keeps for a repetitive query depends on the other queries in its
+    run: on those 201 inserts 8 raw hit lists differed between alone and
+    batched (7 at groups of 8), though the evidence built from them -- family,
+    subfamily, identity, coverage, cross-family margin, strand, consensus
+    interval, QC -- was identical for all 201 at groups of 8, 32 and 128. So
+    the batches must be a function of the input alone, or `--threads N` could
+    stop writing the same bytes for every N:
 
-    WHAT IS REMEMBERED is the parsed hit list, not the evidence built from it:
-    the evidence object is rebuilt on every call, exactly as the per-call path
-    builds it, so no two callers ever share a mutable result.
+      * the batches are a bin's DISTINCT inserts, SORTED, cut every
+        `BLAST_QUERIES_PER_CALL` -- the bin is the same whatever the chunking;
+      * nothing is remembered across bins. A memo would decide which inserts
+        still need aligning, and so what shares a batch, from what this worker
+        happened to align before.
+
+    The batches of one bin run CONCURRENTLY, `jobs` at a time. Threads suffice:
+    each spends its time blocked in `subprocess.run`, which releases the GIL.
+    The database key is computed once per run -- `build_te_library_cache_key`
+    hashes every library sequence, 0.3 s for Dfam human.
     """
-
-    #: Enough to cover every insert a locus produces while it is being
-    #: scanned, which is where repeats come from; small enough that a
-    #: whole-genome run cannot grow it without bound.
-    MEMO_CAPACITY = 4096
 
     def __init__(self, config: PipelineConfig, entries: list[TeEntry],
                  background: TeSequenceBackground | None = None,
@@ -150,12 +148,8 @@ class TeLibraryAligner:
         self.config = config
         self.entries = entries
         self.background = background
-        #: Concurrent `blastn` processes. Threads suffice to drive them: each
-        #: thread spends its time blocked in `subprocess.run`, which releases
-        #: the GIL.
         self.jobs = max(1, jobs)
         self._db_prefix: str | None = None
-        self._hits: OrderedDict[str, list[BlastSubjectHit]] = OrderedDict()
         self.blastn_calls = 0
 
     def prepare(self) -> str:
@@ -179,59 +173,39 @@ class TeLibraryAligner:
         return self._db_prefix
 
     def align(self, insert_seqs: list[str]) -> list[TEAlignmentEvidence]:
-        """What `align_insert_sequences` returns for the same batch."""
+        """Evidence for each insert, from sorted fixed-size `blastn` batches."""
         config = self.config
         if not self.entries or not config.te_fasta_path:
             return align_insert_sequences(config, self.entries, insert_seqs,
                                           self.background)
 
-        # This batch's hits, gathered BEFORE anything is written to the memo:
-        # the memo is bounded, and reading results back out of it would lose
-        # any that a large batch evicted before they were used.
-        batch_hits: dict[str, list[BlastSubjectHit]] = {}
-        missing: dict[str, None] = {}
-        for seq in insert_seqs:
-            if not seq or seq in batch_hits or seq in missing:
-                continue
-            remembered = self._hits.get(seq)
-            if remembered is not None:
-                self._hits.move_to_end(seq)
-                batch_hits[seq] = remembered
-            else:
-                missing[seq] = None
-        if missing:
+        distinct = sorted({seq for seq in insert_seqs if seq})
+        groups = [distinct[i:i + BLAST_QUERIES_PER_CALL]
+                  for i in range(0, len(distinct), BLAST_QUERIES_PER_CALL)]
+        hits: dict[str, list[BlastSubjectHit]] = {}
+        if groups:
             db_prefix = self._db()
 
-            def align_alone(seq: str) -> list[BlastSubjectHit]:
-                # "q0", the id a one-insert `align_insert_sequences` call
-                # gives it, so the process sees exactly the same input.
-                return run_blastn_batch_against_te_library(
-                    config.te_blastn_path, db_prefix, [("q0", seq)])["q0"]
+            def align_group(group: list[str]) -> dict[str, list[BlastSubjectHit]]:
+                found = run_blastn_batch_against_te_library(
+                    config.te_blastn_path, db_prefix,
+                    [(f"q{i}", seq) for i, seq in enumerate(group)])
+                return {seq: found[f"q{i}"] for i, seq in enumerate(group)}
 
-            pending = list(missing)
-            self.blastn_calls += len(pending)
-            if self.jobs > 1 and len(pending) > 1:
-                with ThreadPoolExecutor(max_workers=min(self.jobs, len(pending))) as pool:
-                    found = list(pool.map(align_alone, pending))
+            self.blastn_calls += len(groups)
+            if self.jobs > 1 and len(groups) > 1:
+                with ThreadPoolExecutor(max_workers=min(self.jobs, len(groups))) as pool:
+                    for part in pool.map(align_group, groups):
+                        hits.update(part)
             else:
-                found = [align_alone(seq) for seq in pending]
-            for seq, hits in zip(pending, found):
-                batch_hits[seq] = hits
-                self._remember(seq, hits)
+                for group in groups:
+                    hits.update(align_group(group))
 
         return [build_insert_alignment_evidence_from_blast_hits(
-            seq, True, list(batch_hits.get(seq, [])) if seq else [],
+            seq, True, list(hits.get(seq, [])) if seq else [],
             config.te_subfamily_margin_min, self.background,
             library_is_complete(config))
             for seq in insert_seqs]
 
     def align_one(self, insert_seq: str) -> TEAlignmentEvidence:
         return self.align([insert_seq])[0]
-
-    def _remember(self, seq: str, hits: list[BlastSubjectHit]) -> None:
-        if self.MEMO_CAPACITY <= 0:
-            return
-        self._hits[seq] = hits
-        self._hits.move_to_end(seq)
-        while len(self._hits) > self.MEMO_CAPACITY:
-            self._hits.popitem(last=False)

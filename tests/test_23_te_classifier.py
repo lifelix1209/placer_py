@@ -670,3 +670,51 @@ def test_the_subject_takes_the_strand_of_its_strongest_hsp():
     evidence = T.build_insert_alignment_evidence_from_blast_hits(insert, True, [hit], 0.04)
     assert evidence.te_strand == "-"
     assert evidence.te_element_length == 6000
+
+
+def test_the_blastn_batches_depend_only_on_the_inserts():
+    """
+    blastn's raw hits for a repetitive query depend on what shares its run, so
+    the batches must be a function of the bin's inserts alone -- sorted,
+    distinct, cut every BLAST_QUERIES_PER_CALL -- and never of `jobs` or of
+    what was aligned before. Otherwise `--threads` could change the output.
+    """
+    seen: list[list[str]] = []
+
+    def fake_blastn(blastn_path, db_prefix, queries):
+        seen.append([seq for _, seq in queries])
+        return {query_id: [] for query_id, _ in queries}
+
+    real_blastn = L.run_blastn_batch_against_te_library
+    L.run_blastn_batch_against_te_library = fake_blastn   # no monkeypatch: both runners
+    try:
+        batches = _batches_for_jobs(seen)
+    finally:
+        L.run_blastn_batch_against_te_library = real_blastn
+    rng = random.Random(3)
+    inserts = _batch_test_inserts(rng)
+    expected = sorted(set(inserts))
+    size = L.BLAST_QUERIES_PER_CALL
+    want = sorted([tuple(expected[i:i + size]) for i in range(0, len(expected), size)] * 2)
+    assert batches[1] == batches[4] == want
+
+
+def _batch_test_inserts(rng):
+    inserts = ["".join(rng.choice("ACGT") for _ in range(60)) for _ in range(70)]
+    return inserts + inserts[:5]                 # duplicates are aligned once
+
+
+def _batches_for_jobs(seen):
+    rng = random.Random(3)
+    inserts = _batch_test_inserts(rng)
+    config = PipelineConfig(te_fasta_path="lib.fa")
+    batches = {}
+    for jobs in (1, 4):
+        seen.clear()
+        aligner = L.TeLibraryAligner(config, [T.TeEntry(name="x", sequence="ACGT")],
+                                     jobs=jobs)
+        aligner._db_prefix = "db"
+        assert len(aligner.align(inserts)) == len(inserts)
+        aligner.align(inserts)                   # nothing carried over: same batches
+        batches[jobs] = sorted(map(tuple, seen))
+    return batches
