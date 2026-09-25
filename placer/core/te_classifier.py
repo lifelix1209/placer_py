@@ -445,10 +445,16 @@ def fragment_hits_tsv(hits: list[FragmentTEHit]) -> str:
 # ---------------------------------------------------------------------------
 #: Columns requested from blastn, in order. Changing this changes the parser.
 BLAST_OUTFMT = "6 qseqid sseqid pident length qlen qstart qend sstart send bitscore evalue slen"
-#: Reported subjects per query. A redundant library means the top 25 copies are
-#: often the same family; the per-family aggregation below is what makes that
-#: harmless.
-BLAST_MAX_TARGET_SEQS = 25
+#: Reported subjects per query. It has to be large enough that one family's
+#: near-identical subfamilies cannot fill it: at 25, a 2.7 kb HG002 insert
+#: carrying two old Alus returned 25 Alu subfamilies and nothing else, so its
+#: other elements were invisible to the family ranking. At 100, on the 201
+#: distinct inserts of the human dev slice, 10 inserts' evidence changed --
+#: Alu coverage rising as more copies became visible, one 2.1 kb insert
+#: resolving from ambiguous Alu to SVA_A -- for 9% more alignment time; 250
+#: changed nothing further. Libraries with hundreds of Gypsy variants need
+#: the same headroom.
+BLAST_MAX_TARGET_SEQS = 100
 
 
 @dataclass
