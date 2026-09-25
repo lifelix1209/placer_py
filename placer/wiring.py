@@ -40,24 +40,38 @@ from placer.io.poa import pyabpoa_consensus
 from placer.io.te_library import TeLibraryAligner
 
 #: See `blast_jobs_per_worker`.
-MIN_BLAST_JOBS = 4
+MIN_BLAST_JOBS = 2
+
+
+def available_cpus() -> int:
+    """CPUs this process may run on: the SLURM/cgroup allocation, not the machine.
+
+    `os.cpu_count()` reports every core on the node. On a 128-core cluster node
+    with a 16-CPU allocation it said 128, each of 16 workers ran 8 blastn at
+    once, and two such jobs put the node at a load of 233 -- which made every
+    timing on it meaningless and every job on it slow. The affinity mask is
+    what the scheduler actually granted.
+    """
+    try:
+        return max(1, len(os.sched_getaffinity(0)))
+    except (AttributeError, OSError):      # macOS has no sched_getaffinity
+        return max(1, os.cpu_count() or 1)
 
 
 def blast_jobs_per_worker(config: PipelineConfig) -> int:
     """How many `blastn` processes one scan process may run at once.
 
-    `te_blast_jobs` when set; otherwise the machine's cores shared between the
-    scan workers, so `--threads N` does not multiply into N x cores blastn
-    processes -- but never fewer than `MIN_BLAST_JOBS`. With one job, a
-    worker alternates between its own Python and a queue of `blastn`
-    launches (~0.8 s of CPU and ~1.3 s of wall time each on the measurement
-    laptop), and one core sits idle through each half. A few in flight keep
-    it busy; the oversubscription is bounded by `workers x MIN_BLAST_JOBS`,
-    and measured on 0.9 Mb of HG002 with 8 workers it was the faster choice.
+    `te_blast_jobs` when set; otherwise the process's allocated CPUs shared
+    between the scan workers, so `--threads N` does not multiply into N x cores
+    blastn processes -- but never fewer than `MIN_BLAST_JOBS`, so a worker has
+    one batch aligning while it prepares the next. Since inserts are batched 32
+    to a process (`io/te_library.py`), start-up no longer dominates, and the
+    floor of 4 this used to have -- chosen on a laptop to overlap one-insert
+    start-ups -- only oversubscribed a cluster allocation fourfold.
     """
     if config.te_blast_jobs > 0:
         return config.te_blast_jobs
-    return max(MIN_BLAST_JOBS, (os.cpu_count() or 1) // max(1, config.scan_workers))
+    return max(MIN_BLAST_JOBS, available_cpus() // max(1, config.scan_workers))
 
 
 def build_stage_hooks(config: PipelineConfig, reference, entries) -> StageHooks:

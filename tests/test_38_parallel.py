@@ -213,3 +213,19 @@ def test_a_worker_killed_by_a_signal_fails_the_run_instead_of_hanging_it():
     with pytest.raises(WorkerDiedError):
         list(map_in_worker_processes(square_unless_three, [1, 2, 3, 4], 2))
     assert time.perf_counter() - started < 60
+
+
+def test_blast_concurrency_is_sized_from_the_allocation_not_the_machine():
+    """On a 128-core node with a 16-CPU allocation, os.cpu_count() said 128."""
+    import os
+
+    from placer.config import PipelineConfig
+    from placer.wiring import available_cpus, blast_jobs_per_worker
+    allocated = available_cpus()
+    if hasattr(os, "sched_getaffinity"):
+        assert allocated == len(os.sched_getaffinity(0))
+    config = PipelineConfig()
+    config.scan_workers = allocated
+    assert blast_jobs_per_worker(config) == 2        # the floor, not cores/1
+    config.te_blast_jobs = 7
+    assert blast_jobs_per_worker(config) == 7

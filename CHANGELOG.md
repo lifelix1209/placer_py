@@ -170,6 +170,11 @@ project's numbering, not this package's.)
 
 ### Fixed
 
+- **`blastn` concurrency is sized from the CPUs the job was given**, not from
+  every core on the machine. On a 128-core cluster node with a 16-CPU SLURM
+  allocation, `--threads 16` ran 128 `blastn` processes at once and two such
+  jobs drove the node to a load of 233.
+
 - **Insertions whose supporting reads started in the previous scan bin were
   never called.** A bin got only the reads that START in it, and a candidate
   is kept only by the bin that owns its anchor, so a candidate formed from
