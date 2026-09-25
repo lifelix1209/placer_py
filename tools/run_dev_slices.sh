@@ -4,6 +4,7 @@
 #
 #   sbatch tools/run_dev_slices.sh                 # outputs under $OUT_ROOT/<commit>/
 #   OUT_ROOT=/elsewhere sbatch tools/run_dev_slices.sh
+#   EXTRA_ARGS="--decision mechanism" sbatch tools/run_dev_slices.sh
 #
 # The slices are inside TEBench's development_contigs (human chr1-8); the cichlid
 # dataset defines none, so chr1 is used. Nothing here touches a holdout contig.
@@ -68,7 +69,7 @@ for slice in "${SLICES[@]}"; do
     mkdir -p "$dest"
     echo "== $name $region -> $dest"
     /usr/bin/time -v "$PY" -m "$MODULE" "$bam" "$ref" "$lib" \
-        --region "$region" --threads "$THREADS" --output-dir "$dest" \
+        --region "$region" --threads "$THREADS" ${EXTRA_ARGS:-} --output-dir "$dest" \
         2> "$dest/stderr.log" || echo "FAILED: $name (see $dest/stderr.log)"
     grep -E "Elapsed|Maximum resident" "$dest/stderr.log" || true
 done
