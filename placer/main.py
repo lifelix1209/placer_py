@@ -73,6 +73,11 @@ _ENV_STRING_FIELDS = {
     "PLACER_MAKEBLASTDB": "te_makeblastdb_path",
 }
 
+#: Above this fraction of Unknown-class library entries the run warns. A
+#: well-curated library still has some (Dfam human: 83 of 1,432, 6%), so the
+#: warning is for a library whose headers the taxonomy cannot read at all.
+UNCLASSIFIED_LIBRARY_WARN_FRACTION = 0.5
+
 USAGE = ("placer [--region <chrom:start-end>] [--threads <n>] [--final-fdr-q <q>] "
          "[--final-report-mode <legacy|te-calibrated>] "
          "[--min-final-raw-cigar-insert-len-bp <bp>] <input.bam> <ref.fa> <te.fa>")
@@ -237,7 +242,7 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
     from placer.io.bam import make_bam_reader
     from placer.io.reference import ReferenceFetcher
     from placer.io.report_context import build_report_context
-    from placer.io.te_library import load_te_library
+    from placer.io.te_library import load_te_library, summarise_te_library
     from placer.pipeline import run_pipeline
     from placer.wiring import build_stage_hooks
 
@@ -262,6 +267,15 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
         print(f"[PLACER] empty or unreadable TE library: {config.te_fasta_path}",
               file=sys.stderr)
         return 1
+    library = summarise_te_library(entries)
+    print(f"[PLACER] TE library {library.render()}", file=sys.stderr)
+    if library.unknown_fraction > UNCLASSIFIED_LIBRARY_WARN_FRACTION:
+        print(f"[PLACER] WARNING: {library.unknown_fraction:.0%} of the TE library "
+              "has no recognisable class. Calls against those entries get class "
+              "Unknown and no mechanism evidence. Headers should be "
+              "`name#Class/Superfamily` (RepeatMasker, Dfam, EDTA, RepeatModeler2) "
+              "or `Superfamily:Family` with a RepeatMasker superfamily name.",
+              file=sys.stderr)
     try:
         if config.scan_workers > 1:
             from placer.io.te_library import TeLibraryAligner

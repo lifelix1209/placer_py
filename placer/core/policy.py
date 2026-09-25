@@ -67,6 +67,7 @@ from placer.core.explanation import (
 )
 from placer.core.genotype import genotype_from_alt_vs_ref
 from placer.core.structure import SequenceExplanation
+from placer.core.taxonomy import TeClass, classify
 
 # --------------------------------------------------------------------------
 # DecisionThresholds. What is left after the ladders were deleted.
@@ -593,38 +594,43 @@ def te_sequence_model_score(te_alignment) -> float:
 
 
 # --------------------------------------------------------------------------
-# Family kind: four mechanisms, from the name.
+# Family kind: the latent model's four mechanism buckets, from the class.
 # --------------------------------------------------------------------------
-_LTR_TOKENS = ("ltr", "erv", "gypsy", "copia", "bel-pao", "dirs")
-_DNA_TOKENS = ("dna", "hat", "pif", "harbinger", "tc1", "mariner", "piggybac",
-               "mutator", "merlin", "cmc", "dong")
-_RETRO_TOKENS = ("l1", "l2", "line", "sine", "alu", "sva", "rte", "r2", "cr1",
-                 "penelope", "5s-deu-l2")
+_KIND_OF_CLASS = {
+    TeClass.LINE.value: "retro", TeClass.SINE.value: "retro",
+    TeClass.RETROPOSON.value: "retro", TeClass.PLE.value: "retro",
+    TeClass.LTR.value: "ltr", TeClass.DNA.value: "dna",
+}
 
 
 def family_kind(te_alignment) -> str:
-    """Map a family/subfamily name onto one of four MECHANISMS.
+    """Map the best hit onto one of the latent model's mechanism buckets.
 
     The point is mechanism, not taxonomy: `active_tprt_te` is compatible with a
     retro family and incompatible with a DNA transposon because target-primed
-    reverse transcription is something only the former does. Matching on tokens
-    inside `family:subfamily` is crude, and the ORDER matters -- `ltr` is tested
-    first because "HERVK-int#LTR/ERVK" contains no retro token but "L1" would
-    match inside some LTR subfamily names.
+    reverse transcription is something only the former does.
+
+    Read from the hit's CLASS (`annotation_class`, set by `core/taxonomy.py`),
+    not from substrings of its name. The name-token match this replaces put
+    most of a non-human library in "other" and could be fooled by a token
+    inside an unrelated name ("hat", "dna"). A Helitron (RC) stays "other":
+    it is neither copied by TPRT nor cut and pasted, and the latent model has
+    no state for it, so it gets no prior either way.
     """
     family = (te_alignment.best_family or "").lower()
     subfamily = (te_alignment.best_subfamily or "").lower()
-    name = f"{family}:{subfamily}"
     unknown_labels = ("", "unknown", "na", "none")
     if family in unknown_labels and subfamily in unknown_labels:
         return "unknown"
-    if any(token in name for token in _LTR_TOKENS):
-        return "ltr"
-    if any(token in name for token in _DNA_TOKENS):
-        return "dna"
-    if any(token in name for token in _RETRO_TOKENS):
-        return "retro"
-    return "other"
+    te_class = getattr(te_alignment, "annotation_class", "NA") or "NA"
+    if te_class == "NA":
+        # Evidence built without a classified hit: infer from the names, with
+        # the same table the library headers go through.
+        te_class = classify("NA", te_alignment.best_family or "",
+                            te_alignment.best_subfamily or "").te_class.value
+    if te_class == TeClass.UNKNOWN.value:
+        return "unknown"
+    return _KIND_OF_CLASS.get(te_class, "other")
 
 
 def build_latent_feature_vector(existence: EventExistenceEvidence,

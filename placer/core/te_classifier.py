@@ -649,6 +649,10 @@ class TEAlignmentEvidence:
     sequence_model_jsd_k6: float = 0.0
     sequence_model_k9_containment: float = 0.0
     annotation_confidence: str = "NA"
+    #: The best hit's class (a `TeClass` value, e.g. "LINE", "LTR", "DNA") and
+    #: superfamily, normalised by `core/taxonomy.py`: the same vocabulary
+    #: whichever header convention the library uses, and inferred when the
+    #: header states no class.
     annotation_class: str = "NA"
     annotation_order: str = "NA"
     annotation_intervals: str = "NA"
@@ -821,8 +825,8 @@ def build_insert_alignment_evidence_from_blast_hits(
     evidence.te_consensus_start = best_hit.target_start
     evidence.te_consensus_end = best_hit.target_end
     effective_query_coverage = evidence.best_query_coverage
-    evidence.annotation_class = best_hit.name_parts.class_label
-    evidence.annotation_order = best_hit.name_parts.order_label
+    evidence.annotation_class = best_hit.name_parts.te_class.value
+    evidence.annotation_order = best_hit.name_parts.superfamily
     evidence.annotation_masked_fraction = 0.0
     evidence.annotation_residual_fraction = _clamp(1.0 - effective_query_coverage,
                                                    0.0, 1.0)

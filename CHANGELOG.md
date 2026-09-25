@@ -20,6 +20,18 @@ project's numbering, not this package's.)
 
 ### Added
 
+- **TE classes for any species' library** (`placer/core/taxonomy.py`). Every
+  library entry gets a RepeatMasker class (LINE, SINE, Retroposon, PLE, LTR,
+  DNA, RC, Unknown, or NonTE for satellites and RNA genes) and a superfamily:
+  as stated in a `name#Class/Superfamily` header (Dfam, RepeatMasker, EDTA,
+  RepeatModeler2), or inferred from the superfamily in a tldr-style
+  `Superfamily:Family` header or from a bare name. EDTA's Wicker codes
+  (`DNA/DTA`, `LTR/RLG`, `DNA/DHH`...) are translated. On the benchmark
+  libraries: Dfam human 1,349 of 1,432 entries classified from the header, the
+  cichlid MWCichlidTE-3.2 library 565 of 599 by superfamily (the other 34 are
+  `Unknown` in the library itself). The run log states the counts, and warns
+  when over half the library is unclassified.
+
 - **`--threads N`** (`-t`): the scan runs on N processes. The genome is cut at
   bin boundaries, the pieces are scanned independently and rejoined in genome
   order, and finalization runs once over the whole run, so the output files
@@ -52,6 +64,15 @@ project's numbering, not this package's.)
   is deliberate and why.
 
 ### Changed
+
+- `te_annotation_class` and `te_annotation_order` in the ledger and TSVs are the
+  normalised class and superfamily, where they used to be the raw text of the
+  header (and `NA` for any library not in `#Class/Superfamily` form).
+- The latent-mechanism model's family kind (`policy.family_kind`) is read from
+  the class instead of from substrings of the element's name. Elements the old
+  token match missed now get their mechanism prior -- SINE/MIR and tRNA-derived
+  SINEs as retro, every cichlid Gypsy and Pao as LTR -- and an element whose
+  class is Unknown is `unknown` rather than `other`.
 
 - **Faster on one process, with byte-identical output**: on 0.9 Mb of HG002
   ONT-UL, CPU 977 s to 73 s and wall 1450-2425 s to 80 s. Peak memory rose

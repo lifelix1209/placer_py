@@ -30,6 +30,8 @@ import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 
+from .taxonomy import TeClass, classify
+
 #: k for the two Jensen-Shannon composition features.
 SEQ_MODEL_JSD_K5 = 5
 SEQ_MODEL_JSD_K6 = 6
@@ -503,14 +505,22 @@ class TeNameParts:
     family: str = "NA"
     family_key: str = "NA"
     subfamily: str = "NA"
+    #: The class and superfamily from `core/taxonomy.py`: stated in the header
+    #: when it has a `#Class/`, otherwise inferred from the superfamily token
+    #: (tldr's `Superfamily:Family`) or the bare name. `superfamily` is the
+    #: header's own spelling, before the four-key family collapse below.
+    te_class: TeClass = TeClass.UNKNOWN
+    superfamily: str = "NA"
+    taxon_source: str = "none"
 
 
 def parse_te_name_parts(te_name: str) -> TeNameParts:
     """Split a TE library header into class/order/family/subfamily.
 
     Handles the two header conventions in the wild -- RepeatMasker's
-    `AluYa5#SINE/Alu` and Dfam's `L1:L1HS` -- and then COLLAPSES the family onto
-    one of four canonical keys. The collapse matters downstream: family is what
+    `AluYa5#SINE/Alu` and tldr's `L1:L1HS` -- classifies the entry
+    (`taxonomy.classify`), and then COLLAPSES the family onto one of four
+    canonical keys. The collapse matters downstream: family is what
     `family_state_compatibility` in the decision policy keys on, so a library
     that spells the same family three ways must not produce three families.
     """
@@ -550,6 +560,21 @@ def parse_te_name_parts(te_name: str) -> TeNameParts:
     parts.exact_name = parts.subfamily
     if not family:
         family = parts.subfamily
+
+    if parts.order_label != "NA":
+        superfamily = parts.order_label
+    elif parts.class_label == "NA" and hash_at == -1 and token.find(":") != -1:
+        superfamily = family
+    else:
+        superfamily = "NA"
+    taxon = classify(parts.class_label, superfamily, parts.subfamily)
+    parts.te_class = taxon.te_class
+    parts.superfamily = taxon.superfamily
+    parts.taxon_source = taxon.source
+    if family == parts.order_label and taxon.superfamily != parts.order_label:
+        # A Wicker code (EDTA's `DNA/DTA`): name the family by the superfamily
+        # it stands for, so outputs say hAT rather than DTA.
+        family = taxon.superfamily
 
     family_key = upper_ascii(family)
     for prefix, canonical in (("ALU", "Alu"), ("L1", "L1"), ("SVA", "SVA"),

@@ -361,10 +361,22 @@ def test_family_kind_maps_names_onto_mechanisms_not_taxonomy():
     assert P.family_kind(te_pass(best_family="Satellite", best_subfamily="HSat2")) == "other"
 
 
-def test_ltr_is_tested_before_retro_because_the_tokens_overlap():
-    """`ERVL-MaLR` contains no retro token, but some LTR subfamily names contain
-    `l1`. Order is what keeps the two apart."""
+def test_the_kind_comes_from_the_class_not_from_tokens_in_the_name():
+    """The name-token match this replaced needed `ltr` tested before `retro`
+    because tokens overlapped, and put SINE/MIR in "other" because "mir"
+    contains no retro token. With a stated class neither can happen."""
     assert P.family_kind(te_pass(best_family="ERVL", best_subfamily="MLT1A")) == "ltr"
+    assert P.family_kind(te_pass(best_family="MIR", best_subfamily="MIR3",
+                                 annotation_class="SINE")) == "retro"
+    # The class wins over a misleading name: an LTR element named like an L1.
+    assert P.family_kind(te_pass(best_family="L1like", best_subfamily="L1like-int",
+                                 annotation_class="LTR")) == "ltr"
+    # A Helitron is neither TPRT nor cut-and-paste: no bucket, no prior.
+    assert P.family_kind(te_pass(best_family="Helitron", best_subfamily="Helitron-1",
+                                 annotation_class="RC")) == "other"
+    # An element whose own library does not know its class is unknown.
+    assert P.family_kind(te_pass(best_family="Unknown", best_subfamily="Eulor4",
+                                 annotation_class="Unknown")) == "unknown"
 
 
 def test_the_mechanism_prior_penalises_an_incompatible_family():

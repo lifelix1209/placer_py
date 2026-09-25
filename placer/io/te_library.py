@@ -24,7 +24,8 @@ from collections import OrderedDict
 from concurrent.futures import ThreadPoolExecutor
 
 from placer.config import PipelineConfig
-from placer.core.seqtools import TeSequenceBackground
+from placer.core.seqtools import TeSequenceBackground, parse_te_name_parts
+from placer.core.taxonomy import LibrarySummary, TeTaxon, summarise_library
 from placer.core.te_classifier import (
     TEAlignmentEvidence,
     TeEntry,
@@ -51,6 +52,20 @@ def load_te_library(te_fasta_path: str) -> list[TeEntry]:
     """
     with open(te_fasta_path) as handle:
         return load_te_entries_from_fasta(handle.read())
+
+
+def summarise_te_library(entries: list[TeEntry]) -> LibrarySummary:
+    """How many library entries have a class, and where it came from.
+
+    Printed once per run: a library whose headers carry no class the taxonomy
+    can recognise gives every call class Unknown, which is a silent loss of the
+    mechanism evidence rather than an error, so it has to be visible.
+    """
+    def taxon(entry: TeEntry) -> tuple[str, TeTaxon]:
+        parts = parse_te_name_parts(entry.name)
+        return entry.name, TeTaxon(parts.te_class, parts.superfamily,
+                                   parts.taxon_source)
+    return summarise_library(taxon(entry) for entry in entries)
 
 
 def align_insert_sequences(config: PipelineConfig, entries: list[TeEntry],
