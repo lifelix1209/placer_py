@@ -31,8 +31,8 @@ classifiers = [
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/lifelix1209/placer-py"
-Changelog = "https://github.com/lifelix1209/placer-py/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/lifelix1209/placer_py"
+Changelog = "https://github.com/lifelix1209/placer_py/blob/main/CHANGELOG.md"
 "Reference implementation" = "https://github.com/lifelix1209/PLACER"
 
 [project.scripts]
