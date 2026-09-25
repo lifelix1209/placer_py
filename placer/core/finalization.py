@@ -45,6 +45,7 @@ import math
 
 from placer.core import mathx, selection, supports
 from placer.core.ledger import EvidenceLedgerRow, FinalCall, FinalCallFilterConfig
+from placer.core.mechanism_selection import apply_mechanism_shadow_selection
 from placer.core.result import PipelineResult
 
 #: The target risk. One number for the whole run.
@@ -2729,6 +2730,11 @@ def finalize_final_calls(result: PipelineResult,
     its inputs are e-values, and step 6 is what makes them so.
     """
     filter_config = filter_config or FinalCallFilterConfig()
+
+    # SHADOW: what the per-class decision would select, over every evaluated
+    # hypothesis. Reads and marks the ledger only; no call depends on it yet.
+    result.mech_shadow = apply_mechanism_shadow_selection(result.evidence_ledger,
+                                                          target_fdr)
 
     append_aggregated_event_community_calls(result.evidence_ledger, result.final_calls)
     append_promoted_event_cluster_calls(result.evidence_ledger, result.final_calls)

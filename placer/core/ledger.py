@@ -70,6 +70,12 @@ class EvidenceLedgerRow:
     mech_decoy_count: int = 0
     mech_decoy_mean_exp_linkage: float = 0.0
     mech_terms: str = "NA"
+    #: Set at finalization by `core/mechanism_selection.py` on each locus's
+    #: representative row: its e-value, and whether the new decision would
+    #: select it as a TE call or as a structural call.
+    mech_e_value: float = 0.0
+    mech_ebh_selected: bool = False
+    mech_structural_selected: bool = False
     family_alignment_resolved: bool = False
     final_qc: str = "NA"
     posterior_qc: str = "NA"

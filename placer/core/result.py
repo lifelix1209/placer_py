@@ -27,6 +27,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from placer.core.ledger import EvidenceLedgerRow, FinalCall
+from placer.core.mechanism_selection import ShadowSelection
 
 
 @dataclass
@@ -50,6 +51,9 @@ class PipelineResult:
     dependency_penalty_cap_log: float = 0.0
     dependency_penalty_null_count: int = 0
     dependency_penalty_estimated: bool = False
+    #: The per-class decision's shadow selection and decoy check
+    #: (`core/mechanism_selection.py`), recorded beside the current decision.
+    mech_shadow: ShadowSelection = field(default_factory=ShadowSelection)
 
     final_calls: list[FinalCall] = field(default_factory=list)
     #: Selected structural insertions the TE-calibrated mode sets aside. They

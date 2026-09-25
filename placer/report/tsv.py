@@ -113,6 +113,7 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "polya_len", "transduction_len",
     "mech_log_lr_vs_non_te", "mech_log_lr_vs_artifact",
     "mech_decoy_count", "mech_decoy_mean_exp_linkage", "mech_terms",
+    "mech_e_value", "mech_ebh_selected", "mech_structural_selected",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -272,6 +273,7 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.polya_len, row.transduction_len,
         row.mech_log_lr_vs_non_te, row.mech_log_lr_vs_artifact,
         row.mech_decoy_count, row.mech_decoy_mean_exp_linkage, row.mech_terms,
+        row.mech_e_value, row.mech_ebh_selected, row.mech_structural_selected,
     ]
     return [_number(value) for value in values]
 
@@ -304,7 +306,22 @@ def _summary_lines(result) -> list[str]:
         f"dependency_penalty_null_count\t{result.dependency_penalty_null_count}",
         f"dependency_penalty_estimated\t"
         f"{1 if result.dependency_penalty_estimated else 0}",
+        *_shadow_lines(result),
     ]
+
+
+def _shadow_lines(result) -> list[str]:
+    """The shadow decision's selection and its decoy check, per class."""
+    shadow = getattr(result, "mech_shadow", None)
+    if shadow is None:
+        return []
+    lines = [f"mech_shadow_loci\t{shadow.loci}",
+             f"mech_shadow_te_selected\t{shadow.te_selected}",
+             f"mech_shadow_structural_selected\t{shadow.structural_selected}"]
+    for name, check in shadow.checks.items():
+        lines.append(f"mech_decoy_{name}\tn={check.decoys};mean={_number(check.mean)}"
+                     f";upper={_number(check.upper)};factor={_number(check.factor)}")
+    return lines
 
 
 def render_scientific_txt(result, include_insert_seq: bool = False) -> str:
