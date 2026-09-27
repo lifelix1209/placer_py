@@ -151,7 +151,8 @@ def test_scoring_is_tebenchs_matching_and_acceptance_needs_a_real_gain():
 
 def test_the_levels_waterfall_is_conserved_and_puts_each_loss_at_its_level():
     """Five TE truth loci and one non-TE insertion. The policy calls the
-    first TE PASS, the second TE but IMPRECISE, the third STRUCTURAL, a fourth
+    first TE PASS, the second TE but IMPRECISE (a 300 bp interval, reported at
+    its left end, 50 bp from the truth), the third STRUCTURAL, a fourth
     as STRUCTURAL at the non-TE insertion, and nothing near the last two TE
     loci, one of which the scan triaged."""
     objective = _objective()
@@ -171,7 +172,7 @@ def test_the_levels_waterfall_is_conserved_and_puts_each_loss_at_its_level():
                             confident=RegionIndex.from_intervals({"chr1": [(0, 100_000)]}),
                             region=("chr1", 0, 100_000))
     imprecise = _row(20_000, 60.0)
-    imprecise["final_qc"] = "PASS_TE_IMPRECISE"
+    imprecise["bp_left"], imprecise["bp_right"] = "19950", "20250"
     rows, _ = _world_rows([_row(10_000, 60.0), imprecise, _row(30_000, 60.0),
                            _row(50_000, 60.0)])
     labels = ("TE", "TE", "STRUCTURAL", "STRUCTURAL")

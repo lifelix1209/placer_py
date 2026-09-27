@@ -117,30 +117,35 @@ def vcf_pass(d) -> bool:
     keeps nothing else. This mirrors `placer.report.vcf.vcf_filters` for a TE
     call:
       FAM_ABSTAIN     the class is not committed (NA, Unknown, NonTE);
-      IMPRECISE       an imprecise QC token, or no left breakpoint;
+      IMPRECISE       no breakpoint, or only an interval wider than the VCF
+                      module's MAX_REPORTED_INTERVAL_BP;
       ALTSEQ_MISSING  no insert sequence, where the world recorded them.
-    The token set is the VCF module's own."""
-    from placer.report.vcf import _IMPRECISE_TOKENS, _qc_tokens
+    The rule is the VCF module's own function."""
+    from placer.report.vcf import breakpoint_is_imprecise
     if (d.te_class or "NA") in ("NA", "Unknown", "NonTE"):
         return False
-    bp_left = int(d.pos) if d.pos is not None else int(d.row.bp_left)
+    left, right = _breakpoints(d)
     imprecise = (d.imprecise if d.imprecise is not None
-                 else any(t in _IMPRECISE_TOKENS for t in _qc_tokens(str(d.row.final_qc))))
-    if bp_left < 0 or imprecise:
+                 else breakpoint_is_imprecise(left, right))
+    if imprecise:
         return False
     seq = getattr(d.row, "insert_seq", None)
     return not (isinstance(seq, str) and seq == "" and getattr(d.row, "_has_insert_seq", False))
 
 
+def _breakpoints(d) -> tuple[int, int]:
+    """The call's breakpoints as finalization leaves them: one base where the
+    policy placed it, the row's own otherwise."""
+    if d.pos is not None:
+        return int(d.pos), int(d.pos)
+    return int(d.row.bp_left), int(d.row.bp_right)
+
+
 def vcf_pos0(row) -> int:
     """TEBench's pos0 for a call placed where its row is: placer's VCF POS
-    (`placer.report.vcf.vcf_pos`), the left breakpoint when there is one."""
-    bp_left = int(row.bp_left)
-    if bp_left >= 1:
-        return bp_left
-    if bp_left == 0:
-        return 1
-    return int(row.pos) + 1
+    (`placer.report.vcf.vcf_pos`, the same function)."""
+    from placer.report.vcf import reported_breakpoint
+    return reported_breakpoint(int(row.bp_left), int(row.bp_right), int(row.pos))
 
 
 def value_of(precision: float | None, recall: float | None) -> float:

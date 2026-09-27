@@ -246,17 +246,45 @@ def test_an_uncalibrated_call_says_so_rather_than_passing_silently():
 
 
 def test_every_filter_value_is_rederivable_from_the_emitted_columns():
-    """FILTER is a summary; QC, EBHSEL and CONFQC are the original. A summary
-    that lost information would make the VCF weaker than the TSV."""
+    """FILTER is a summary; CIPOS, FAMSTATUS, EBHSEL and CONFQC are the
+    original. A summary that lost information would make the VCF weaker than
+    the TSV."""
     row = records(V.render_vcf(
-        a_result([a_call(family_committed=False,
-                         final_qc="PASS_TE_IMPRECISE",
+        a_result([a_call(family_committed=False, bp_left=1000, bp_right=1300,
                          conformal_qc="CONFORMAL_NULL_INSUFFICIENT")]), ctx()))[0]
     info = info_of(row)
     assert set(row[6].split(";")) == {"FAM_ABSTAIN", "IMPRECISE", "UNCALIB"}
     assert info["FAMSTATUS"] == "ABSTAINED"
-    assert "PASS_TE_IMPRECISE" in info["QC"]
+    assert info["CIPOS"] == "0,300"
     assert info["CONFQC"] == "CONFORMAL_NULL_INSUFFICIENT" and "EBHSEL" not in info
+
+
+def test_a_narrow_interval_is_reported_at_its_middle_and_passes():
+    """Neither end of an interval is the right one to report (on HG002 the
+    truth sits at either about equally); from the middle, every point of an
+    interval up to MAX_REPORTED_INTERVAL_BP wide is within 100 bp."""
+    row = records(V.render_vcf(a_result([a_call(bp_left=1000, bp_right=1150)]), ctx()))[0]
+    assert row[1] == "1075"
+    assert info_of(row)["CIPOS"] == "-75,75"
+    assert row[6] == "PASS"
+
+
+def test_a_wider_interval_is_reported_at_its_left_end_and_flagged():
+    width = V.MAX_REPORTED_INTERVAL_BP + 1
+    row = records(V.render_vcf(a_result([a_call(bp_left=1000, bp_right=1000 + width)]),
+                               ctx()))[0]
+    assert row[1] == "1000"
+    assert info_of(row)["CIPOS"] == f"0,{width}"
+    assert row[6] == "IMPRECISE"
+
+
+def test_the_scan_s_explanation_token_no_longer_makes_a_call_imprecise():
+    """The scan's joint decision wrote PASS_TE_IMPRECISE when its explanation
+    comparison had not closed both ends -- on HG002 chr1, for 14 calls with an
+    exact breakpoint that matched the truth. It stays in QC, as evidence."""
+    row = records(V.render_vcf(a_result([a_call(final_qc="PASS_TE_IMPRECISE")]), ctx()))[0]
+    assert row[6] == "PASS"
+    assert "PASS_TE_IMPRECISE" in info_of(row)["QC"]
 
 
 def test_qual_is_missing_rather_than_zero_when_no_lfdr_was_computed():
@@ -398,10 +426,12 @@ def test_the_call_set_column_is_always_final():
 
 def test_the_csv_and_the_vcf_agree_on_position():
     """`vcf_pos` is the join key, and it is not redundant: the `pos` column is
-    0-based AND is the midpoint, so it is neither coordinate."""
-    result = a_result([a_call(), a_call(bp_left=5000, bp_right=5012, pos=5006)])
+    the 0-based midpoint of the breakpoints, which a wide interval does not
+    report."""
+    result = a_result([a_call(), a_call(bp_left=5000, bp_right=5012, pos=5006),
+                       a_call(bp_left=6000, bp_right=6300, pos=6150)])
     rows = parse_csv(C.render_csv(result))
     column = rows[0].index("vcf_pos")
     vcf_positions = [r[1] for r in records(V.render_vcf(result, ctx()))]
     assert [r[column] for r in rows[1:]] == vcf_positions
-    assert rows[2][column] != rows[2][rows[0].index("pos")]
+    assert rows[3][column] == "6000" != rows[3][rows[0].index("pos")]

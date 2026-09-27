@@ -63,8 +63,38 @@ POLARITY_RESOLVED = True
 #: Emitted in this order so a FILTER field is stable across runs.
 FILTER_ORDER = ("FAM_ABSTAIN", "IMPRECISE", "UNCALIB", "ALTSEQ_MISSING")
 
-#: `final_qc` tokens that mean the breakpoint was not closed on both sides.
-_IMPRECISE_TOKENS = ("PASS_TE_IMPRECISE", "EVENT_BILATERAL_PARTIAL_ANCHOR")
+#: A breakpoint the decision could narrow only to an interval is reported at
+#: the interval's MIDDLE, and passes, when it is at most this wide: from the
+#: middle every point of it is within 100 bp, the tolerance TEBench matches
+#: calls at. A wider one is reported at its left end and flagged IMPRECISE.
+#: Neither end is the right one to report: on HG002 chr1 the truth sat at
+#: 0.02 / 0.28 / 0.78 of the way across (quartiles). Adopted 2026-09-27 on
+#: HG002 chr2-8: TP 849 -> 923, FP 38 -> 42 (docs/development-strategy.md,
+#: section 8). Until then IMPRECISE came from the scan's joint decision, whose
+#: explanation comparison flagged calls that had an exact breakpoint.
+MAX_REPORTED_INTERVAL_BP = 200
+
+
+def breakpoint_is_imprecise(bp_left: int, bp_right: int) -> bool:
+    """IMPRECISE: no breakpoint, or only an interval wider than
+    MAX_REPORTED_INTERVAL_BP."""
+    return bp_left < 0 or bp_right - bp_left > MAX_REPORTED_INTERVAL_BP
+
+
+def reported_breakpoint(bp_left: int, bp_right: int, pos: int = -1) -> int:
+    """The 1-based POS a call with these breakpoints is written at, or -1."""
+    if 0 <= bp_left < bp_right and bp_right - bp_left <= MAX_REPORTED_INTERVAL_BP:
+        return max(1, (bp_left + bp_right) // 2)
+    if bp_left >= 1:
+        return bp_left
+    if bp_left == 0:
+        # No preceding base exists. Anchoring on index 0 shifts the insertion
+        # right by one, which is the VCF convention for a contig-start
+        # insertion and not a real TE locus.
+        return 1
+    if pos >= 0:
+        return pos + 1
+    return -1
 
 _INFO_KEYS = (
     ("SVTYPE", "1", "String", "Always INS"),
@@ -121,7 +151,8 @@ _FILTER_KEYS = (
     ("FAM_ABSTAIN",
      "Insertion called; TE family label not committed"),
     ("IMPRECISE",
-     "Breakpoint not closed on both sides"),
+     f"Breakpoint known only to an interval wider than {MAX_REPORTED_INTERVAL_BP} bp "
+     "(see CIPOS), or not at all"),
     ("UNCALIB",
      "Reached the output by a route with no FDR control: neither e-BH "
      "selected it nor a conformal route passed it"),
@@ -139,27 +170,14 @@ _FORMAT_KEYS = (
 )
 
 
-def _qc_tokens(qc: str) -> list[str]:
-    return [token for token in (qc or "").split("|") if token]
-
-
 def vcf_pos(call: FinalCall) -> int:
     """1-based POS, or -1 when the call carries no usable coordinate.
 
-    `bp_left` is preferred over `pos` because `pos` is the MIDPOINT of the two
-    breakpoints, not a breakpoint -- falling back to it is strictly worse, and
-    a call that has to is marked IMPRECISE.
+    The breakpoint itself when it is one base; the middle of an interval up to
+    MAX_REPORTED_INTERVAL_BP wide; the left end of a wider one. `pos` is the
+    fallback only for a call with no breakpoint at all, which is IMPRECISE.
     """
-    if call.bp_left >= 1:
-        return call.bp_left
-    if call.bp_left == 0:
-        # No preceding base exists. Anchoring on index 0 shifts the insertion
-        # right by one, which is the VCF convention for a contig-start
-        # insertion and not a real TE locus.
-        return 1
-    if call.pos >= 0:
-        return call.pos + 1
-    return -1
+    return reported_breakpoint(call.bp_left, call.bp_right, call.pos)
 
 
 def anchor_index(call: FinalCall) -> int:
@@ -206,15 +224,14 @@ def vcf_qual(call: FinalCall) -> str:
 def vcf_filters(call: FinalCall, *, alt_is_symbolic: bool) -> list[str]:
     """The FILTER column, as a list, in `FILTER_ORDER`.
 
-    Every value is re-derivable from the emitted `QC=`, `EBHSEL` and `CONFQC`,
-    so the summary loses nothing -- it just saves a consumer from parsing QC
-    tokens to ask "is this a clean call?".
+    Every value is re-derivable from the record -- CIPOS, `EBHSEL`, `CONFQC`,
+    the family INFO keys -- so the summary loses nothing; it just saves a
+    consumer from working out "is this a clean call?".
     """
     flags = set()
     if not call.family_committed:
         flags.add("FAM_ABSTAIN")
-    tokens = _qc_tokens(call.final_qc)
-    if any(token in _IMPRECISE_TOKENS for token in tokens) or call.bp_left < 0:
+    if breakpoint_is_imprecise(call.bp_left, call.bp_right):
         flags.add("IMPRECISE")
     if not call.ebh_selected and not call.conformal_qc.startswith("PASS_"):
         flags.add("UNCALIB")
@@ -243,7 +260,8 @@ def _meinfo(call: FinalCall) -> str:
 def _info_pairs(call: FinalCall, *, svlen: int) -> list[str]:
     out = ["SVTYPE=INS", f"SVLEN={svlen}"]
     if call.bp_right > call.bp_left >= 0:
-        out.append(f"CIPOS=0,{call.bp_right - call.bp_left}")
+        pos = vcf_pos(call)
+        out.append(f"CIPOS={call.bp_left - pos},{call.bp_right - pos}")
     out.append(f"MEI={call.te_name or 'UNKNOWN'}")
     meinfo = _meinfo(call)
     if meinfo:

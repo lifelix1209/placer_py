@@ -123,6 +123,24 @@ project's numbering, not this package's.)
 
 ### Changed
 
+- **IMPRECISE now says only that the breakpoint is uncertain, and a narrow
+  interval is reported at its middle.** Recall on HG002 chr2-8, scored as
+  TEBench scores, pooled: TP 849 -> 923, FP 38 -> 42 (P 95.7% -> 95.6%,
+  R 68.5% -> 74.5%; bootstrap 90% gain [+0.014, +0.091]). Recall rose on
+  every one of the seven chromosomes.
+  - **Before.** FILTER=IMPRECISE came from the scan's joint decision, whose
+    explanation comparison flagged calls it could not close on both ends. On
+    chr1 that dropped 15 TE calls that matched the truth, 14 of them at an
+    exact breakpoint.
+  - **Now.** A call is IMPRECISE when its breakpoint is known only to an
+    interval wider than 200 bp, or not at all. The scan's token stays in QC,
+    as evidence.
+  - **An interval up to 200 bp wide** is written at its middle, with CIPOS
+    bracketing both ends. Before, it was written at its left end. The truth
+    sits at either end about equally (quartiles 0.02 / 0.28 / 0.78 across the
+    interval), and from the middle every point is within TEBench's 100 bp.
+    200 is twice that tolerance: it comes from the evaluation, not a fit.
+
 - **A locus's e-value is now the mean over its hypotheses, not the maximum.**
   The maximum of e-values is not an e-value: under the null its mean can
   reach the number of hypotheses, so a locus evaluated many times got that

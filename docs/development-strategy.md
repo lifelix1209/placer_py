@@ -475,6 +475,29 @@ Two lessons carry over:
   loses precision at TEBench's 100 bp line, because the assembled inserts
   are 10-30 bp longer than GIAB's.
 
+**Round 9: recall first (maintainer, 2026-09-27), and the precision floor's
+noise.** `levels` put the largest single recall loss at FILTER: 15 TE calls
+on chr1 that matched the truth were IMPRECISE, 14 of them at an exact
+breakpoint. The flag came from the scan's joint decision. The next largest
+was wide intervals reported at their left end, with the truth at either end
+about equally. The candidate (`round9_filter_midpoint`) makes IMPRECISE mean
+"an interval wider than 200 bp, or no breakpoint", and reports narrower
+intervals at their middle.
+
+- **chr1: 154 / 9 -> 171 / 10** (recall +7.5 points), but gain +0.074, 90%
+  [-0.121, +0.283]. The rule rejects it on chr1.
+- **chr2-8, pre-registered: 849 / 38 -> 923 / 42**, gain +0.060, 90%
+  [+0.014, +0.091]. Adopted. This was the second use of chr2-8 for a FILTER
+  rule (F1 failed there first, node 228085220d); the holdout is untouched.
+
+**Lesson: near the precision floor, chr1 cannot see a recall gain.** chr1's
+base precision was 94.5%, just under 0.95. Every bootstrap replicate lands
+on either side of the floor, and the 10x penalty for the shortfall swamps a
+recall difference of several points. chr2-8, at 95.7%, is far enough above
+the floor to measure recall. When the development world sits at the floor, a
+chr1 rejection whose point gain is positive is not evidence against the
+candidate. That is when the maintainer may send it to validation anyway.
+
 **TEBench's truth listed 567 insertions twice.** GIAB writes an insertion on
 both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1

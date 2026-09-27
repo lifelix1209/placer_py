@@ -141,14 +141,14 @@ def repeatmasker_labels(decisions: list, annotation) -> dict[int, bool]:
 
 def filter_flags(d) -> list[str]:
     """Why the VCF would not write this TE call as PASS (`vcf_pass`'s rules)."""
-    from placer.report.vcf import _IMPRECISE_TOKENS, _qc_tokens
+    from placer.report.vcf import breakpoint_is_imprecise
     flags = []
     if (d.te_class or "NA") in ("NA", "Unknown", "NonTE"):
         flags.append("FAM_ABSTAIN")
-    bp_left = int(d.pos) if d.pos is not None else int(d.row.bp_left)
+    left, right = objective._breakpoints(d)
     imprecise = (d.imprecise if d.imprecise is not None
-                 else any(t in _IMPRECISE_TOKENS for t in _qc_tokens(str(d.row.final_qc))))
-    if bp_left < 0 or imprecise:
+                 else breakpoint_is_imprecise(left, right))
+    if imprecise:
         flags.append("IMPRECISE")
     seq = getattr(d.row, "insert_seq", None)
     if isinstance(seq, str) and seq == "" and getattr(d.row, "_has_insert_seq", False):
