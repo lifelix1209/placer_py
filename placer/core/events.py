@@ -30,12 +30,15 @@ out of `alt_struct_reads`, which is what the genotyper divides by.
 
 from __future__ import annotations
 
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
+from statistics import median
 
-from placer.alignment import AlignedRead, compute_ref_end
+from placer.alignment import AlignedRead, cigar_index, compute_ref_end
 from placer.core.breakpoints import classify_local_event_signal, read_has_local_event_signal
 from placer.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ, ComponentCall
 from placer.core.fragments import InsertionFragment, InsertionFragmentSource
+from placer.core.windows import LONG_INSERTION_SIGNAL_MIN
 
 #: How close a signal must be to the hypothesis to be alt support.
 ALT_SIGNAL_SLACK_BP = 25
@@ -46,6 +49,21 @@ CANDIDATE_CLIP_SLACK_BP = 25
 #: How far a component candidate may sit from the hypothesis and still lend it
 #: clip reads.
 CANDIDATE_CLIP_SUPPLEMENT_MAX_OFFSET_BP = 75
+#: THE SAME-ALLELE CARRIER RULE. In a tandem repeat or a low-complexity flank an
+#: aligner places one insertion at different offsets in different reads.
+#: Measured on HG002 chr1:
+#:   * a homozygous 312 bp AluSz: all 52 spanning reads carry it, over 300 bp,
+#:     only 12 of them within 25 bp of the mode;
+#:   * a het 164 bp SVA_E: 47 carriers against 3 counted.
+#: Every carrier outside the +-25 bp alt window was counted as REFERENCE whenever
+#: it spanned that window, so the insertion looked like a few noisy reads over
+#: a strong reference and scored as an artifact.
+#: A uniquely mapped read with an insertion of this allele's length (the median
+#: of the tight window's insertions, within +-CARRIER_LENGTH_TOLERANCE) within
+#: CARRIER_WINDOW_BP of the bounds carries the same allele: it is alt support
+#: and not reference. The length condition keeps a different nearby allele out.
+CARRIER_WINDOW_BP = 500
+CARRIER_LENGTH_TOLERANCE = 0.3
 #: A reference-spanning read below this MAPQ is counted separately rather than
 #: discarded -- it is evidence, but not evidence the genotyper should trust.
 REF_SPAN_MIN_MAPQ = 20
@@ -72,6 +90,9 @@ class EventReadEvidence:
     alt_struct_reads: int = 0
     raw_cigar_insert_reads: int = 0
     max_raw_cigar_insert_len: int = 0
+    #: Of the indel reads, those counted by the same-allele carrier rule: an
+    #: insertion of this allele's length outside the tight window.
+    alt_carrier_reads: int = 0
     ref_span_reads: int = 0
     low_mapq_ref_span_reads: int = 0
     #: Sorted, so two runs of the same locus produce identical output and the
@@ -122,6 +143,7 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
     left_clip_qnames: set[str] = set()
     right_clip_qnames: set[str] = set()
     raw_cigar_insert_qnames: set[str] = set()
+    tight_lengths: list[int] = []
     nearby_left_clip_qnames: set[str] = set()
     nearby_right_clip_qnames: set[str] = set()
 
@@ -165,6 +187,9 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
         # for the same reason.
         if signal.indel and read.mapq == INSERTION_CANDIDATE_REQUIRED_MAPQ:
             indel_qnames.add(qname)
+            length = _insertion_length_at(read, signal.indel_pos)
+            if length >= LONG_INSERTION_SIGNAL_MIN:
+                tight_lengths.append(length)
         if signal.max_raw_cigar_insert_len > 0:
             raw_cigar_insert_qnames.add(qname)
             evidence.max_raw_cigar_insert_len = max(evidence.max_raw_cigar_insert_len,
@@ -204,6 +229,13 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
                 nearby_left_clip_qnames.add(fragment.read_id)
             elif fragment.source == InsertionFragmentSource.CLIP_REF_RIGHT:
                 nearby_right_clip_qnames.add(fragment.read_id)
+
+    if tight_lengths:
+        carriers = _same_allele_carriers(component, local_records, left, right,
+                                         median(tight_lengths), indel_qnames)
+        evidence.alt_carrier_reads = len(carriers)
+        indel_qnames |= carriers
+        raw_cigar_insert_qnames |= carriers
 
     # THE SUPPLEMENT RULE. Clips slightly outside the tight alt window are
     # admitted only when the event ALREADY has precise support and the clips
@@ -267,6 +299,39 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
     evidence.low_mapq_ref_span_reads = len(low_mapq_ref_qnames)
     evidence.ref_span_qnames = sorted(ref_qnames)
     return evidence
+
+
+def _insertion_length_at(read: AlignedRead, ref_pos: int) -> int:
+    """The length of the read's insertion at `ref_pos` (the longest, if several)."""
+    index = cigar_index(read)
+    lo = bisect_left(index.ins_ref_pos, ref_pos)
+    hi = bisect_right(index.ins_ref_pos, ref_pos)
+    return max(index.ins_len[lo:hi], default=0)
+
+
+def _same_allele_carriers(component: ComponentCall, local_records: list[AlignedRead],
+                          left: int, right: int, allele_len: float,
+                          already: set[str]) -> set[str]:
+    """Reads carrying an insertion of `allele_len` (+-CARRIER_LENGTH_TOLERANCE)
+    within CARRIER_WINDOW_BP of [left, right], outside the tight window: the
+    same allele, placed elsewhere by the aligner. Uniquely mapped primary
+    alignments only, as for any insertion evidence."""
+    lo_len = max(LONG_INSERTION_SIGNAL_MIN, allele_len * (1.0 - CARRIER_LENGTH_TOLERANCE))
+    hi_len = allele_len * (1.0 + CARRIER_LENGTH_TOLERANCE)
+    start = max(0, left - CARRIER_WINDOW_BP)
+    end = right + CARRIER_WINDOW_BP
+    out: set[str] = set()
+    for read in local_records:
+        if (read is None or read.tid != component.tid or not read.qname
+                or read.qname in already or read.is_secondary or read.is_supplementary
+                or read.mapq != INSERTION_CANDIDATE_REQUIRED_MAPQ or not read.cigar):
+            continue
+        index = cigar_index(read)
+        a = bisect_left(index.ins_ref_pos, start)
+        b = bisect_right(index.ins_ref_pos, end)
+        if any(lo_len <= length <= hi_len for length in index.ins_len[a:b]):
+            out.add(read.qname)
+    return out
 
 
 def collect_event_read_evidence(component: ComponentCall,

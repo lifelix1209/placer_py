@@ -284,3 +284,53 @@ def test_the_written_ledger_parses_back_with_the_right_column_count():
     assert header == O.evidence_ledger_header()
     for line in lines[1:]:
         assert len(line.split("\t")) == len(header)
+
+
+def dispersed_reads(offsets=(-200, 0, 200), per_offset=8, ref=3) -> list[AlignedRead]:
+    """One insertion that the aligner placed at several offsets, as it does in
+    a repeat: each read carries INSERT, but at 10000 + offset."""
+    reads = []
+    for offset in offsets:
+        site = 10000 + offset
+        for i in range(per_offset):
+            start, end = 9000 + i * 3, 11000 - i * 3
+            reads.append(AlignedRead(
+                qname=f"alt{offset}_{i}", tid=0, pos=start, mapq=60,
+                cigar=[(CIGAR_M, site - start), (CIGAR_I, len(INSERT)), (CIGAR_M, end - site)],
+                seq=REFERENCE[start:site] + INSERT + REFERENCE[site:end]))
+    reads.extend(AlignedRead(qname=f"ref{i}", tid=0, pos=9000, mapq=60,
+                             cigar=[(CIGAR_M, 2000)], seq=REFERENCE[9000:11000])
+                 for i in range(ref))
+    return reads
+
+
+@pytest.mark.regression
+def test_carriers_the_aligner_placed_elsewhere_are_the_same_allele_not_reference():
+    """On HG002 chr1 a homozygous Alu's 52 carriers spread over 300 bp, and
+    every carrier outside the +-25 bp alt window was counted as REFERENCE: the
+    insertion looked like 5 alt reads over 35 reference reads and scored as an
+    artifact. A read with an insertion of the allele's length within
+    CARRIER_WINDOW_BP carries the same allele."""
+    result = run(dispersed_reads())
+    rows = [row for row in result.evidence_ledger
+            if row.candidate_retention_reason == "EVALUATED" and abs(row.pos - 10000) <= 50]
+    assert rows
+    best = max(rows, key=lambda row: row.alt_struct_reads)
+    assert best.alt_struct_reads == 24
+    assert best.alt_carrier_reads == 16
+    assert best.ref_span_reads == 3
+
+
+def test_an_insertion_of_another_length_nearby_is_not_the_same_allele():
+    reads = dispersed_reads(offsets=(0,), per_offset=8, ref=3)
+    other = "ACGTTGCA" * 12        # 96 bp: outside +-30% of the 320 bp allele
+    for i in range(8):
+        start, end, site = 9000 + i * 3, 11000 - i * 3, 10250
+        reads.append(AlignedRead(
+            qname=f"other{i}", tid=0, pos=start, mapq=60,
+            cigar=[(CIGAR_M, site - start), (CIGAR_I, len(other)), (CIGAR_M, end - site)],
+            seq=REFERENCE[start:site] + other + REFERENCE[site:end]))
+    result = run(reads)
+    rows = [row for row in result.evidence_ledger
+            if row.candidate_retention_reason == "EVALUATED" and abs(row.pos - 10000) <= 50]
+    assert max(row.alt_carrier_reads for row in rows) == 0

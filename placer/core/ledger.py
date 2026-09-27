@@ -100,6 +100,8 @@ class EvidenceLedgerRow:
     alt_struct_reads: int = 0
     alt_split_reads: int = 0
     alt_indel_reads: int = 0
+    #: Of those, counted by the same-allele carrier rule (`events.CARRIER_WINDOW_BP`).
+    alt_carrier_reads: int = 0
     alt_left_clip_reads: int = 0
     alt_right_clip_reads: int = 0
     full_context_input_reads: int = 0

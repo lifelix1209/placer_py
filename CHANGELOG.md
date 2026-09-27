@@ -235,6 +235,19 @@ project's numbering, not this package's.)
 
 ### Fixed
 
+- **Carriers of an insertion that the aligner placed elsewhere were counted as
+  reference support.** In a tandem repeat or low-complexity flank, ONT reads
+  carry one insertion at offsets hundreds of bp apart. A hypothesis counted an
+  insertion as alt only within +-25 bp of its bounds. Any other carrier
+  spanning that window counted as REFERENCE.
+  - A homozygous 312 bp AluSz (HG002 chr1:24,634,837) carried by all 52
+    spanning reads scored 5 alt against 35 reference, and so as an artifact.
+  - A read with a uniquely mapped insertion of the allele's length (+-30% of the
+    tight window's median) within 500 bp now counts for that allele, as alt and
+    not as reference. The ledger reports how many (`alt_carrier_reads`).
+  - At four such truth loci, alt went from 2-5 to 20-52 and the artifact ratio
+    from -14 to +10 and +47.
+
 - **Re-genotyping ignored the scan's genotype inputs.** Finalization
   re-genotypes each call with the sample's overdispersion and is meant to
   reuse everything else the scan used, but the scan never passed those inputs

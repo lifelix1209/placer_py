@@ -243,6 +243,7 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.alt_struct_reads = evidence.alt_struct_reads
     row.alt_split_reads = evidence.alt_split_reads
     row.alt_indel_reads = evidence.alt_indel_reads
+    row.alt_carrier_reads = evidence.alt_carrier_reads
     row.alt_left_clip_reads = evidence.alt_left_clip_reads
     row.alt_right_clip_reads = evidence.alt_right_clip_reads
     row.raw_cigar_insert_reads = evidence.raw_cigar_insert_reads
