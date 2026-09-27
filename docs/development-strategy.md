@@ -446,6 +446,35 @@ assembled insert (107-160 bp of SVA or L1) a TE and the truth's RepeatMasker
 does not call GIAB's sequence one. What limits level 2 is then how closely
 the assembled insert matches the real one.
 
+**Level 1 without the library, measured end to end and not adopted
+(2026-09-27).** At the maintainer's request the scan recorded a library-free
+level-1 ratio: the counts term plus a TSD term under the class-free length
+model, with its own decoy check. It is on branch `phase3f-level1`, and the
+worlds `*_exists1` were recorded from snapshot `frozen/exists1`. On those
+worlds, with levels 1 and 2 crossed:
+
+| level 1 | level 2 | chr1 TP / FP | cichlid PASS TE / with Sniffles2 / tldr matched |
+|---|---|---|---|
+| class-specific (production) | BLAST | 154 / 9 | 175 / 134 / 56 |
+| class-specific | RepeatMasker | 160 / 14 | 203 / 156 / 65 |
+| counts only | BLAST | 159 / 11 | 195 / 134 / 55 |
+| counts + class-free TSD | BLAST | 159 / 10 | 186 / 134 / 55 |
+| counts + class-free TSD | RepeatMasker | 165 / 15 | 213 / 156 / 64 |
+
+The maintainer pre-registered "counts + class-free TSD, BLAST" for chr2-8.
+Against production: pooled 849 / 38 -> 865 / 44, P 95.2%, gain +0.013, 90%
+[-0.071, +0.021] (node 2bd9d258a2). That is neither a proven gain nor a
+proven loss, with 6 more FPs and, on cichlid, 11 more PASS calls no other
+caller supports. Not adopted: level 1 keeps the class-specific linkage terms.
+
+Two lessons carry over:
+- A design principle ("level 1 should not depend on the library") is still
+  a change to what PLACER decides, and is judged like any other.
+- RepeatMasker at level 2 goes opposite ways on the two genomes. It gains
+  most on the de novo cichlid library (tldr 56 -> 65 of 78). On human it
+  loses precision at TEBench's 100 bp line, because the assembled inserts
+  are 10-30 bp longer than GIAB's.
+
 **TEBench's truth listed 567 insertions twice.** GIAB writes an insertion on
 both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1
