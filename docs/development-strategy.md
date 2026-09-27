@@ -375,6 +375,27 @@ it under the validity-fix exception. A separate e-BH for the TE calls (their
 own FDR <= q; chr2-8 875 / 45) was declined: the decision stays two-step,
 existence over all loci and then the TE label.
 
+**Read a loss at the level that caused it (`run.py levels`).** PLACER is a
+TE caller (maintainer, 2026-09-27), and TEBench's score of it is the end of
+three questions: is there an insertion, is it a TE, is it PASS. `levels`
+follows each TE truth locus down one matching. HG002 chr1, production after
+the mean fix:
+
+| stage | loci | lost | where they went |
+|---|---|---|---|
+| TE truth | 229 | | |
+| found by any selected insertion | 182 | 47 | 17 artifact <= 0, 16 locus selected but placed > 100 bp away, 9 below the e-BH threshold, 5 no hypothesis |
+| labelled TE | 172 | 10 | 5 no TE alignment at all (short SVA, L1MC4), 5 old elements at 34-47% coverage |
+| PASS | 156 | 16 | 15 IMPRECISE, from the scan's joint decision; 1 FAM_ABSTAIN |
+| RepeatMasker calls it a TE | 154 | 2 | |
+
+- **Label agreement.** PLACER's TE/SV label agrees with the truth's on 92.6%
+  of the matched insertions, and with RepeatMasker's on the same sequences
+  on 92.4%. About 35 TE labels are not TEs by the truth's definition.
+  TEBench's re-annotation hides this; PLACER's user sees it.
+- **Every GIAB insertion (a diagnostic only).** P 0.922, R 0.534. sniffles2
+  is at 0.909 / 0.678.
+
 **TEBench's truth listed 567 insertions twice.** GIAB writes an insertion on
 both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1
@@ -403,6 +424,7 @@ python3 -m tools.dream.run register NAME --path RUN_DIR --dataset human_hg002 \
 python3 -m tools.dream.run annotate NAME --library LIB.fa --submit
 python3 -m tools.dream.run score    NAME POLICY [--param k=v] [--check-invariance]
 python3 -m tools.dream.run diagnose NAME POLICY [--limit 40]
+python3 -m tools.dream.run levels   NAME POLICY [--limit 20]   # discovery, TE-or-not, FILTER, waterfall
 python3 -m tools.dream.run compare  NAME current CANDIDATE --log --note "hypothesis"
 python3 -m tools.dream.run validate current CANDIDATE --worlds W2 ... W8 --log \
     [--base-worlds B2 ... B8]    # base on its own scan's worlds, when the candidate needs a new scan

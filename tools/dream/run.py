@@ -5,6 +5,7 @@
     python3 -m tools.dream.run score    WORLD POLICY [--q 0.1] [--param k=v ...]
     python3 -m tools.dream.run compare  WORLD BASE CANDIDATE [--log --parent ID --note ...]
     python3 -m tools.dream.run diagnose WORLD POLICY [--limit 40]
+    python3 -m tools.dream.run levels   WORLD POLICY [--limit 20]
 
 POLICY is a module in `tools/dream/policies/` (`current`, `coverage_rule`) or
 the path of a candidate `.py` file. Every `compare --log` appends a node to the
@@ -22,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from tools.dream import annotate, objective, world
+from tools.dream import annotate, levels, objective, world
 from tools.dream import policies as policy_module
 
 TEBENCH_TRUTH = {
@@ -201,6 +202,21 @@ def cmd_diagnose(args) -> int:
     return 0
 
 
+def cmd_levels(args) -> int:
+    """The policy's calls level by level (`tools/dream/levels.py`)."""
+    w, truth = _load(args)
+    decisions, _ = _replay(w, args.policy, args.q, _params(args.param))
+    all_truth = levels.load_all_insertion_truth(w.dataset, w.region)
+    if all_truth is None:
+        print(f"[dream] {w.dataset}: no all-insertion truth, level 2 against truth "
+              "is not available", file=sys.stderr)
+    ledger = Path(w.path) / "evidence_ledger.tsv"
+    result = levels.measure(decisions, w.rows, truth, all_truth, w.annotation,
+                            levels.triaged_positions(ledger) if ledger.exists() else None)
+    print(levels.render(result, objective.score(decisions, truth, w.annotation), args.limit))
+    return 0
+
+
 def cmd_validate(args) -> int:
     """One fixed candidate against the base on held-out worlds, pooled: the
     online validation of section 2, step 7. Nothing here tunes anything.
@@ -281,7 +297,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--notes")
     p.set_defaults(func=cmd_register)
 
-    for name, func in (("score", cmd_score), ("diagnose", cmd_diagnose)):
+    for name, func in (("score", cmd_score), ("diagnose", cmd_diagnose),
+                       ("levels", cmd_levels)):
         p = sub.add_parser(name)
         p.add_argument("world")
         p.add_argument("policy")

@@ -149,6 +149,50 @@ def test_scoring_is_tebenchs_matching_and_acceptance_needs_a_real_gain():
     assert not objective.compare(everything, everything, truth).accepted
 
 
+def test_the_levels_waterfall_is_conserved_and_puts_each_loss_at_its_level():
+    """Five TE truth loci and one non-TE insertion. The policy calls the
+    first TE PASS, the second TE but IMPRECISE, the third STRUCTURAL, a fourth
+    as STRUCTURAL at the non-TE insertion, and nothing near the last two TE
+    loci, one of which the scan triaged."""
+    objective = _objective()
+    from tebench.model import Call
+    from tebench.regions import RegionIndex
+
+    from tools.dream import levels
+
+    def truth_call(i, pos):
+        return Call(call_id=f"t{i}", sample="S", caller="truth", contig="chr1",
+                    pos0=pos, end0=pos, insertion_length=300)
+
+    te_truth = [truth_call(i, p) for i, p in enumerate((10_000, 20_000, 30_000, 40_000,
+                                                        45_000))]
+    sv_truth = truth_call(9, 50_000)
+    truth = objective.Truth(calls=te_truth,
+                            confident=RegionIndex.from_intervals({"chr1": [(0, 100_000)]}),
+                            region=("chr1", 0, 100_000))
+    imprecise = _row(20_000, 60.0)
+    imprecise["final_qc"] = "PASS_TE_IMPRECISE"
+    rows, _ = _world_rows([_row(10_000, 60.0), imprecise, _row(30_000, 60.0),
+                           _row(50_000, 60.0)])
+    labels = ("TE", "TE", "STRUCTURAL", "STRUCTURAL")
+    decisions = [Decision(row=r, label=label, e_value=1.0, family="Alu", te_class="SINE")
+                 for r, label in zip(rows, labels)]
+
+    result = levels.measure(decisions, rows, truth, all_truth=te_truth + [sv_truth],
+                            triaged={"chr1": [45_000]})
+    assert result.waterfall == {"te_truth": 5, "found": 3, "labelled_te": 2, "pass": 1,
+                                "repeatmasker_te": 1}
+    counts = list(result.waterfall.values())
+    assert counts == sorted(counts, reverse=True)          # every stage a subset
+    assert result.filter_losses == {"IMPRECISE": 1}
+    assert result.discovery_misses == {
+        "no hypothesis within 100 bp": 1,
+        "triaged: no hypothesis within 100 bp reached the expensive stages": 1}
+    assert result.confusion_truth == {("TE", "TE"): 2, ("TE", "SV"): 1, ("SV", "SV"): 1}
+    assert sum(result.confusion_truth.values()) == result.all_insertions["tp"] == 4
+    assert result.all_insertions["fp"] == 0 and result.all_insertions["fn"] == 2
+
+
 def test_a_replay_of_a_runs_own_ledger_is_that_runs_calls():
     """The replay must score what the output reports: the same calls, at the
     VCF's own positions, with its FILTER. Until 2026-09-26 it scored the
