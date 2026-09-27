@@ -426,6 +426,26 @@ class-specific linkage terms buy precision at a small cost in recall.
   - Under-calls: 4 short SVA and L1 fragments (107-147 bp) that BLAST does not
     find, and 5 old elements that BLAST covers only 42-48%.
 
+**Round 8 (the maintainer's decision, measured before building it): level 2
+by RepeatMasker on the selected inserts.** The labels come from the world's
+RepeatMasker annotation of PLACER's own inserts, under TEBench's rule, and
+level 1 is unchanged (`round8_repeatmasker_labels`). A policy that takes an
+`annotation` is handed it by `run.py`: RepeatMasker's reading of an insert is
+an observable of the insert, not the truth.
+
+| | chr1 TP / FP | chr2-8 TP / FP | chr2-8 P / R | chr1 label agreement with the truth |
+|---|---|---|---|---|
+| BLAST coverage rule | 154 / 9 | 849 / 38 | 95.7% / 68.5% | 92.6% (35 non-TE labelled TE) |
+| RepeatMasker | 160 / 14 | 882 / 59 | 93.7% / 71.2% | 96.8% (12 non-TE labelled TE) |
+
+The labels are much closer to the truth's definition. The score still falls,
+because TEBench's re-annotation used to discard the 35 wrong BLAST labels,
+while the 12 that remain are ones it keeps. All five new chr1 FPs are real
+GIAB insertions within 100 bp, where RepeatMasker calls PLACER's short
+assembled insert (107-160 bp of SVA or L1) a TE and the truth's RepeatMasker
+does not call GIAB's sequence one. What limits level 2 is then how closely
+the assembled insert matches the real one.
+
 **TEBench's truth listed 567 insertions twice.** GIAB writes an insertion on
 both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1

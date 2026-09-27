@@ -46,10 +46,21 @@ def _policy_digest(name: str) -> str:
     return hashlib.sha1(source).hexdigest()[:10]
 
 
+def _with_observables(policy, params: dict, w: world.World) -> dict:
+    """`params`, plus the world's RepeatMasker annotation for a policy whose
+    `select` takes an `annotation`. RepeatMasker's reading of an insert is an
+    observable of the insert, like any the scan records -- not the truth."""
+    import inspect
+    if "annotation" in inspect.signature(policy.select).parameters and "annotation" not in params:
+        return dict(params, annotation=w.annotation)
+    return params
+
+
 def _replay(w: world.World, name: str, q: float, params: dict) -> tuple[list, float]:
     policy = policy_module.load(name)
     started = time.perf_counter()
-    decisions = policy.select([row.copy() for row in w.rows], q, **params)
+    decisions = policy.select([row.copy() for row in w.rows], q,
+                              **_with_observables(policy, params, w))
     return decisions, time.perf_counter() - started
 
 
@@ -99,7 +110,9 @@ def cmd_score(args) -> int:
     _print_score(args.policy, s, sum(d.label == "TE" for d in decisions),
                  sum(d.label == "STRUCTURAL" for d in decisions), seconds)
     if args.check_invariance:
-        ok = objective.check_invariance(policy_module.load(args.policy), w.rows, args.q, **params)
+        policy = policy_module.load(args.policy)
+        ok = objective.check_invariance(policy, w.rows, args.q,
+                                        **_with_observables(policy, params, w))
         print(f"    invariance under a coordinate shift: {'ok' if ok else 'FAILED'}")
     return 0
 
@@ -115,8 +128,9 @@ def cmd_compare(args) -> int:
                  sum(d.label == "STRUCTURAL" for d in base), base_s)
     _print_score(f"cand {args.candidate}", sb, sum(d.label == "TE" for d in cand),
                  sum(d.label == "STRUCTURAL" for d in cand), cand_s)
-    invariant = objective.check_invariance(policy_module.load(args.candidate), w.rows,
-                                           args.q, **cand_params)
+    cand_policy = policy_module.load(args.candidate)
+    invariant = objective.check_invariance(cand_policy, w.rows, args.q,
+                                           **_with_observables(cand_policy, cand_params, w))
     c = objective.compare(sa, sb, truth)
     accepted = c.accepted and invariant
     print(f"gain {c.gain:+.4f}  bootstrap 90% [{c.gain_low:+.4f}, {c.gain_high:+.4f}]  "
