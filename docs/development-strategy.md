@@ -489,6 +489,10 @@ intervals at their middle.
 - **chr2-8, pre-registered: 849 / 38 -> 923 / 42**, gain +0.060, 90%
   [+0.014, +0.091]. Adopted. This was the second use of chr2-8 for a FILTER
   rule (F1 failed there first, node 228085220d); the holdout is untouched.
+- **Online, HG002 chr8, from the frozen commit (`frozen/filter1`).** The
+  run's 141 PASS records equal the replay of its own ledger. On its own
+  world it scores TP 101 / FP 4, as the replay of the production scan's
+  chr8 world does.
 
 **Lesson: near the precision floor, chr1 cannot see a recall gain.** chr1's
 base precision was 94.5%, just under 0.95. Every bootstrap replicate lands
