@@ -306,6 +306,12 @@ project's numbering, not this package's.)
 
 ### Fixed
 
+- **Runs that started together on one node could fail building the BLAST
+  database.** The database is cached per node and shared, and two runs that
+  both found it missing ran `makeblastdb` into the same files; one of them
+  died with "failed to build BLAST database". Seen on the cluster in one of
+  eight jobs submitted at once. The build now holds an exclusive lock, and a
+  run that waited uses the finished database.
 - **Opt-in (`PLACER_SAME_ALLELE_CARRIER_WINDOW_BP=500`, off by default): carriers
   of an insertion that the aligner placed elsewhere were counted as reference
   support.** In a tandem repeat or low-complexity flank, ONT reads

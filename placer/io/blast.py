@@ -74,14 +74,39 @@ def ensure_te_blast_db(te_fasta_path: str, makeblastdb_path: str,
     if blast_db_files_exist(db_prefix):
         return db_prefix
 
-    result = subprocess.run(
-        [makeblastdb_path, "-in", te_fasta_path, "-dbtype", "nucl", "-out", db_prefix],
-        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
-    if result.returncode != 0 or not blast_db_files_exist(db_prefix):
-        raise RuntimeError(
-            f"failed to build BLAST database for TE FASTA {te_fasta_path!r} "
-            f"with makeblastdb {makeblastdb_path!r}")
+    # ONE BUILDER AT A TIME. The cache is per node and shared by every run on
+    # it, so two jobs that start together both found no database and ran
+    # makeblastdb into the same files; one of them failed (seen on the
+    # cluster: one of eight jobs submitted at once). The lock serialises the
+    # build, and whoever waited finds the finished database and uses it.
+    with _exclusive(db_prefix + ".lock"):
+        if blast_db_files_exist(db_prefix):
+            return db_prefix
+        result = subprocess.run(
+            [makeblastdb_path, "-in", te_fasta_path, "-dbtype", "nucl", "-out", db_prefix],
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if result.returncode != 0 or not blast_db_files_exist(db_prefix):
+            raise RuntimeError(
+                f"failed to build BLAST database for TE FASTA {te_fasta_path!r} "
+                f"with makeblastdb {makeblastdb_path!r}")
     return db_prefix
+
+
+@contextlib.contextmanager
+def _exclusive(lock_path: str):
+    """An exclusive advisory lock on `lock_path` for the `with` block. Where
+    `fcntl` does not exist (not POSIX) the block runs unlocked, as before."""
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover - PLACER runs on POSIX (pysam does)
+        yield
+        return
+    with open(lock_path, "a") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
 
 
 def write_blast_batch_query_fasta(queries: list[tuple[str, str]],

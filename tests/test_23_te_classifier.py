@@ -511,6 +511,47 @@ def test_an_incomplete_blast_database_is_not_reused():
     assert not B.blast_db_files_exist("/nonexistent/prefix")
 
 
+def test_runs_that_start_together_build_the_blast_database_once():
+    """The database cache is per node and shared. Two runs that both find it
+    missing must not both run makeblastdb into the same files: the second
+    waits on the lock, then finds the first one's database."""
+    import os
+    import stat
+    import tempfile
+    import threading
+    import time
+
+    work = tempfile.mkdtemp(prefix="placer_blastdb_test_")
+    fake = os.path.join(work, "makeblastdb")
+    log = os.path.join(work, "calls.log")
+    with open(fake, "w") as handle:
+        handle.write("#!/bin/sh\n"
+                     f"echo build >> {log}\n"
+                     "sleep 0.3\n"
+                     'out=""; while [ $# -gt 0 ]; do [ "$1" = "-out" ] && out="$2"; shift; done\n'
+                     'for s in nhr nin nsq; do echo x > "$out.$s"; done\n')
+    os.chmod(fake, os.stat(fake).st_mode | stat.S_IEXEC)
+    library = os.path.join(work, "lib.fa")
+    with open(library, "w") as handle:
+        handle.write(">a\nACGT\n")
+    original = B.blast_work_dir
+    B.blast_work_dir = lambda: work
+    try:
+        key = f"concurrency_{time.time_ns()}"
+        results = []
+        threads = [threading.Thread(target=lambda: results.append(
+            B.ensure_te_blast_db(library, fake, key))) for _ in range(3)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+    finally:
+        B.blast_work_dir = original
+    assert len(set(results)) == 1 and len(results) == 3
+    with open(log) as handle:
+        assert handle.read().split() == ["build"]
+
+
 def test_no_configured_library_is_a_normal_run_and_not_an_error():
     assert call_or_skip(B.ensure_te_blast_db, "", "makeblastdb", "key") == ""
 
