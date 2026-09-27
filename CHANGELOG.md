@@ -12,11 +12,17 @@ that file says what it cost.
 
 ## [Unreleased]
 
-**0.1.0 has never been published.** The version in `pyproject.toml` is the one
-this package was extracted at; there is no release on PyPI or bioconda yet, so
-everything below is the state of `main` rather than an upgrade path. (The
-`0.0.5` mentioned in `placer/config.py` is a *PLACER* release — the C++
-project's numbering, not this package's.)
+Nothing yet.
+
+## [1.0.0a1] - 2026-09-27
+
+The first tagged version: an alpha of 1.0. It is on GitHub only, not on PyPI
+or bioconda, and there is no earlier version to upgrade from, so everything
+below is what 1.0.0a1 is rather than what changed since a release. (The `0.0.5`
+mentioned in `placer/config.py` is a *PLACER* release -- the C++ project's
+numbering, not this package's.)
+
+RELEASE_SUMMARY_PLACEHOLDER
 
 ### Added
 
@@ -122,6 +128,11 @@ project's numbering, not this package's.)
   is deliberate and why.
 
 ### Changed
+
+- **Renamed to PLACER.** The package is `placer` (was `placer_py`), the
+  command is `placer` (was `placer-py`), and the distribution is `placer-te`,
+  because `placer` on PyPI belongs to an unrelated project. The version
+  line starts at 1.0: this implementation replaces the C++ rather than porting it.
 
 - **IMPRECISE now says only that the breakpoint is uncertain, and a narrow
   interval is reported at its middle.** Recall on HG002 chr2-8, scored as
@@ -252,13 +263,6 @@ project's numbering, not this package's.)
 - Tooling: ruff and mypy are CI gates, the test job covers Python 3.9–3.12, and
   the packaging job installs the built wheel into a clean environment and runs
   the console script.
-
-### Changed
-
-- **Renamed to PLACER.** The package is `placer` (was `placer_py`), the
-  command is `placer` (was `placer-py`), and the distribution is `placer-te`,
-  because `placer` on PyPI belongs to an unrelated project. Version
-  `1.0.0.dev0`: this implementation replaces the C++ rather than porting it.
 
 ### Removed
 
