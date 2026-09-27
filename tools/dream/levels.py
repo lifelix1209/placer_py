@@ -17,6 +17,10 @@ the level that caused it:
   LEVEL 3, FAMILY. Family concordance on the TE matches (TEBench's own).
   FILTER. TE-labelled matches the VCF would not write as PASS, by flag.
 
+A DISCOVERY MISS is classified from the world's recorded rows (their
+`mech_log_lr_vs_artifact`), not from what the policy scored them: for a policy
+that rescores existence, "artifact ratio <= 0" is the recorded ratio's verdict.
+
 THE WATERFALL follows each TE truth locus down ONE matching, the level-1 one:
 found -> labelled TE -> PASS -> RepeatMasker calls it a TE. Every stage is a
 subset of the one before, so the counts are conserved. TEBench's own score

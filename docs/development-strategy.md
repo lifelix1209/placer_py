@@ -396,6 +396,36 @@ the mean fix:
 - **Every GIAB insertion (a diagnostic only).** P 0.922, R 0.534. sniffles2
   is at 0.909 / 0.678.
 
+**Round 7 (measured for the maintainer): does level 1 need the library?**
+vs_artifact adds, to the counts, a TSD term chosen by the superfamily and
+the L1 endonuclease motif for LINE, SINE and Retroposon. Both depend on the
+class the library alignment gives. Testing existence on the counts term
+alone (`round7_counts_only`, HG002 chr1) changes the result as follows:
+
+| | TP / FP | P | R | TE truth found at level 1 |
+|---|---|---|---|---|
+| production | 154 / 9 | 94.5% | 67.2% | 182 |
+| counts only | 159 / 11 | 93.5% | 69.4% | 187 |
+
+Gain -0.073, 90% [-0.201, +0.041]: rejected by the objective. The
+class-specific linkage terms buy precision at a small cost in recall.
+
+**What levels 1 and 2 lose, looked at directly (chr1).**
+- **Artifact ratio <= 0.** Most of these misses have few alt reads against
+  many reference reads (2 / 40, 4 / 44): the allele's reads were counted
+  elsewhere. That is the carrier rule's target, and it failed validation.
+- **Placed more than 100 bp away.** Most of these are wide testing intervals
+  with no precise hypothesis. They are reported at `bp_left`, with the truth
+  near `bp_right`.
+- **Level 2 against RepeatMasker on the same inserts: 36 over-calls, 10
+  under-calls.**
+  - Over-calls: for 26 of the 36, RepeatMasker has no TE hit at all. They are
+    simple or low-complexity inserts that BLAST matches into ERV1 and L1
+    consensuses at identity 0.76-0.86. Another 6 are class Unknown, which the
+    VCF writes as FAM_ABSTAIN anyway.
+  - Under-calls: 4 short SVA and L1 fragments (107-147 bp) that BLAST does not
+    find, and 5 old elements that BLAST covers only 42-48%.
+
 **TEBench's truth listed 567 insertions twice.** GIAB writes an insertion on
 both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1
