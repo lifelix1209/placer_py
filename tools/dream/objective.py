@@ -40,6 +40,10 @@ from pathlib import Path
 
 TEBENCH = Path(os.environ.get("TEBENCH",
                               "/mnt/home1/miska/hl725/scratch/projects/TE_bechmark"))
+if sys.version_info < (3, 10):
+    # TEBench's records are `dataclass(slots=True)`, which is 3.10+: say so as
+    # the ImportError the replay's tests skip on, not as a TypeError.
+    raise ImportError("TEBench needs Python 3.10 or later")
 if str(TEBENCH / "src") not in sys.path:
     sys.path.insert(0, str(TEBENCH / "src"))
 

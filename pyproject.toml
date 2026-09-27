@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "placer-te"
-version = "1.0.0.dev0"
+version = "1.0.0a1"
 description = "Python port of the PLACER pipeline: BAM to TE insertion calls"
 readme = "README.md"
 # 3.9 works and is what the suite is run on: every module uses
@@ -125,10 +125,12 @@ strict_equality = true
 #                          the import.
 
 [[tool.mypy.overrides]]
-# No stubs and no py.typed, and it is an optional dependency: `consensus.py`
-# imports it lazily precisely so the decision layer does not need it. Note the
-# error only appears on a COLD cache, which is what CI always has.
-module = ["pyabpoa"]
+# Optional dependencies, imported lazily precisely so the decision layer does
+# not need them: `consensus.py` imports pyabpoa (no stubs, no py.typed), and
+# `breakpoints.py` imports rapidfuzz as an exact accelerator with a pure-Python
+# fallback -- CI's types job installs neither. Note the error only appears on
+# a COLD cache, which is what CI always has.
+module = ["pyabpoa", "rapidfuzz", "rapidfuzz.*"]
 ignore_missing_imports = true
 
 [tool.ruff]

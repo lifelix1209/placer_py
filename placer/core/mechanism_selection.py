@@ -102,12 +102,12 @@ def collapse_region_items(items: list) -> set[int]:
         positions.sort()
     out: set[int] = set()
     for index, item in enumerate(items):
-        positions = collapsed.get(item.chrom)
-        if not positions:
+        on_contig = collapsed.get(item.chrom)
+        if not on_contig:
             continue
         pos = hypothesis_pos(item)
-        n = (bisect.bisect_right(positions, pos + COLLAPSE_HALF_WINDOW_BP)
-             - bisect.bisect_left(positions, pos - COLLAPSE_HALF_WINDOW_BP))
+        n = (bisect.bisect_right(on_contig, pos + COLLAPSE_HALF_WINDOW_BP)
+             - bisect.bisect_left(on_contig, pos - COLLAPSE_HALF_WINDOW_BP))
         if n >= COLLAPSE_MIN_HYPOTHESES:
             out.add(index)
     return out

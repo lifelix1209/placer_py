@@ -507,11 +507,11 @@ def score_locus(obs: LocusObservation,
         # alone gave unaligned inserts +10 to +23 nats and made TE calls of
         # them. The TE question rests on the sequence term; the insertion can
         # still be a structural call on the artifact question.
-        linkage = tsd_term(obs, params.tsd_model(TeClass.UNKNOWN, ""))
+        tsd = tsd_term(obs, params.tsd_model(TeClass.UNKNOWN, ""))
         no_hit = math.log(P_NO_HIT_GIVEN_TE)
-        out.terms = {"no_te_alignment": no_hit, "counts": counts, "tsd": linkage}
+        out.terms = {"no_te_alignment": no_hit, "counts": counts, "tsd": tsd}
         out.vs_non_te = no_hit
-        out.vs_artifact = counts + linkage
+        out.vs_artifact = counts + tsd
         return out
 
     if obs.te_class is TeClass.UNKNOWN:
