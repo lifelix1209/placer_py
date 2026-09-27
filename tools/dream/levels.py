@@ -156,9 +156,14 @@ def filter_flags(d) -> list[str]:
     return flags
 
 
-def _miss_reason(call: Call, rows_by_chrom, locus_of, selected_loci, triaged) -> str:
+def _miss_reason(call: Call, rows_by_chrom, locus_of, selected_loci, triaged,
+                 taken: dict[str, list[int]]) -> str:
     """Why level 1 did not find a TE truth locus."""
     tol = objective.TOLERANCE_BP
+    spots = taken.get(call.contig, [])
+    i = bisect.bisect_left(spots, call.pos0 - tol)
+    if i < len(spots) and spots[i] <= call.pos0 + tol:
+        return "a call within 100 bp was matched to another truth locus (one-to-one)"
     positions, rows = rows_by_chrom.get(call.contig, ([], []))
     lo = bisect.bisect_left(positions, call.pos0 - tol)
     hi = bisect.bisect_right(positions, call.pos0 + tol)
@@ -218,9 +223,14 @@ def measure(decisions: list, rows: list, truth: objective.Truth,
         rows_by_chrom[chrom] = ([int(r.pos) + 1 for r in members], members)
     locus_of = {r._row_id: i for i, group in enumerate(_loci(rows)) for r in group}
     selected_loci = {locus_of.get(d.row._row_id) for d in decisions}
+    taken: dict[str, list[int]] = {}
+    for m in matches:
+        taken.setdefault(m.query.contig, []).append(m.query.pos0)
+    for spots in taken.values():
+        spots.sort()
     discovery_misses: Counter = Counter()
     for c in misses:
-        why = _miss_reason(c, rows_by_chrom, locus_of, selected_loci, triaged)
+        why = _miss_reason(c, rows_by_chrom, locus_of, selected_loci, triaged, taken)
         discovery_misses[why] += 1
         losses["found"].append((c, why))
 
