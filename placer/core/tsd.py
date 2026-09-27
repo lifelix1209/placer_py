@@ -68,8 +68,16 @@ class TsdDetection:
 
 
 def has_only_acgt(seq: str) -> bool:
-    """Empty is NOT acceptable, matching the C++ `!s.empty()` conjunct."""
-    return bool(seq) and all(c in "ACGT" for c in seq)
+    """Empty is NOT acceptable, matching the C++ `!s.empty()` conjunct.
+
+    `strip`, not a generator over the characters: anything outside ACGT
+    (N, lower case, IUPAC codes) survives the strip, and it runs in C. Each
+    locus's 100 decoys call this thousands of times. cProfile charged the old
+    `all(...)` 19 of 89 s on a HG002 0.5 Mb, but most of that was the
+    profiler's own per-call cost. Without the profiler the change was within
+    run-to-run noise, with byte-identical outputs.
+    """
+    return bool(seq) and not seq.strip("ACGT")
 
 
 def sequence_is_n_rich_reference_context(seq: str, min_run: int = 20,

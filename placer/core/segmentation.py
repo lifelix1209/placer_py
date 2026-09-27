@@ -328,6 +328,17 @@ class _Segmenter:
             query_hi = min(max_query_start, endpoint_slack) if is_left else max_query_start
 
             placements: list[EventFlankPlacement] = []
+            # The two bounds tests of every (seed bin, offset) are solved for
+            # the offset range instead, so the loop visits exactly the offsets
+            # it used to keep, in the same order. `shift` is where the
+            # candidate breakpoint sits relative to ref_start: the flank's end
+            # on the left side, its start on the right.
+            shift = align_len if is_left else 0
+            offset_lo = max(search_lo - shift, ref_window_start)
+            offset_hi = min(search_hi - shift, ref_window_end - align_len)
+            edit_memo = self.edit_memo
+            cache_hits = 0
+            cache_misses = 0
             for query_start in range(query_lo, query_hi + 1):
                 query = consensus[query_start:query_start + align_len]
                 endpoint_offset = (query_start if is_left
@@ -335,38 +346,37 @@ class _Segmenter:
                 seed_query_offset = query_start - query_seed_start
 
                 for seed_bin in seed_bins:
-                    for bin_offset in range(SEED_BIN_BP):
-                        ref_start = seed_bin.ref_bin_start + seed_query_offset + bin_offset
+                    base = seed_bin.ref_bin_start + seed_query_offset
+                    first = max(0, offset_lo - base)
+                    last = min(SEED_BIN_BP - 1, offset_hi - base)
+                    for ref_start in range(base + first, base + last + 1):
                         ref_end = ref_start + align_len
-                        candidate_breakpoint = ref_end if is_left else ref_start
-                        if not (search_lo <= candidate_breakpoint <= search_hi):
-                            continue
-                        if ref_start < ref_window_start or ref_end > ref_window_end:
-                            continue
-
-                        offset = ref_start - ref_window_start
-                        ref_seq = ref_window[offset:offset + align_len]
                         memo_key = (query_start, ref_start, align_len)
-                        memoized = self.edit_memo.get(memo_key)
+                        memoized = edit_memo.get(memo_key)
                         if memoized is not None:
-                            self.stats.edit_distance_cache_hits += 1
+                            cache_hits += 1
                             pass_identity, identity = memoized
                         else:
-                            self.stats.edit_distance_cache_misses += 1
-                            self.stats.edit_distance_calls += 1
-                            result = edit_identity_if_at_least(query, ref_seq, max_edits)
+                            cache_misses += 1
+                            offset = ref_start - ref_window_start
+                            result = edit_identity_if_at_least(
+                                query, ref_window[offset:offset + align_len], max_edits)
                             pass_identity = result is not None
                             identity = result if result is not None else 0.0
-                            self.edit_memo[memo_key] = (pass_identity, identity)
+                            edit_memo[memo_key] = (pass_identity, identity)
                         if not pass_identity:
                             continue
 
+                        candidate_breakpoint = ref_start + shift
                         placements.append(EventFlankPlacement(
                             query_start=query_start, query_end=query_start + align_len,
                             ref_start=ref_start, ref_end=ref_end, align_len=align_len,
                             identity=identity,
                             breakpoint_delta=abs(candidate_breakpoint - breakpoint),
                             endpoint_offset=endpoint_offset))
+            self.stats.edit_distance_cache_hits += cache_hits
+            self.stats.edit_distance_cache_misses += cache_misses
+            self.stats.edit_distance_calls += cache_misses
 
             if not placements:
                 continue

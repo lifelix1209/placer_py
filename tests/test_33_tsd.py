@@ -140,3 +140,21 @@ def test_detect_from_insertion_needs_the_inserted_sequence():
     found = call_or_skip(detect_from_insertion, fetch, "chr1", pos + tau, "",
                          _config())
     assert found.type == "NONE"
+
+
+def test_the_acgt_check_means_what_the_character_loop_meant():
+    """`has_only_acgt` became a `strip`; it must accept and refuse exactly what
+    the per-character `all(c in "ACGT" ...)` did, empty included."""
+    import random
+
+    from placer.core.tsd import has_only_acgt
+
+    def reference(seq: str) -> bool:
+        return bool(seq) and all(c in "ACGT" for c in seq)
+
+    rng = random.Random(33)
+    cases = ["", "A", "N", "ACGT", "acgt", "ACGTN", "NACGT", "ACNGT", "RY", " A"]
+    cases += ["".join(rng.choice("ACGTNacgtRY-") for _ in range(rng.randint(0, 12)))
+              for _ in range(2000)]
+    for seq in cases:
+        assert has_only_acgt(seq) == reference(seq), repr(seq)

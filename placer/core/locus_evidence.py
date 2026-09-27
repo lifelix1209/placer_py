@@ -70,10 +70,13 @@ def _te_class(value: str) -> TeClass:
 def local_composition(flank: str) -> tuple[float, float]:
     """(A fraction, T fraction) of a reference window."""
     seq = flank.upper()
-    acgt = sum(1 for base in seq if base in "ACGT")
+    # str.count per base rather than a generator over the characters: this
+    # runs at every one of a locus's 101 breakpoints (itself and its decoys).
+    a, t = seq.count("A"), seq.count("T")
+    acgt = a + seq.count("C") + seq.count("G") + t
     if acgt == 0:
         return 0.30, 0.30
-    return seq.count("A") / acgt, seq.count("T") / acgt
+    return a / acgt, t / acgt
 
 
 def repeat_fraction_at(window: str, start: int, end: int) -> float:
