@@ -123,6 +123,15 @@ project's numbering, not this package's.)
 
 ### Changed
 
+- **A locus's e-value is now the mean over its hypotheses, not the maximum.**
+  The maximum of e-values is not an e-value: under the null its mean can
+  reach the number of hypotheses, so a locus evaluated many times got that
+  many chances to be called. The mean is an e-value under any dependence.
+  The best hypothesis still names, labels and places the call. It is a
+  validity fix, adopted at a measured cost on HG002, scored as TEBench scores:
+  - chr1: TP 157 / FP 10 -> 154 / 9;
+  - chr2-8 pooled: 858 / 42 -> 849 / 38 (P 95.3% -> 95.7%, R 69.2% -> 68.5%).
+
 - **The default decision is now `--decision mechanism --te-rule coverage`.**
   Validated on HG002 chr2-8, which was never used for tuning, scored as TEBench
   scores:

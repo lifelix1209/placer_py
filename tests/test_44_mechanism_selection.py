@@ -66,6 +66,27 @@ def test_one_locus_evaluated_twice_is_tested_once_by_its_best_row():
     assert shadow.te_selected == 1
 
 
+def test_a_locus_e_value_is_the_mean_of_its_rows():
+    """The max of e-values is not an e-value; the mean is, under any
+    dependence. The best row still represents the locus."""
+    rows = [row(1000, 30), row(1020, 10)] + background(10_000)
+    S.select_loci_coverage(rows, 0.1)
+    assert rows[0].mech_e_value == pytest.approx((math.exp(30) + math.exp(10)) / 2, rel=1e-12)
+
+
+def test_more_hypotheses_at_a_locus_do_not_buy_it_more_chances():
+    """Two loci whose best row scores e^6. One was evaluated once; the other
+    as four hypotheses, three with nothing. With m = 22 at q = 0.1 the first
+    needs e >= 220 and has 403. The second's mean is 101, under the 110 of
+    rank 2. Under the max it would have been a second call."""
+    lone = row(1000, 6.0)
+    crowded = [row(5000, 6.0)] + [row(5000 + 50 * i, -5.0) for i in (1, 2, 3)]
+    S.select_loci_coverage([lone] + crowded + background(10_000), 0.1)
+    assert lone.mech_ebh_selected
+    assert not crowded[0].mech_ebh_selected
+    assert crowded[0].mech_e_value == pytest.approx((math.exp(6) + 3 * math.exp(-5)) / 4)
+
+
 def test_the_insertion_test_is_on_the_artifact_ratio_alone():
     """vs_non_te is reported evidence, not a gate: a clear insertion whose
     sequence the TE model dislikes is still called, and named by the rule."""
@@ -195,7 +216,8 @@ def test_finalization_names_places_and_splits_the_calls():
     # Placed at the precise hypothesis, as one position.
     assert te.pos == te.bp_left == te.bp_right == 1050
     assert te.final_qc == "PASS_TE_MECHANISM" and te.ebh_selected
-    assert te.lfdr == pytest.approx(math.exp(-30))
+    # 1/e, with e the locus's mean over its two rows.
+    assert te.lfdr == pytest.approx(2.0 / (math.exp(30) + math.exp(5)), rel=1e-9)
     assert structural.family == "UNKNOWN" and not structural.family_committed
     assert structural.final_qc == "PASS_STRUCTURAL_MECHANISM" and structural.ebh_selected
     assert structural.pos == 50_000

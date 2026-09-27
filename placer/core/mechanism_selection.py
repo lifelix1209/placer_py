@@ -22,9 +22,12 @@ THE STEPS, over every evaluated hypothesis the scan recorded:
      The shifted null is not contaminated by true insertions -- a decoy is
      where the insertion is not -- which is what defeated calibrating on the
      candidates themselves (README, "The blocker").
-  3. LOCI. Rows within LOCUS_MERGE_BP of each other are one locus, represented
-     by its best-scoring row, so a locus evaluated as several hypotheses is
-     tested once.
+  3. LOCI. Rows within LOCUS_MERGE_BP of each other are one locus, tested
+     once. Its e-value is the MEAN of its rows' e-values: the max is not an
+     e-value (under the null its mean can reach the number of rows, so a locus
+     evaluated as many hypotheses would get that many chances), and the mean
+     is one under any dependence. Its best-scoring row represents it: names,
+     labels and places the call.
   4. ONE e-BH on the decoy-adjusted exp(vs_artifact) over all loci: the
      insertions. FDR is controlled on "an insertion is here".
   5. TEBench's rule on each selected insert: a TE call when TE hits cover at
@@ -219,8 +222,9 @@ def select_loci_coverage(items: list, q: float) -> ShadowSelection:
 
       1. Alignment-collapse regions get e = 0 and stay in m.
       2. The per-class decoy check adjusts the artifact ratio.
-      3. Loci, each tested once by its row with the highest adjusted artifact
-         ratio: ONE e-BH on exp(that), over all loci. These are the insertions.
+      3. Loci, each tested once: ONE e-BH over all loci, on the mean of the
+         locus's rows' exp(adjusted artifact ratio). These are the insertions.
+         The row with the highest ratio represents the locus.
       4. A selected insertion is a TE call when TEBench's rule holds on its
          insert, and a structural call otherwise. It is named after the family
          covering the most of it.
@@ -240,6 +244,9 @@ def select_loci_coverage(items: list, q: float) -> ShadowSelection:
     def adjusted(item) -> float:
         return -math.inf if id(item) in collapse else artifact(item)
 
+    def e_value(item) -> float:
+        return math.exp(min(adjusted(item), 700.0))
+
     for item in items:
         item.mech_collapse_region = id(item) in collapse
         item.mech_e_value = 0.0
@@ -249,7 +256,10 @@ def select_loci_coverage(items: list, q: float) -> ShadowSelection:
     loci = _loci(items)
     out.loci = len(loci)
     best = [max(group, key=adjusted) for group in loci]
-    e_values = [math.exp(min(adjusted(item), 700.0)) for item in best]
+    # The mean, as a sum of e/n so that many rows at the cap cannot overflow.
+    # Adopted 2026-09-27 as a validity fix (docs/development-strategy.md,
+    # section 8): chr1 157 / 10 -> 154 / 9, chr2-8 858 / 42 -> 849 / 38.
+    e_values = [sum(e_value(item) / len(group) for item in group) for group in loci]
     for item, e in zip(best, e_values):
         item.mech_e_value = e
     for index in ebh_select(e_values, q):
