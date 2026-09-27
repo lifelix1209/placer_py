@@ -194,10 +194,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                         help="legacy keeps structural insertions in the main output")
     parser.add_argument("--min-final-raw-cigar-insert-len-bp", type=int, default=None)
     parser.add_argument("--decision", default=None, choices=("legacy", "mechanism"),
-                        help="legacy (default): the policy gates and calibrated "
-                             "e-BH/conformal selection decide. mechanism: the "
-                             "per-class likelihood ratios, checked against "
-                             "shifted-breakpoint decoys, under e-BH")
+                        help="mechanism (default): e-BH on the decoy-checked artifact "
+                             "ratio decides which insertions are there. legacy: the "
+                             "old policy gates and calibrated selection (deprecated; "
+                             "its VCF reports aggregated calls at the left end of "
+                             "intervals up to kilobytes wide)")
     parser.add_argument("--library-completeness", default=None,
                         choices=("curated", "denovo"),
                         help="curated (default; Dfam, RepBase): an insert that "
@@ -205,6 +206,11 @@ def build_arg_parser() -> argparse.ArgumentParser:
                              "RepeatModeler2 on a non-model genome): such an "
                              "insert may be an element the library never saw, "
                              "and the miss is not held against it")
+    parser.add_argument("--te-rule", default=None, choices=("likelihood", "coverage"),
+                        help="what makes a selected insertion a TE call: coverage "
+                             "(default): TE hits cover >=50%% and >=100 bp of the "
+                             "insert, the rule TEBench and GIAB annotation use. "
+                             "likelihood: the per-class vs_non_te ratio (deprecated)")
     parser.add_argument("--record-world", action="store_true",
                         help="development: also write each evaluated row's insert "
                              "sequence to the ledger, so tools/dream can replay "
@@ -245,6 +251,8 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
         config.te_library_completeness = args.library_completeness
     if args.decision is not None:
         config.decision_mode = args.decision
+    if args.te_rule is not None:
+        config.mechanism_te_rule = args.te_rule
     if args.record_world:
         config.record_world = True
     return config

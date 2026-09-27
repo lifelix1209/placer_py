@@ -20,6 +20,23 @@ project's numbering, not this package's.)
 
 ### Added
 
+- **`--te-rule coverage`** (with `--decision mechanism`; transitional, default
+  off until chr2-8 validation): the decision promoted from replay.
+  - **Collapse regions:** e = 0.
+  - **Selection:** ONE e-BH on the decoy-adjusted artifact ratio, over all loci.
+  - **TE call** when TEBench's rule holds on the insert (TE hits cover >= 50% of
+    it and >= 100 bp), named after the family covering the most of it. A
+    structural call otherwise.
+  - **Placement:** a locus tested by a wide breakpoint interval is reported at
+    its precise single-position hypothesis with the most indel reads, where one
+    lies within 100 bp and has >= half the indel reads. The midpoint of the wide
+    interval had put truth insertions 100-500 bp off.
+  - **Online and replay agree:** calls keep `hypothesis_pos` and are placed from
+    it, not from the legacy retether, and the decision sees one candidate per
+    ledger observation.
+  - **HG002 chr1, scored as TEBench scores:** TP 157 / FP 10 (P 94.0%, R 68.6%),
+    against 128 / 13 (90.8%, 55.9%) for `--te-rule likelihood`.
+
 - **TEBench's TE rule, measured on every insert**: the union of all TE-class
   hits in bases and as a fraction of the insert (`te_union_covered_bp`,
   `te_union_coverage`), and the family covering the most of it
@@ -94,6 +111,34 @@ project's numbering, not this package's.)
   is deliberate and why.
 
 ### Changed
+
+- **The default decision is now `--decision mechanism --te-rule coverage`.**
+  Validated on HG002 chr2-8, which was never used for tuning, scored as TEBench
+  scores:
+  - pooled TP 858 / FP 42 (P 95.3%, R 69.2%) against 718 / 68 (91.3%, 57.9%)
+    for the likelihood rule;
+  - bootstrap 90% gain [+0.30, +0.64];
+  - better on every one of the seven chromosomes.
+
+  The old default, `--decision legacy`, is deprecated. Its `calls.vcf` writes
+  each call at the left end of its aggregated breakpoint interval, and those
+  intervals reach kilobytes: on HG002 chr1, 217 of 344 TE calls were written
+  more than 100 bp from the call's own position. TEBench scores that VCF at
+  P 27.7% / R 17.0% on chr1.
+
+- **Alignment-collapse regions no longer produce calls** under `--decision
+  mechanism`. A collapse region is one where the sample does not fit the
+  reference (a centromere model, a satellite array): no read spans the
+  reference, so every hypothesis looks like a homozygous insertion, and the
+  counts model's null does not hold. The rule: at least 100 evaluated
+  hypotheses within +-50 kb with <=2 reference-spanning reads. Those loci get
+  e = 0 and stay in the e-BH family. The ledger marks them
+  (`mech_collapse_region`) and `scientific.txt` counts them.
+  - HG002 chr1: 24% of the evaluated rows and 1,323 structural calls (no
+    confident bases). Replayed TE recall fell by 3 loci, because the invalid
+    discoveries had been loosening the shared e-BH threshold.
+  - Cichlid slice: nothing.
+  - Adopted as a validity fix (`docs/development-strategy.md`, section 2).
 
 - **The structure decode reads the insert in the element's orientation and
   by class.** A minus-strand insert is reverse-complemented first, so a poly(T)

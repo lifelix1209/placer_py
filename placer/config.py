@@ -149,7 +149,15 @@ class PipelineConfig:
     #: "legacy": the policy's emission gates, the dependency bound and e-BH /
     #: conformal selection decide. "mechanism": the per-class likelihood
     #: ratios, checked by decoys, under e-BH (`core/mechanism_selection.py`).
-    decision_mode: str = "legacy"
+    decision_mode: str = "mechanism"
+    #: Under the mechanism decision, what makes a selected insertion a TE call.
+    #: "likelihood": the per-class vs_non_te ratio gates it (4cbf656).
+    #: "coverage": TEBench's rule on the insert, one e-BH on the artifact
+    #: ratio, and precise placement (`mechanism_selection.select_loci_coverage`).
+    #: "coverage" became the default on 2026-09-26, after chr2-8 validation (never
+    #: dreamt on): pooled TP 858 / FP 42 (P 95.3%, R 69.2%) against 718 / 68
+    #: (91.3%, 57.9%) for "likelihood"; bootstrap 90% gain [+0.30, +0.64].
+    mechanism_te_rule: str = "coverage"
     #: Write every evaluated row's insert sequence into the ledger, so the run
     #: can serve as a replay world for `tools/dream` (development only).
     record_world: bool = False

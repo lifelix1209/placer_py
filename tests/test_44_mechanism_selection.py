@@ -102,3 +102,34 @@ def test_rescoring_with_the_sample_s_distribution_changes_only_the_sequence_term
     assert r.mech_log_lr_vs_non_te == pytest.approx(
         before_non_te + expected - log_bf_te_derived(600, 0.90))
     assert r.mech_log_lr_vs_artifact == 20.0
+
+
+def _collapsed(pos, artifact=40.0):
+    r = row(pos, 50, artifact, "NA")
+    r.ref_span_reads = 0
+    return r
+
+
+def test_an_alignment_collapse_region_gets_no_calls_but_stays_in_m():
+    """A dense run of hypotheses that no read spans -- a centromere model the
+    sample does not fit -- looks like homozygous insertions everywhere. Their
+    e-values are set to 0, but they stay in the family: 0 is a valid e-value
+    whatever rule chose it."""
+    collapse = [_collapsed(1_000_000 + i * 400) for i in range(120)]
+    elsewhere = [row(5_000_000 + i * 1000, -5, -5) for i in range(20)]
+    lone = _collapsed(9_000_000, artifact=30.0)          # one homozygous insertion
+    shadow = S.apply_mechanism_shadow_selection(collapse + elsewhere + [lone], 0.1)
+    assert shadow.collapse_items == 120
+    assert all(r.mech_collapse_region and r.mech_e_value == 0.0 for r in collapse)
+    assert not any(r.mech_ebh_selected or r.mech_structural_selected for r in collapse)
+    assert not lone.mech_collapse_region
+    assert lone.mech_ebh_selected or lone.mech_structural_selected
+    assert shadow.loci > 21                               # the collapse loci still count
+
+
+def test_collapse_detection_uses_relative_distances_only():
+    rows = [_collapsed(1_000_000 + i * 400) for i in range(120)]
+    moved = [_collapsed(r.pos + 7_777_777) for r in rows]
+    assert S.collapse_region_items(rows) == S.collapse_region_items(moved)
+    sparse = [_collapsed(1_000_000 + i * 1200) for i in range(120)]   # 144 kb: no +-50 kb holds 100
+    assert len(S.collapse_region_items(sparse)) < 120

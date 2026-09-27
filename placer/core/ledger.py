@@ -89,6 +89,9 @@ class EvidenceLedgerRow:
     mech_e_value: float = 0.0
     mech_ebh_selected: bool = False
     mech_structural_selected: bool = False
+    #: Inside an alignment-collapse region, where the e-value was set to 0
+    #: (`mechanism_selection.collapse_region_items`).
+    mech_collapse_region: bool = False
     family_alignment_resolved: bool = False
     final_qc: str = "NA"
     posterior_qc: str = "NA"
@@ -181,6 +184,9 @@ class FinalCall:
     support_reads: int = 0
     alt_struct_reads: int = 0
     raw_cigar_insert_reads: int = 0
+    alt_indel_reads: int = 0
+    #: `pos` before any retether: the evaluated hypothesis's own position.
+    hypothesis_pos: int = -1
     max_raw_cigar_insert_len: int = 0
     ref_span_reads: int = 0
     low_mapq_ref_span_reads: int = 0
@@ -243,6 +249,9 @@ class FinalCall:
     mech_e_value: float = 0.0
     mech_ebh_selected: bool = False
     mech_structural_selected: bool = False
+    #: Inside an alignment-collapse region, where the e-value was set to 0
+    #: (`mechanism_selection.collapse_region_items`).
+    mech_collapse_region: bool = False
     #: The TE alignment's own best family and subfamily, whatever the legacy
     #: decision then did to `family` (it overwrites it with UNKNOWN for a call
     #: it deems structural). The mechanism decision names a TE call from these.

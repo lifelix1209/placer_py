@@ -157,7 +157,7 @@ def _real_run_available() -> str:
 
 
 def _run(out_dir: str, workers: int, region: str | None,
-         decision: str = "legacy") -> None:
+         decision: str = "legacy", te_rule: str = "likelihood") -> None:
     from placer.config import PipelineConfig
     from placer.main import parse_region_scope, run_pipeline_once
 
@@ -166,6 +166,7 @@ def _run(out_dir: str, workers: int, region: str | None,
                             te_fasta_path=str(EXAMPLE / "mini_te.fa"))
     config.scan_workers = workers
     config.decision_mode = decision
+    config.mechanism_te_rule = te_rule
     # One bin per chunk, so the 108 kb contig is cut many times and every
     # 8 kb read near a cut is handed to two chunks by the fetch.
     config.scan_chunk_bp = config.bin_size
@@ -174,16 +175,17 @@ def _run(out_dir: str, workers: int, region: str | None,
     assert run_pipeline_once(config, out_dir) == 0
 
 
-@pytest.mark.parametrize("region, decision", [(None, "legacy"),
-                                              ("chr1:5001-55000", "legacy"),
-                                              (None, "mechanism")])
-def test_three_workers_write_the_same_bytes_as_one(region, decision):
+@pytest.mark.parametrize("region, decision, te_rule", [(None, "legacy", "likelihood"),
+                                                       ("chr1:5001-55000", "legacy", "likelihood"),
+                                                       (None, "mechanism", "likelihood"),
+                                                       (None, "mechanism", "coverage")])
+def test_three_workers_write_the_same_bytes_as_one(region, decision, te_rule):
     reason = _real_run_available()
     if reason:
         pytest.skip(reason)
     with tempfile.TemporaryDirectory() as one, tempfile.TemporaryDirectory() as three:
-        _run(one, 1, region, decision)
-        _run(three, 3, region, decision)
+        _run(one, 1, region, decision, te_rule)
+        _run(three, 3, region, decision, te_rule)
         for name in OUTPUTS:
             left = Path(one, name).read_bytes()
             right = Path(three, name).read_bytes()

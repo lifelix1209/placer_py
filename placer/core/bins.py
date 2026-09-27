@@ -318,9 +318,13 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.tid = component.tid
     call.bp_left = evidence.bp_left
     call.bp_right = evidence.bp_right
+    call.alt_indel_reads = evidence.alt_indel_reads
     call.pos = (evidence.bp_left + ((evidence.bp_right - evidence.bp_left) // 2)
                 if (evidence.bp_left >= 0 and evidence.bp_right >= 0)
                 else component.anchor_pos)
+    # The hypothesis's own position, before any retether moves `pos`: the one
+    # the ledger row carries, and the one the mechanism decision places from.
+    call.hypothesis_pos = call.pos
     call.window_start = component.bin_start
     call.window_end = component.bin_end
 
@@ -842,11 +846,12 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
     # already collapses the duplicate calls.
     bin_rows: list[EvidenceLedgerRow] = []
 
-    def append_row(row: EvidenceLedgerRow) -> None:
+    def append_row(row: EvidenceLedgerRow) -> bool:
         if any(row == seen for seen in bin_rows):
-            return
+            return False
         bin_rows.append(row)
         result.evidence_ledger.append(row)
+        return True
 
     for component, summary_rows, prepared, anchors in pending:
         for row in summary_rows:
@@ -864,7 +869,7 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                 component, evidence, consensus, segmentation, te_alignment, joint,
                 owner_bin_start, owner_bin_end)
             _record_shadow(row, shadow)
-            append_row(row)
+            row_is_new = append_row(row)
 
             call = _final_call_from_evaluation(component, evidence, consensus,
                                                segmentation, te_alignment, joint,
@@ -876,7 +881,11 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                     alt_observed_lengths=list(item.genotype_input.alt_observed_lengths))
             call.te_best_family = te_alignment.best_family or "NA"
             call.te_best_subfamily = te_alignment.best_subfamily or "NA"
-            if config.decision_mode == "mechanism":
+            # One candidate per ledger OBSERVATION: a hypothesis two components
+            # evaluated identically is one row, so it is one candidate too, and
+            # the decision sees exactly the population a replay of the ledger
+            # sees (`tools/dream`).
+            if config.decision_mode == "mechanism" and row_is_new:
                 result.candidate_calls.append(call)
             summary = shortlisted.validator.summary
             candidate = selection_module.ComponentFinalCallCandidate(

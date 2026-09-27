@@ -70,6 +70,11 @@ def hooks(reads):
 
 
 def run(reads, **config_kw):
+    # These tests were written for the legacy decision and check its behaviour
+    # (one synthetic locus, its abstention route, its dependency bound); the
+    # mechanism decision's e-BH cannot select a family of one. They pin it until
+    # the legacy decision is deleted, and go with it.
+    config_kw.setdefault("decision_mode", "legacy")
     config = PipelineConfig(bin_size=100000, **config_kw)
     return run_pipeline(reads, lambda tid: "chr1", lambda c, s, e: reads,
                         config, hooks(reads))

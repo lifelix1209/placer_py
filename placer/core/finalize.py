@@ -37,7 +37,7 @@ def finalize_run(result: PipelineResult, config: PipelineConfig,
     """
     q = target_fdr if target_fdr is not None else config.final_fdr_q
     if config.decision_mode == "mechanism":
-        finalize_mechanism_calls(result, q)
+        finalize_mechanism_calls(result, q, config.mechanism_te_rule)
         return result
     finalize_final_calls(
         result,
@@ -48,7 +48,8 @@ def finalize_run(result: PipelineResult, config: PipelineConfig,
     return result
 
 
-def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
+def finalize_mechanism_calls(result: PipelineResult, q: float,
+                             te_rule: str = "likelihood") -> None:
     """The mechanism decision: decoy check and e-BH over every evaluated call.
 
     Each locus's best call is tested once (`core/mechanism_selection.py`). The
@@ -64,11 +65,32 @@ def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
     from placer.core.mechanism_selection import (
         apply_mechanism_shadow_selection,
         select_loci,
+        select_loci_coverage,
     )
-    apply_mechanism_shadow_selection(result.evidence_ledger, q)
-    result.mech_shadow = select_loci(result.candidate_calls, q)
+    coverage = te_rule == "coverage"
+    if coverage:
+        select_loci_coverage([row for row in result.evidence_ledger
+                              if row.candidate_retention_reason == "EVALUATED"], q)
+        result.mech_shadow = select_loci_coverage(result.candidate_calls, q)
+    else:
+        apply_mechanism_shadow_selection(result.evidence_ledger, q)
+        result.mech_shadow = select_loci(result.candidate_calls, q)
     te_calls, structural = [], []
     for call in result.candidate_calls:
+        if coverage and (call.mech_ebh_selected or call.mech_structural_selected):
+            # Placed at the locus's precise hypothesis, not wherever the
+            # legacy retether moved it; named after the family covering most
+            # of the insert.
+            if call.mech_call_pos >= 0:
+                call.pos = call.bp_left = call.bp_right = call.mech_call_pos
+            else:
+                call.pos = call.hypothesis_pos
+            if call.mech_ebh_selected and call.te_best_family != call.te_dominant_family:
+                # The best-scoring subfamily belongs to another family.
+                call.te_best_subfamily = "NA"
+            if call.mech_ebh_selected:
+                call.te_annotation_class = call.te_dominant_class
+                call.te_best_family = call.te_dominant_family
         if call.mech_ebh_selected:
             call.family = call.te_best_family if call.te_best_family else "UNKNOWN"
             call.subfamily = call.te_best_subfamily if call.te_best_subfamily else "NA"

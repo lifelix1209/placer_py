@@ -120,6 +120,7 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "mech_decoy_count", "mech_decoy_mean_exp_linkage", "mech_terms",
     "mech_aligned_len", "mech_sequence_term",
     "mech_e_value", "mech_ebh_selected", "mech_structural_selected",
+    "mech_collapse_region",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -286,6 +287,7 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.mech_decoy_count, row.mech_decoy_mean_exp_linkage, row.mech_terms,
         row.mech_aligned_len, row.mech_sequence_term,
         row.mech_e_value, row.mech_ebh_selected, row.mech_structural_selected,
+        row.mech_collapse_region,
     ]
     return [_number(value) for value in values]
 
@@ -332,7 +334,8 @@ def _shadow_lines(result) -> list[str]:
              f";loci={shadow.identity.loci}",
              f"mech_shadow_loci\t{shadow.loci}",
              f"mech_shadow_te_selected\t{shadow.te_selected}",
-             f"mech_shadow_structural_selected\t{shadow.structural_selected}"]
+             f"mech_shadow_structural_selected\t{shadow.structural_selected}",
+             f"mech_collapse_region_items\t{shadow.collapse_items}"]
     for name, check in shadow.checks.items():
         lines.append(f"mech_decoy_{name}\tloci={check.loci};n={check.decoys}"
                      f";mean={_number(check.mean)}"
