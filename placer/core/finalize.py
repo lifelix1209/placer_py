@@ -11,8 +11,10 @@ THE DECISION (`core/mechanism_selection.select_loci_coverage`, validated on
 HG002 chr2-8 on 2026-09-26):
   1. alignment-collapse regions get e = 0;
   2. one e-BH on the decoy-adjusted artifact ratio: the insertions;
-  3. a TE call when TEBench's coverage rule holds on the insert, a structural
-     call otherwise;
+  3. a TE call when TEBench's coverage rule holds on the insert. An insertion
+     whose insert is not a TE is recorded (the ledger's
+     `mech_structural_selected`, the summary's count) and not reported:
+     PLACER is a TE caller;
   4. precise placement.
 The legacy decision (`--decision legacy`, the old `core/finalization.py`) was
 removed after it: its VCF reported calls kilobytes from their own positions.
@@ -45,18 +47,18 @@ def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
 
     Each locus is tested once (`core/mechanism_selection.py`). The TE-selected
     ones are the run's calls, named after the family covering the most of their
-    insert and placed at the locus's precise hypothesis. The structural ones go
-    to `structural_calls`. The ledger gets the same selection marked on its
-    rows, for the summary and for replay.
+    insert and placed at the locus's precise hypothesis. The ledger gets the
+    same selection marked on its rows, the structural ones included, for the
+    summary and for replay.
     """
     from placer.core.mechanism_selection import select_loci_coverage
 
     select_loci_coverage([row for row in result.evidence_ledger
                           if row.candidate_retention_reason == "EVALUATED"], q)
     result.mech_shadow = select_loci_coverage(result.candidate_calls, q)
-    te_calls, structural = [], []
+    te_calls = []
     for call in result.candidate_calls:
-        if call.mech_ebh_selected or call.mech_structural_selected:
+        if call.mech_ebh_selected:
             # Placed at the locus's precise hypothesis, when the testing one
             # was a wide interval, and otherwise where the hypothesis itself
             # sits.
@@ -64,13 +66,11 @@ def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
                 call.pos = call.bp_left = call.bp_right = call.mech_call_pos
             else:
                 call.pos = call.hypothesis_pos
-            if call.mech_ebh_selected and call.te_best_family != call.te_dominant_family:
+            if call.te_best_family != call.te_dominant_family:
                 # The best-scoring subfamily belongs to another family.
                 call.te_best_subfamily = "NA"
-            if call.mech_ebh_selected:
-                call.te_annotation_class = call.te_dominant_class
-                call.te_best_family = call.te_dominant_family
-        if call.mech_ebh_selected:
+            call.te_annotation_class = call.te_dominant_class
+            call.te_best_family = call.te_dominant_family
             call.family = call.te_best_family if call.te_best_family else "UNKNOWN"
             call.subfamily = call.te_best_subfamily if call.te_best_subfamily else "NA"
             call.te_name = call.subfamily if call.subfamily not in ("NA", "") else call.family
@@ -81,19 +81,9 @@ def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
             # transform of this field, reads 10*log10(e).
             call.lfdr = min(1.0, 1.0 / call.mech_e_value) if call.mech_e_value > 0 else 1.0
             te_calls.append(call)
-        elif call.mech_structural_selected:
-            call.family, call.subfamily, call.te_name = "UNKNOWN", "UNKNOWN", "UNKNOWN"
-            call.family_committed = False
-            call.final_qc = _with_token(call.final_qc, "PASS_STRUCTURAL_MECHANISM")
-            # Selected by e-BH too, on the artifact question alone, so FDR-
-            # controlled -- not the UNCALIB route.
-            call.ebh_selected = True
-            structural.append(call)
     result.final_calls = te_calls
     apply_sample_overdispersion_calibration(result)
     result.final_calls.sort(key=final_call_sort_less)
-    structural.sort(key=final_call_sort_less)
-    result.structural_calls = structural
     result.candidate_calls = []
     result.final_pass_calls = len(result.final_calls)
 

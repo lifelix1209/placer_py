@@ -190,7 +190,7 @@ def test_the_locus_is_reported_as_a_te_call_exactly_once():
     being reported twice or dropped entirely.
     """
     result = run(synthetic_reads())
-    assert len(result.final_calls) == 1 and result.structural_calls == []
+    assert len(result.final_calls) == 1
     call = result.final_calls[0]
     assert call.chrom == "chr1"
     assert abs(call.pos - 10000) <= 50
@@ -203,7 +203,8 @@ def test_the_default_q_does_not_select_a_family_of_one_weak_locus():
     """The same locus at q = 0.1 needs e >= 10 and has 5.5: e-BH's threshold
     is m/(q r), and nothing lowers it for a small run."""
     result = run(synthetic_reads(), final_fdr_q=0.1)
-    assert result.final_calls == [] and result.structural_calls == []
+    assert result.final_calls == []
+    assert result.mech_shadow.structural_selected == 0
 
 
 def test_the_genotype_comes_out_heterozygous_at_eight_versus_three():
@@ -229,19 +230,18 @@ def test_a_call_carries_the_genotype_inputs_the_scan_used():
     assert len(inputs.alt_observed_lengths) == 8
 
 
-def test_an_insertion_that_is_not_a_te_is_set_aside_rather_than_lost():
+def test_an_insertion_that_is_not_a_te_is_recorded_not_reported():
     """
-    TE hits cover 30% of the insert, below TEBench's 50%: the insertion is
-    still reported, as a structural call with UNKNOWN family, rather than
-    being discarded.
+    TE hits cover 30% of the insert, below TEBench's 50%. The insertion is
+    still selected -- the ledger marks it and the summary counts it -- but
+    PLACER is a TE caller, and reports no call for it.
     """
     result = run(synthetic_reads(), coverage=0.3)
     assert result.final_calls == []
-    assert len(result.structural_calls) == 1
-    call = result.structural_calls[0]
-    assert "PASS_STRUCTURAL_MECHANISM" in call.final_qc.split("|")
-    assert call.family == "UNKNOWN"
-    assert not call.family_committed
+    assert result.mech_shadow.structural_selected == 1
+    evaluated = [row for row in result.evidence_ledger
+                 if row.candidate_retention_reason == "EVALUATED"]
+    assert [row.mech_structural_selected for row in evaluated] == [True]
 
 
 def test_a_locus_with_no_alt_reads_produces_no_call():
@@ -250,14 +250,14 @@ def test_a_locus_with_no_alt_reads_produces_no_call():
                       for i in range(6)]
     result = run(reference_only)
     assert result.final_calls == []
-    assert result.structural_calls == []
+    assert result.mech_shadow.structural_selected == 0
 
 
-def test_the_run_writes_five_files_even_when_three_are_empty():
+def test_the_run_writes_four_files_even_when_they_are_empty():
     """
-    A missing `structural_calls.tsv` is ambiguous between "none were set aside"
-    and "the run died before writing it". The same argument is why an empty run
-    still produces a VCF with a full header and a CSV with its header row.
+    A missing `calls.vcf` is ambiguous between "nothing was called" and "the
+    run died before writing it", which is why an empty run still produces a
+    VCF with a full header and a CSV with its header row.
 
     The exact key set is asserted so that adding an output is a deliberate,
     visible change rather than something that can be slipped in.
@@ -267,8 +267,8 @@ def test_the_run_writes_five_files_even_when_three_are_empty():
     result = run(synthetic_reads())
     with tempfile.TemporaryDirectory() as output_dir:
         paths = call_or_skip(M.write_outputs, result, output_dir)
-        assert set(paths) == {"scientific_txt", "structural_calls_tsv",
-                              "evidence_ledger_tsv", "calls_vcf", "calls_csv"}
+        assert set(paths) == {"scientific_txt", "evidence_ledger_tsv", "calls_vcf",
+                              "calls_csv"}
         for path in paths.values():
             with open(path) as handle:
                 assert handle.read()

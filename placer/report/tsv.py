@@ -1,14 +1,11 @@
 """
-The three TSV/TXT outputs, and the column contracts they carry.
+The two TSV/TXT outputs, and the column contracts they carry.
 
 Ported from the writers in `src/main.cpp`, pinned by `tests/test_31_outputs.py`.
 
-THREE FILES, AND WHAT EACH IS FOR:
+TWO FILES, AND WHAT EACH IS FOR:
 
   * `scientific.txt` -- the TE calls, with a run summary header. The answer.
-  * `structural_calls.tsv` -- the structural insertions the TE-calibrated mode
-    set aside. SELECTED calls, not rejects, and carrying the IDENTICAL schema so
-    the two can be concatenated or diffed without reshaping.
   * `evidence_ledger.tsv` -- every candidate examined, whatever the verdict.
     This is the sample's own null set as well as its candidate set; see
     `placer/core/ledger.py`.
@@ -34,7 +31,7 @@ from collections.abc import Sequence
 
 from placer.core.ledger import EvidenceLedgerRow, FinalCall
 
-#: Columns of `scientific.txt` and `structural_calls.tsv`, in order, WITHOUT
+#: Columns of `scientific.txt`, in order, WITHOUT
 #: the optional `insert_seq` (which is inserted after `consensus_len`).
 FINAL_CALL_COLUMNS: tuple[str, ...] = (
     "chrom", "pos", "bp_left", "bp_right", "te", "family", "subfamily",
@@ -352,15 +349,6 @@ def render_scientific_txt(result, include_insert_seq: bool = False) -> str:
     lines.append("#" + "\t".join(final_call_header(include_insert_seq)))
     for call in result.final_calls:
         lines.append("\t".join(final_call_row(call, include_insert_seq)))
-    return "\n".join(lines) + "\n"
-
-
-def render_structural_calls_tsv(result, include_insert_seq: bool = False) -> str:
-    """The set-aside structural calls, with the IDENTICAL call schema."""
-    lines = [f"structural_calls\t{len(result.structural_calls)}", ""]
-    lines.append("#" + "\t".join(final_call_header(include_insert_seq)))
-    lines.extend("\t".join(final_call_row(call, include_insert_seq))
-                 for call in result.structural_calls)
     return "\n".join(lines) + "\n"
 
 

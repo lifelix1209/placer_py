@@ -38,8 +38,7 @@ pytestmark = pytest.mark.invariant
 
 BIN = 10_000
 EXAMPLE = Path(__file__).resolve().parent.parent / "examples" / "data"
-OUTPUTS = ("scientific.txt", "evidence_ledger.tsv", "structural_calls.tsv",
-           "calls.vcf", "calls.csv")
+OUTPUTS = ("scientific.txt", "evidence_ledger.tsv", "calls.vcf", "calls.csv")
 
 
 # ------------------------------------------------------------- the planner
@@ -136,7 +135,7 @@ def test_a_finalized_scan_cannot_be_merged():
     """Its calibration describes that part alone; there is no way to combine
     two of them into what the whole run would have measured."""
     finalized = _scan("a", 1)
-    finalized.structural_calls.append(FinalCall())
+    finalized.final_pass_calls = 1
     with pytest.raises(ValueError):
         merge_scan_results(PipelineResult(), finalized)
 

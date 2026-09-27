@@ -282,18 +282,6 @@ def test_the_optional_columns_go_where_the_header_says():
     assert ledger[ledger.index("support_qname_count") + 1] == "support_qnames"
 
 
-def test_the_two_call_files_carry_the_identical_schema():
-    """So the two can be concatenated or diffed without reshaping -- the
-    structural calls are SELECTED calls, not rejects."""
-    result = R.PipelineResult()
-    result.final_calls = [FinalCall(chrom="chr1", pos=1000)]
-    result.structural_calls = [FinalCall(chrom="chr1", pos=2000)]
-    scientific = O.render_scientific_txt(result).splitlines()
-    structural = O.render_structural_calls_tsv(result).splitlines()
-    assert [line for line in scientific if line.startswith("#chrom")] == [
-        line for line in structural if line.startswith("#chrom")]
-
-
 def test_floats_round_trip_at_full_precision():
     """
     The ledger's log Bayes factors are re-read by the dependency calibration.

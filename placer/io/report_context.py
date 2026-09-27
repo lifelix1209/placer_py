@@ -81,7 +81,7 @@ def collect_anchor_bases(calls: Iterable[FinalCall],
 def build_report_context(reader, fetch_reference, config, result,
                          file_date: str | None = None) -> ReportContext:
     """Everything `render_vcf` needs, assembled from the open inputs."""
-    calls = list(result.final_calls) + list(result.structural_calls)
+    calls = list(result.final_calls)
     return ReportContext(
         sample_name=sample_name_from_reader(reader, config.bam_path),
         reference_path=os.path.abspath(config.reference_fasta_path),

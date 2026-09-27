@@ -244,6 +244,23 @@ project's numbering, not this package's.)
 
 ### Removed
 
+- **Non-TE insertions are no longer reported.** PLACER is a TE caller. An
+  insertion the decision selects whose insert fails TEBench's TE rule used to
+  be written to three places, all of which change:
+  - `structural_calls.tsv` is gone;
+  - `calls.vcf` no longer writes it as `FILTER=STRUCTURAL`;
+  - `calls.csv` no longer writes it as `call_set=structural`. The `call_set`
+    column stays, now always `final`, so that older tables read the same.
+
+  The selection itself is unchanged: the ledger marks those insertions
+  (`mech_structural_selected`) and `scientific.txt` counts them. Checked on
+  the example data (with and without `--record-world`) and on two HG002 chr1
+  regions:
+  - `evidence_ledger.tsv` and `scientific.txt` are byte-identical;
+  - `calls.vcf` and `calls.csv` differ only by the structural records and the
+    `STRUCTURAL` FILTER header line.
+
+  The TEBench score cannot move, because TEBench keeps only PASS calls.
 - **The legacy decision and its options.** `--decision`, `--te-rule`,
   `--final-report-mode` and `--min-final-raw-cigar-insert-len-bp` are gone,
   with `core/finalization.py`, `core/call_selection.py` (the per-component

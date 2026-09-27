@@ -199,7 +199,7 @@ def test_rows_that_were_not_evaluated_are_not_tested():
     assert evaluated.mech_ebh_selected and not triaged.mech_ebh_selected
 
 
-def test_finalization_names_places_and_splits_the_calls():
+def test_finalization_names_places_and_reports_only_te_calls():
     te = wide(call(1200, 30), 1000, 1400, 10)
     te.te_best_family, te.te_best_subfamily = "Alu", "AluY"   # another family's best hit
     structural = call(50_000, 30, coverage=0.2)
@@ -207,7 +207,10 @@ def test_finalization_names_places_and_splits_the_calls():
                             + background(100_000, make=call))
     finalize_mechanism_calls(result, 0.1)
 
-    assert result.final_calls == [te] and result.structural_calls == [structural]
+    # The structural insertion is selected, but not reported: PLACER is a TE
+    # caller.
+    assert result.final_calls == [te] and structural.mech_structural_selected
+    assert result.mech_shadow.structural_selected == 1
     assert result.candidate_calls == [] and result.final_pass_calls == 1
     # Named after the family covering the most of the insert; the best hit's
     # subfamily belongs to another family, so it is dropped rather than kept.
@@ -218,9 +221,6 @@ def test_finalization_names_places_and_splits_the_calls():
     assert te.final_qc == "PASS_TE_MECHANISM" and te.ebh_selected
     # 1/e, with e the locus's mean over its two rows.
     assert te.lfdr == pytest.approx(2.0 / (math.exp(30) + math.exp(5)), rel=1e-9)
-    assert structural.family == "UNKNOWN" and not structural.family_committed
-    assert structural.final_qc == "PASS_STRUCTURAL_MECHANISM" and structural.ebh_selected
-    assert structural.pos == 50_000
 
 
 def test_finalization_keeps_the_scans_evidence_tokens():

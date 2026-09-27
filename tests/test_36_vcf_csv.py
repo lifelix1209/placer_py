@@ -58,10 +58,9 @@ def a_call(**kw) -> FinalCall:
     return call
 
 
-def a_result(final=(), structural=()) -> PipelineResult:
+def a_result(final=()) -> PipelineResult:
     result = PipelineResult()
     result.final_calls = list(final)
-    result.structural_calls = list(structural)
     return result
 
 
@@ -181,10 +180,10 @@ def test_an_undeclared_contig_sorts_after_every_declared_one():
     assert [r[0] for r in rows] == ["chr1", "chrUn"]
 
 
-def test_a_final_call_precedes_a_structural_one_at_the_same_position():
-    """The sort is stable and final calls are listed first."""
+def test_two_calls_at_one_position_keep_their_order():
+    """The sort is stable."""
     rows = records(V.render_vcf(
-        a_result([a_call()], [a_call(te_name="SVA")]), ctx()))
+        a_result([a_call(), a_call(te_name="SVA")]), ctx()))
     assert [info_of(r)["MEI"] for r in rows] == ["AluY", "SVA"]
 
 
@@ -232,15 +231,11 @@ def test_an_abstained_family_is_filtered_rather_than_relabelled():
     assert info_of(row)["FAM"] == "Alu"      # the label survives the abstention
 
 
-def test_a_structural_call_shares_the_vcf_and_suppresses_the_family_flag():
-    """
-    For a structural insertion, abstaining on family is the definition rather
-    than extra information; emitting both would make `bcftools view -f
-    FAM_ABSTAIN` return a set the user did not mean.
-    """
-    row = records(V.render_vcf(
-        a_result(structural=[a_call(family_committed=False)]), ctx()))[0]
-    assert row[6] == "STRUCTURAL"
+def test_the_vcf_declares_no_structural_filter():
+    """PLACER is a TE caller: a selected insertion that is not a TE is not
+    reported (since 2026-09-27), so no record can carry FILTER=STRUCTURAL."""
+    assert "STRUCTURAL" not in V.render_vcf(a_result([a_call()]), ctx())
+    assert "STRUCTURAL" not in V.FILTER_ORDER
 
 
 def test_an_uncalibrated_call_says_so_rather_than_passing_silently():
@@ -345,8 +340,8 @@ def test_the_csv_body_is_the_tsv_header_verbatim():
 def test_every_csv_row_has_exactly_the_header_width():
     for insert_seq in (False, True):
         for qnames in (False, True):
-            text = C.render_csv(a_result([a_call(support_qnames=["r1", "r2"])],
-                                         [a_call()]), insert_seq, qnames)
+            text = C.render_csv(a_result([a_call(support_qnames=["r1", "r2"]), a_call()]),
+                                insert_seq, qnames)
             rows = parse_csv(text)
             assert all(len(r) == len(rows[0]) for r in rows), (insert_seq, qnames)
 
@@ -393,10 +388,12 @@ def test_every_csv_row_is_exactly_one_physical_line():
     assert len(parse_csv(text)) == 3
 
 
-def test_the_call_set_column_reconstructs_the_two_tsvs():
-    rows = parse_csv(C.render_csv(a_result([a_call()], [a_call(), a_call()])))
+def test_the_call_set_column_is_always_final():
+    """Kept so a table from an older run, which also carried `structural`
+    rows, reads the same."""
+    rows = parse_csv(C.render_csv(a_result([a_call(), a_call()])))
     column = rows[0].index("call_set")
-    assert [r[column] for r in rows[1:]] == ["final", "structural", "structural"]
+    assert [r[column] for r in rows[1:]] == ["final", "final"]
 
 
 def test_the_csv_and_the_vcf_agree_on_position():

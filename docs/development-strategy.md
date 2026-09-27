@@ -231,7 +231,7 @@ Here that means:
 
 ## 7. Performance changes
 
-Performance work is scan-domain, and each change must leave the five outputs
+Performance work is scan-domain, and each change must leave the four outputs
 **byte-identical**. Run the same region through two frozen snapshots and
 `cmp` every file: `tools/perf/ab_region.sh`. A change that alters the
 output is not a performance change. It is a decision change and goes through

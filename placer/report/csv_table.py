@@ -1,4 +1,4 @@
-"""The full flat table: every selected call, both sets, one CSV.
+"""The full flat table: every TE call, one CSV.
 
 WHY A CSV WHEN THREE TSVs ALREADY EXIST. The VCF is for interoperation and is
 deliberately narrow -- about thirty INFO keys out of a `FinalCall`'s ninety
@@ -10,9 +10,9 @@ reused verbatim, because a second list would be a second thing to keep in step
 with `FinalCall` and `tests/test_00_contract.py` only checks the first one.
 What is added is bracketing: two leading columns and seven trailing ones.
 
-  call_set    `final` or `structural`. This is what lets one CSV replace two
-              TSVs without losing the distinction that `FILTER=STRUCTURAL`
-              carries in the VCF.
+  call_set    always `final` since 2026-09-27, when PLACER stopped reporting
+              the structural (non-TE) insertions. Kept so that a table from an
+              older run, which also carried `structural` rows, reads the same.
   vcf_pos     the join key to the VCF, and it is not redundant: the `pos`
               column is 0-based AND is the midpoint of the two breakpoints,
               so it is neither the VCF coordinate nor a breakpoint.
@@ -100,12 +100,9 @@ def _write(rows: Sequence[Sequence[str]]) -> str:
 
 def render_csv(result, include_insert_seq: bool = False,
                include_support_qnames: bool = False) -> str:
-    """Both call sets, final first, distinguished by `call_set`."""
+    """The TE calls, in finalization order."""
     rows: list[Sequence[str]] = [call_csv_header(include_insert_seq,
                                                  include_support_qnames)]
-    for call_set, calls in (("final", result.final_calls),
-                            ("structural", result.structural_calls)):
-        rows.extend(call_csv_row(call, call_set, include_insert_seq,
-                                 include_support_qnames)
-                    for call in calls)
+    rows.extend(call_csv_row(call, "final", include_insert_seq, include_support_qnames)
+                for call in result.final_calls)
     return _write(rows)

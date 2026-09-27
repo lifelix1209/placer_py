@@ -61,9 +61,4 @@ class PipelineResult:
     candidate_calls: list[FinalCall] = field(default_factory=list)
 
     final_calls: list[FinalCall] = field(default_factory=list)
-    #: Selected structural insertions the TE-calibrated mode sets aside. They
-    #: are SELECTED calls, not rejects -- moving them here rather than erasing
-    #: them keeps the TE output TE-only while leaving them auditable. Silently
-    #: discarding them made recall benchmarking on the default mode misleading.
-    structural_calls: list[FinalCall] = field(default_factory=list)
     evidence_ledger: list[EvidenceLedgerRow] = field(default_factory=list)

@@ -61,8 +61,7 @@ QUAL_CAP = 1000.0
 POLARITY_RESOLVED = True
 
 #: Emitted in this order so a FILTER field is stable across runs.
-FILTER_ORDER = ("STRUCTURAL", "FAM_ABSTAIN", "IMPRECISE", "UNCALIB",
-                "ALTSEQ_MISSING")
+FILTER_ORDER = ("FAM_ABSTAIN", "IMPRECISE", "UNCALIB", "ALTSEQ_MISSING")
 
 #: `final_qc` tokens that mean the breakpoint was not closed on both sides.
 _IMPRECISE_TOKENS = ("PASS_TE_IMPRECISE", "EVENT_BILATERAL_PARTIAL_ANCHOR")
@@ -119,9 +118,6 @@ _INFO_KEYS = (
 )
 
 _FILTER_KEYS = (
-    ("STRUCTURAL",
-     "A selected structural insertion that the TE-calibrated mode set aside. "
-     "A call, not a reject"),
     ("FAM_ABSTAIN",
      "Insertion called; TE family label not committed"),
     ("IMPRECISE",
@@ -207,8 +203,7 @@ def vcf_qual(call: FinalCall) -> str:
     return f"{min(value, QUAL_CAP):.2f}"
 
 
-def vcf_filters(call: FinalCall, *, structural: bool,
-                alt_is_symbolic: bool) -> list[str]:
+def vcf_filters(call: FinalCall, *, alt_is_symbolic: bool) -> list[str]:
     """The FILTER column, as a list, in `FILTER_ORDER`.
 
     Every value is re-derivable from the emitted `QC=`, `EBHSEL` and `CONFQC`,
@@ -216,12 +211,7 @@ def vcf_filters(call: FinalCall, *, structural: bool,
     tokens to ask "is this a clean call?".
     """
     flags = set()
-    if structural:
-        flags.add("STRUCTURAL")
-    elif not call.family_committed:
-        # For a structural insertion, abstaining on family is the definition
-        # rather than extra information, and emitting both would make
-        # `bcftools view -f FAM_ABSTAIN` return a set the user did not mean.
+    if not call.family_committed:
         flags.add("FAM_ABSTAIN")
     tokens = _qc_tokens(call.final_qc)
     if any(token in _IMPRECISE_TOKENS for token in tokens) or call.bp_left < 0:
@@ -322,12 +312,11 @@ def vcf_sample(call: FinalCall) -> tuple[str, str]:
             f"{ref_reads},{alt_reads}:{call.af:.4g}")
 
 
-def vcf_record(call: FinalCall, context: ReportContext, *,
-               structural: bool) -> str:
+def vcf_record(call: FinalCall, context: ReportContext) -> str:
     """One data line, tab separated."""
     ref, alt, symbolic = vcf_ref_and_alt(call, context)
     svlen = vcf_svlen(call, symbolic)
-    filters = vcf_filters(call, structural=structural, alt_is_symbolic=symbolic)
+    filters = vcf_filters(call, alt_is_symbolic=symbolic)
     fmt, sample = vcf_sample(call)
     return "\t".join([
         call.chrom, str(vcf_pos(call)), ".", ref, alt, vcf_qual(call),
@@ -377,18 +366,16 @@ def vcf_header_lines(result, context: ReportContext,
 
 
 def render_vcf(result, context: ReportContext | None = None) -> str:
-    """Both call sets, coordinate-sorted, as one VCF.
+    """The TE calls, coordinate-sorted.
 
-    ONE FILE RATHER THAN TWO. Structural insertions are SELECTED calls that the
-    TE-calibrated mode set aside, not rejects, and splitting them into their own
-    VCF would force every consumer to learn PLACER's internal routing before it
-    could read either file. `FILTER=STRUCTURAL` says the same thing in the
-    vocabulary a VCF reader already has.
+    TE CALLS ONLY. PLACER is a TE caller: an insertion the decision selects
+    whose insert is not a TE is recorded in the evidence ledger
+    (`mech_structural_selected`) and counted in `scientific.txt`, not
+    reported. Until 2026-09-27 they were written here as `FILTER=STRUCTURAL`.
 
     SORTING IS REQUIRED AND IS NOT FREE HERE: `result.final_calls` is in
-    finalization order, which is not coordinate order. The sort is stable and
-    final calls are listed first, so two calls at one position keep that
-    precedence.
+    finalization order, which is not coordinate order. The sort is stable, so
+    two calls at one position keep that order.
     """
     context = context if context is not None else ReportContext()
     ranks = contig_ranks(context)
@@ -400,14 +387,10 @@ def render_vcf(result, context: ReportContext | None = None) -> str:
         # Undeclared contigs sort after every declared one, by first appearance.
         return len(ranks) + unranked.setdefault(chrom, len(unranked))
 
-    rows = ([(call, False) for call in result.final_calls]
-            + [(call, True) for call in result.structural_calls])
-    usable = [(call, structural) for call, structural in rows
-              if vcf_pos(call) >= 1]
-    skipped = len(rows) - len(usable)
-    usable.sort(key=lambda item: (rank(item[0].chrom), vcf_pos(item[0])))
+    usable = [call for call in result.final_calls if vcf_pos(call) >= 1]
+    skipped = len(result.final_calls) - len(usable)
+    usable.sort(key=lambda call: (rank(call.chrom), vcf_pos(call)))
 
     lines = vcf_header_lines(result, context, skipped)
-    lines.extend(vcf_record(call, context, structural=structural)
-                 for call, structural in usable)
+    lines.extend(vcf_record(call, context) for call in usable)
     return "\n".join(lines) + "\n"

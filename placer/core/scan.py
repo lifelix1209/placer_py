@@ -89,7 +89,7 @@ def merge_scan_results(into: PipelineResult, part: PipelineResult) -> PipelineRe
     part's calibration fields describe that part alone and there is no way to
     combine them into what the whole run would have measured.
     """
-    if part.structural_calls or part.final_pass_calls:
+    if part.final_pass_calls or part.mech_shadow.loci:
         raise ValueError("merge_scan_results takes unfinalized scans only")
     for name in _SCAN_COUNTERS:
         setattr(into, name, getattr(into, name) + getattr(part, name))

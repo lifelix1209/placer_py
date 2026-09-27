@@ -5,7 +5,7 @@ Ported from `src/main.cpp`, pinned by `tests/test_32_pipeline.py`.
 
 WHAT THE CLI IS RESPONSIBLE FOR, and it is deliberately little: parse the
 arguments, apply the environment overrides, build the three external
-dependencies (BAM, reference, TE library), run the pipeline, write five files.
+dependencies (BAM, reference, TE library), run the pipeline, write four files.
 Every decision lives in the stages; nothing here chooses anything.
 
 FEW FLAGS survived. `--final-fdr-q` is the single policy knob -- a target
@@ -201,7 +201,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
                              "sequence to the ledger, so tools/dream can replay "
                              "decision policies against this run")
     parser.add_argument("--output-dir", default=".",
-                        help="where the five output files are written")
+                        help="where the four output files are written")
     parser.add_argument("bam")
     parser.add_argument("reference")
     parser.add_argument("te_fasta")
@@ -317,7 +317,6 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
                           context=context)
     for key, name in (("scientific_txt", "scientific.txt"),
                       ("evidence_ledger_tsv", "evidence_ledger.tsv"),
-                      ("structural_calls_tsv", "structural_calls.tsv"),
                       ("calls_vcf", "calls.vcf"),
                       ("calls_csv", "calls.csv")):
         print(f"[PLACER] wrote {name} path={paths[key]}", file=sys.stderr)

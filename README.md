@@ -131,7 +131,7 @@ placer/
                   mechanism_selection
 
   --- report/: everything that renders; every function returns a string --
-  report/tsv.py     scientific.txt, structural_calls.tsv, evidence_ledger.tsv
+  report/tsv.py     scientific.txt, evidence_ledger.tsv
   report/vcf.py     calls.vcf -- VCF 4.2, explicit inserted sequence as ALT
   report/csv_table.py  calls.csv -- the full flat table, both call sets
   report/context.py the facts a VCF needs that no stage computes
@@ -187,7 +187,7 @@ placer sample.bam reference.fa te_library.fa --output-dir out/ --threads 8
 ```
 
 `--threads N` (`-t`) scans on N processes. It changes how long the run takes
-and nothing else: the five files are the same bytes for any N.
+and nothing else: the four files are the same bytes for any N.
 
 or, without installing, `python3 -m placer.main ...` from the repository
 root.
@@ -200,7 +200,7 @@ which is why they are optional rather than required.
 
 Measured on HG002 ONT-UL (GIAB, GRCh37), `21:18,704,270-19,599,876` -- 0.9 Mb,
 2,065 reads, 203 evaluated candidates -- on an 11-core Apple M3 Pro laptop.
-Every row writes the same five files, byte for byte, as the first.
+Every row writes the same files, byte for byte, as the first.
 
 | | wall | CPU | peak memory |
 |---|---|---|---|
@@ -217,7 +217,7 @@ for reuse (`io/bam.RecordCache`). Both are bounded -- by the bin and by the
 cache -- so neither grows with the genome.
 
 Where the single-process time went, and what was done about it -- every change
-exact, each checked by comparing the five output files:
+exact, each checked by comparing the output files byte for byte:
 
 | was | fix |
 |---|---|
@@ -242,17 +242,23 @@ cost left is the flank search in `core/segmentation.py` (~25%).
 
 ## The output files
 
-A run writes five files into `--output-dir`, always, even when some are empty.
+A run writes four files into `--output-dir`, always, even when some are empty.
 A missing file is ambiguous between "nothing qualified" and "the run died",
 and a downstream script cannot tell the difference.
 
 | file | what it is |
 |---|---|
-| `calls.vcf` | VCF 4.2. Both call sets, coordinate-sorted, structural ones marked `FILTER=STRUCTURAL` |
-| `calls.csv` | the full flat table: every column of `scientific.txt`, plus the call set and four fields no other file carries |
+| `calls.vcf` | VCF 4.2. The TE calls, coordinate-sorted |
+| `calls.csv` | the full flat table: every column of `scientific.txt`, plus four fields no other file carries |
 | `scientific.txt` | the TE calls, with the run's calibration constants in a header block |
-| `structural_calls.tsv` | the structural insertions the TE-calibrated mode set aside — selected calls, not rejects |
 | `evidence_ledger.tsv` | every candidate examined, whatever the verdict. This is the sample's own null set as well as its candidate set |
+
+**PLACER is a TE caller.** An insertion the decision selects whose insert is
+not a TE -- under TEBench's rule, TE hits covering at least half of it and
+100 bp -- is not reported. The ledger marks it (`mech_structural_selected`)
+and `scientific.txt` counts it (`mech_shadow_structural_selected`). Before
+2026-09-27 these went to `structural_calls.tsv` and to the VCF as
+`FILTER=STRUCTURAL`.
 
 **The VCF writes the inserted sequence as the ALT allele**, not a symbolic
 `<INS:ME:ALU>`. The sequence is the evidence, and a symbolic allele sends every
