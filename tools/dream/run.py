@@ -203,15 +203,30 @@ def cmd_diagnose(args) -> int:
 
 def cmd_validate(args) -> int:
     """One fixed candidate against the base on held-out worlds, pooled: the
-    online validation of section 2, step 7. Nothing here tunes anything."""
+    online validation of section 2, step 7. Nothing here tunes anything.
+
+    `--base-worlds` replays the base on other worlds than the candidate, one
+    per candidate world and of the same region: a candidate that needs a
+    changed scan is compared with the base on the scan it replaces. The truth
+    is the same, so the bootstrap still pairs the two block by block."""
     base_params, cand_params = _params(args.base_param), _params(args.param)
+    base_names = args.base_worlds or args.worlds
+    if len(base_names) != len(args.worlds):
+        raise SystemExit("--base-worlds needs one world per --worlds entry")
     scores_a, scores_b, truths = [], [], []
-    for name in args.worlds:
+    for name, base_name in zip(args.worlds, base_names):
         args.world = name
         w, truth = _load(args)
-        base, _ = _replay(w, args.base, args.q, base_params)
+        wa = w
+        if base_name != name:
+            args.world = base_name
+            wa, _ = _load(args)
+            if (wa.region, wa.truth, wa.confident) != (w.region, w.truth, w.confident):
+                raise SystemExit(f"{base_name} and {name} are not the same region and truth")
+        base, _ = _replay(wa, args.base, args.q, base_params)
         cand, _ = _replay(w, args.candidate, args.q, cand_params)
-        sa, sb = objective.score(base, truth, w.annotation), objective.score(cand, truth, w.annotation)
+        sa = objective.score(base, truth, wa.annotation)
+        sb = objective.score(cand, truth, w.annotation)
         _print_score(f"{name} base", sa, sum(d.label == "TE" for d in base),
                      sum(d.label == "STRUCTURAL" for d in base), 0.0)
         _print_score(f"{name} cand", sb, sum(d.label == "TE" for d in cand),
@@ -227,7 +242,7 @@ def cmd_validate(args) -> int:
           f"{'PASS' if c.accepted else 'fail'}")
     if args.log:
         node = {"time": time.strftime("%Y-%m-%dT%H:%M:%S"), "kind": "validation",
-                "worlds": args.worlds, "q": args.q,
+                "worlds": args.worlds, "base_worlds": base_names, "q": args.q,
                 "base": {"policy": args.base, "params": base_params},
                 "candidate": {"policy": args.candidate, "params": cand_params},
                 "note": args.note or "", **c.as_dict()}
@@ -282,6 +297,8 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("base")
     p.add_argument("candidate")
     p.add_argument("--worlds", nargs="+", required=True)
+    p.add_argument("--base-worlds", nargs="+",
+                   help="replay the base on these instead, one per --worlds entry")
     p.add_argument("--q", type=float, default=0.10)
     p.add_argument("--base-param", action="append", default=[])
     p.add_argument("--param", action="append", default=[])

@@ -331,6 +331,50 @@ represents insertions there. But sniffles2 placed 14 of the 16 within 100 bp,
 mostly at 0 bp, so the defect was PLACER's. A loss is a benchmark artefact only
 if callers that are otherwise good lose it too.
 
+**Round 4: the fan-out, and a scan change judged against the scan it replaces.**
+After two rounds with no accepted gain, four subagents searched four directions
+at once (2026-09-27), each on the chr1 carrier-rule world against
+`coverage_placed` (160 TP / 13 FP there):
+
+| direction | best TP / FP | verdict |
+|---|---|---|
+| place at the own-read median of the allele's rows | 163 / 10 | accepted, p05 +0.004 |
+| merge loci that share carrier reads, place by allele | 162 / 7 | accepted, p05 +0.004 |
+| a separate e-BH for the TE-rule loci | +3 TP, 0 FP | rejected, p05 0 |
+| relabel old, diverged inserts as TE | +3 TP, 0 FP | rejected, p05 0 |
+
+Both accepted candidates need the carrier rule in the scan, so the question
+that decides is "carrier scan + candidate" against "current scan + current
+policy". `validate --base-worlds` asks it: each policy replays on its own
+scan's worlds, and the bootstrap pairs them by the shared truth. The
+pre-registered comparison on chr2-8 (never dreamt on), the merge candidate at
+its best chr1 settings, failed: pooled TP 858 against 858, FP 52 against 42,
+gain -0.071, 90% [-0.159, +0.009]. The carrier rule alone is significantly
+worse (-0.148, [-0.253, -0.008]); the candidate does beat the base on the
+carrier scan (+0.077, [+0.005, +0.130]), but not by what the rule costs. The
+rule stays opt-in and the line is closed.
+
+**Lesson: judge a candidate against the whole change it needs.** Accepted
+against the base on the candidate's own scan, both fan-out winners looked
+like gains. Against production they are a loss.
+
+**Rounds 5 and 6.**
+- **Round 5.** Combining the two accepted placements gave the merge
+  candidate's 162 / 7 exactly. The loci the median placement fixes are ones
+  the merge already fixes.
+- **Round 6.** A decoy check without the collapse rows gave identical calls on
+  chr1: every class factor is 1.000 either way. It is not a gain, but it is
+  the precondition for skipping the expensive stages in collapse regions.
+
+**Validity, measured and decided by the maintainer (2026-09-27).** The
+fan-out found that a locus's e-value is the MAX over its hypotheses, and the
+max of e-values is not an e-value (its null mean can reach the row count); the
+mean is one under any dependence. On the production scan the mean costs
+chr1 157 / 10 -> 154 / 9 and chr2-8 858 / 42 -> 849 / 38. The maintainer took
+it under the validity-fix exception. A separate e-BH for the TE calls (their
+own FDR <= q; chr2-8 875 / 45) was declined: the decision stays two-step,
+existence over all loci and then the TE label.
+
 **TEBench's truth listed 567 insertions twice.** GIAB writes an insertion on
 both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1
@@ -360,6 +404,8 @@ python3 -m tools.dream.run annotate NAME --library LIB.fa --submit
 python3 -m tools.dream.run score    NAME POLICY [--param k=v] [--check-invariance]
 python3 -m tools.dream.run diagnose NAME POLICY [--limit 40]
 python3 -m tools.dream.run compare  NAME current CANDIDATE --log --note "hypothesis"
+python3 -m tools.dream.run validate current CANDIDATE --worlds W2 ... W8 --log \
+    [--base-worlds B2 ... B8]    # base on its own scan's worlds, when the candidate needs a new scan
 ```
 
 Run them from the repository root, with an environment that has pysam, for

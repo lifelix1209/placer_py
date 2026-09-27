@@ -1,17 +1,18 @@
-"""The per-class likelihood ratios that decide a call.
+"""The per-class likelihood ratios a call is decided on.
 
-TWO QUESTIONS, TWO LOG-LIKELIHOOD RATIOS, and a call has to win both:
+TWO QUESTIONS, TWO LOG-LIKELIHOOD RATIOS:
 
-  * `vs_non_te`   -- given an insertion, is the inserted sequence a TE?
-                     (H_TE against H_nonTE: a real insertion of other sequence)
   * `vs_artifact` -- is there a new insertion HERE at all?
                      (H_TE against H_artifact: mismapping, a reference copy
                      misplaced, a sequencing artefact)
+  * `vs_non_te`   -- given an insertion, is the inserted sequence a TE?
+                     (H_TE against H_nonTE: a real insertion of other sequence)
 
-The decision score is the MINIMUM. Under either null the minimum is at most
-that null's own ratio, whose expectation under that null is at most 1, so
-`exp(min)` is a valid e-value against both -- and summing them would let strong
-evidence on one question pay for weak evidence on the other.
+Only `vs_artifact` decides (`core/mechanism_selection.py`): e-BH on it says
+which insertions are there, and whether one is a TE is then TEBench's coverage
+rule on the insert. `vs_non_te` is reported as the transposition evidence.
+(Until 2026-09-26 a TE call had to win both, on exp(min) -- valid against
+both nulls, but it lost the SVAs and kept inserts TEBench does not call TEs.)
 
 WHAT EACH CLASS CONTRIBUTES. Only the terms a class's insertion mechanism
 actually produces (`core/taxonomy.py`, `core/element_structure.py`):
