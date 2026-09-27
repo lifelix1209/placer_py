@@ -65,6 +65,14 @@ class PipelineConfig:
     #: Clip and split reads below this MAPQ do not count as alt support
     #: (`events.collect_event_read_evidence_for_bounds`). 0 counts them all.
     alt_signal_min_mapq: int = 0
+    #: The same-allele carrier rule's window (`events.CARRIER_WINDOW_BP`), 0 = off.
+    #: OFF by default. It fixes the evidence -- a homozygous Alu's 52 carriers
+    #: counted as 52 alt, not 5 alt over 35 reference -- but under the current
+    #: decision the recovered loci are placed at off-mode offsets. On HG002 chr1
+    #: that was +3 TP and +3 FP, a replay gain of -0.140 (90% [-0.39, +0.12]):
+    #: rejected until placement handles dispersed carriers
+    #: (docs/development-strategy.md, section 8).
+    same_allele_carrier_window_bp: int = 0
     bam_region_scope: BamRegionScope = field(default_factory=BamRegionScope)
 
     bam_threads: int = 2

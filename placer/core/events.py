@@ -62,6 +62,8 @@ CANDIDATE_CLIP_SUPPLEMENT_MAX_OFFSET_BP = 75
 #: of the tight window's insertions, within +-CARRIER_LENGTH_TOLERANCE) within
 #: CARRIER_WINDOW_BP of the bounds carries the same allele: it is alt support
 #: and not reference. The length condition keeps a different nearby allele out.
+#: Opt-in (`PipelineConfig.same_allele_carrier_window_bp`, default 0): see there
+#: for why it is not on by default yet.
 CARRIER_WINDOW_BP = 500
 CARRIER_LENGTH_TOLERANCE = 0.3
 #: A reference-spanning read below this MAPQ is counted separately rather than
@@ -118,7 +120,8 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
                                            read_spans: list[ReadReferenceSpan],
                                            fragments: list[InsertionFragment],
                                            bp_left: int, bp_right: int,
-                                           min_signal_mapq: int = 0
+                                           min_signal_mapq: int = 0,
+                                           carrier_window_bp: int = 0
                                            ) -> EventReadEvidence:
     """Tally alt and reference support for ONE breakpoint hypothesis.
 
@@ -230,9 +233,10 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
             elif fragment.source == InsertionFragmentSource.CLIP_REF_RIGHT:
                 nearby_right_clip_qnames.add(fragment.read_id)
 
-    if tight_lengths:
+    if tight_lengths and carrier_window_bp > 0:
         carriers = _same_allele_carriers(component, local_records, left, right,
-                                         median(tight_lengths), indel_qnames)
+                                         median(tight_lengths), indel_qnames,
+                                         carrier_window_bp)
         evidence.alt_carrier_reads = len(carriers)
         indel_qnames |= carriers
         raw_cigar_insert_qnames |= carriers
@@ -311,15 +315,15 @@ def _insertion_length_at(read: AlignedRead, ref_pos: int) -> int:
 
 def _same_allele_carriers(component: ComponentCall, local_records: list[AlignedRead],
                           left: int, right: int, allele_len: float,
-                          already: set[str]) -> set[str]:
+                          already: set[str], window_bp: int) -> set[str]:
     """Reads carrying an insertion of `allele_len` (+-CARRIER_LENGTH_TOLERANCE)
     within CARRIER_WINDOW_BP of [left, right], outside the tight window: the
     same allele, placed elsewhere by the aligner. Uniquely mapped primary
     alignments only, as for any insertion evidence."""
     lo_len = max(LONG_INSERTION_SIGNAL_MIN, allele_len * (1.0 - CARRIER_LENGTH_TOLERANCE))
     hi_len = allele_len * (1.0 + CARRIER_LENGTH_TOLERANCE)
-    start = max(0, left - CARRIER_WINDOW_BP)
-    end = right + CARRIER_WINDOW_BP
+    start = max(0, left - window_bp)
+    end = right + window_bp
     out: set[str] = set()
     for read in local_records:
         if (read is None or read.tid != component.tid or not read.qname

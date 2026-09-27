@@ -310,6 +310,21 @@ numbers (e.g. 180 TP for this policy). The check that would have caught it:
 replay a run's own ledger and compare with that run's `calls.vcf`. It must be
 identical.
 
+**Round 3: a scan fix is judged end to end, like any other change.**
+- **The defect.** Dispersed carriers of one insertion were counted as reference
+  support: a homozygous Alu's 52 carriers counted as 5 alt against 35
+  reference.
+- **The fix.** The same-allele carrier rule. At the truth loci it rescued, alt
+  went from 2–5 to 20–52.
+- **The measurement.** A new chr1 world recorded with the fix, replayed with
+  the accepted policy, gave +3 TP and +3 FP: gain −0.140, 90% [−0.39, +0.12].
+  Rejected, and made opt-in.
+- **The reason.** Every precise hypothesis of a rescued locus now gathered the
+  whole allele, so the call went to an off-mode offset, 127–502 bp from the
+  truth. sniffles2 reports near the carriers' median.
+- **The lesson.** The evidence fix needs a placement that uses where the reads
+  put the insertion. Until then it is not a gain, however right it is locally.
+
 **Before blaming the benchmark, check the other callers.** These offsets sit
 inside tandem-repeat arrays, and were first put down to how the benchmark
 represents insertions there. But sniffles2 placed 14 of the 16 within 100 bp,

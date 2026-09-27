@@ -124,7 +124,9 @@ def vcf_pass(d) -> bool:
     if (d.te_class or "NA") in ("NA", "Unknown", "NonTE"):
         return False
     bp_left = int(d.pos) if d.pos is not None else int(d.row.bp_left)
-    if bp_left < 0 or any(t in _IMPRECISE_TOKENS for t in _qc_tokens(str(d.row.final_qc))):
+    imprecise = (d.imprecise if d.imprecise is not None
+                 else any(t in _IMPRECISE_TOKENS for t in _qc_tokens(str(d.row.final_qc))))
+    if bp_left < 0 or imprecise:
         return False
     seq = getattr(d.row, "insert_seq", None)
     return not (isinstance(seq, str) and seq == "" and getattr(d.row, "_has_insert_seq", False))

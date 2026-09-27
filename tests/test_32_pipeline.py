@@ -311,7 +311,7 @@ def test_carriers_the_aligner_placed_elsewhere_are_the_same_allele_not_reference
     insertion looked like 5 alt reads over 35 reference reads and scored as an
     artifact. A read with an insertion of the allele's length within
     CARRIER_WINDOW_BP carries the same allele."""
-    result = run(dispersed_reads())
+    result = run(dispersed_reads(), same_allele_carrier_window_bp=500)
     rows = [row for row in result.evidence_ledger
             if row.candidate_retention_reason == "EVALUATED" and abs(row.pos - 10000) <= 50]
     assert rows
@@ -330,7 +330,13 @@ def test_an_insertion_of_another_length_nearby_is_not_the_same_allele():
             qname=f"other{i}", tid=0, pos=start, mapq=60,
             cigar=[(CIGAR_M, site - start), (CIGAR_I, len(other)), (CIGAR_M, end - site)],
             seq=REFERENCE[start:site] + other + REFERENCE[site:end]))
-    result = run(reads)
+    result = run(reads, same_allele_carrier_window_bp=500)
     rows = [row for row in result.evidence_ledger
             if row.candidate_retention_reason == "EVALUATED" and abs(row.pos - 10000) <= 50]
     assert max(row.alt_carrier_reads for row in rows) == 0
+
+
+def test_the_carrier_rule_is_off_by_default():
+    rows = [row for row in run(dispersed_reads()).evidence_ledger
+            if row.candidate_retention_reason == "EVALUATED"]
+    assert rows and all(row.alt_carrier_reads == 0 for row in rows)

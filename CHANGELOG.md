@@ -246,8 +246,9 @@ project's numbering, not this package's.)
 
 ### Fixed
 
-- **Carriers of an insertion that the aligner placed elsewhere were counted as
-  reference support.** In a tandem repeat or low-complexity flank, ONT reads
+- **Opt-in (`PLACER_SAME_ALLELE_CARRIER_WINDOW_BP=500`, off by default): carriers
+  of an insertion that the aligner placed elsewhere were counted as reference
+  support.** In a tandem repeat or low-complexity flank, ONT reads
   carry one insertion at offsets hundreds of bp apart. A hypothesis counted an
   insertion as alt only within +-25 bp of its bounds. Any other carrier
   spanning that window counted as REFERENCE.
@@ -258,6 +259,10 @@ project's numbering, not this package's.)
     not as reference. The ledger reports how many (`alt_carrier_reads`).
   - At four such truth loci, alt went from 2-5 to 20-52 and the artifact ratio
     from -14 to +10 and +47.
+  - Off by default: under the current decision the recovered loci are placed
+    at off-mode offsets. On HG002 chr1 the replay was +3 TP and +3 FP, a gain of
+    -0.140 (90% [-0.39, +0.12]), rejected until placement handles dispersed
+    carriers.
 
 - **Re-genotyping ignored the scan's genotype inputs.** Finalization
   re-genotypes each call with the sample's overdispersion and is meant to

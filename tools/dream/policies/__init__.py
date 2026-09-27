@@ -32,6 +32,9 @@ class Decision:
     #: the policy places it other than at its own row's VCF position: a policy
     #: may test a locus by one row and place it at another's breakpoint.
     pos: int | None = None
+    #: Whether the VCF would flag the call IMPRECISE, when the policy decides
+    #: that itself; None leaves it to the row's QC tokens, as placer writes them.
+    imprecise: bool | None = None
 
 
 def load(name_or_path: str) -> ModuleType:
