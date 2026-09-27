@@ -205,6 +205,10 @@ def build_arg_parser() -> argparse.ArgumentParser:
                              "RepeatModeler2 on a non-model genome): such an "
                              "insert may be an element the library never saw, "
                              "and the miss is not held against it")
+    parser.add_argument("--record-world", action="store_true",
+                        help="development: also write each evaluated row's insert "
+                             "sequence to the ledger, so tools/dream can replay "
+                             "decision policies against this run")
     parser.add_argument("--output-dir", default=".",
                         help="where the five output files are written")
     parser.add_argument("bam")
@@ -241,6 +245,8 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
         config.te_library_completeness = args.library_completeness
     if args.decision is not None:
         config.decision_mode = args.decision
+    if args.record_world:
+        config.record_world = True
     return config
 
 
@@ -324,7 +330,8 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
         reader.close()
         reference.close()
 
-    paths = write_outputs(result, output_dir, context=context)
+    paths = write_outputs(result, output_dir, include_insert_seq=config.record_world,
+                          context=context)
     for key, name in (("scientific_txt", "scientific.txt"),
                       ("evidence_ledger_tsv", "evidence_ledger.tsv"),
                       ("structural_calls_tsv", "structural_calls.tsv"),

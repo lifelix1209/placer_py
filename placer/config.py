@@ -150,6 +150,9 @@ class PipelineConfig:
     #: conformal selection decide. "mechanism": the per-class likelihood
     #: ratios, checked by decoys, under e-BH (`core/mechanism_selection.py`).
     decision_mode: str = "legacy"
+    #: Write every evaluated row's insert sequence into the ledger, so the run
+    #: can serve as a replay world for `tools/dream` (development only).
+    record_world: bool = False
 
     # ------------------------------------------------------------- consensus
     event_consensus_poa_min_reads: int = 2

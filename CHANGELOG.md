@@ -20,6 +20,15 @@ project's numbering, not this package's.)
 
 ### Added
 
+- **TEBench's TE rule, measured on every insert**: the union of all TE-class
+  hits in bases and as a fraction of the insert (`te_union_covered_bp`,
+  `te_union_coverage`), and the family covering the most of it
+  (`te_dominant_family` / `_class` / `_covered_bp`), in the ledger and the
+  TSVs. It is the benchmark's own rule (at least 100 bp and 50% TE, non-TE
+  classes excluded), read off this run's BLAST hits. Nothing decides on it
+  yet.
+- **`--record-world`** (development): write each evaluated row's insert
+  sequence into the ledger, so the run can be replayed.
 - **The form of an LTR insertion** -- `full` (LTR-internal-LTR), `solo`,
   `internal` or `partial` -- read across the library's separate LTR and
   internal-region entries (`MER41A` + `MER41-int`, EDTA's `_LTR`/`_INT`), in

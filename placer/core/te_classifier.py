@@ -562,6 +562,17 @@ def covered_fraction_from_intervals(length: int,
     """
     if length <= 0 or not intervals:
         return 0.0
+    return _clamp(covered_bases_from_intervals(length, intervals) / length, 0.0, 1.0)
+
+
+def covered_bases_from_intervals(length: int, intervals: list[tuple[int, int]]) -> int:
+    """How many of the insert's bases at least one interval covers.
+
+    The intervals are clipped to `[0, length)` and merged first, so bases
+    that overlapping HSPs share are counted once.
+    """
+    if length <= 0 or not intervals:
+        return 0
     covered = 0
     current_start = -1
     current_end = -1
@@ -584,7 +595,7 @@ def covered_fraction_from_intervals(length: int,
         current_start, current_end = start, end
     if current_start >= 0:
         covered += current_end - current_start
-    return _clamp(covered / length, 0.0, 1.0)
+    return covered
 
 
 def collapse_blast_hsps(hsps: list[BlastHsp], query_len: int) -> list[BlastSubjectHit]:
@@ -680,6 +691,22 @@ class TEAlignmentEvidence:
     #: For an LTR element: "full" (LTR-internal-LTR), "solo", "internal",
     #: "partial" (`core/ltr_pairs.py`); "NA" for any other class.
     ltr_form: str = "NA"
+    #: TEBench's TE rule, taken from these same hits.
+    #:
+    #: * `te_union_covered_bp` / `te_union_coverage`: the union of every
+    #:   TE-class hit on the insert (satellites, RNA genes and simple repeats
+    #:   excluded), in bases and as a fraction of the insert.
+    #: * `te_dominant_*`: the family whose hits cover the most of the insert,
+    #:   with its class and covered bases. An LTR element's LTR and internal
+    #:   entries share a family, so a provirus counts as one element.
+    #:
+    #: The best-SCORING family, which names the call today, can differ: an old
+    #: LTR carrying a young Alu is named Alu by score.
+    te_union_covered_bp: int = 0
+    te_union_coverage: float = 0.0
+    te_dominant_family: str = "NA"
+    te_dominant_class: str = "NA"
+    te_dominant_covered_bp: int = 0
     #: The class's structural hallmarks (`core/element_structure.py`).
     element_structure: ElementStructure = field(default_factory=ElementStructure)
     coarse_prefilter_score: float = 0.0
@@ -710,6 +737,49 @@ class TEAlignmentEvidence:
         default_factory=SequenceExplanation)
     pass_: bool = False
     qc_reason: str = "NO_TE_ALIGNMENT"
+
+
+def _hit_intervals(hits: list[BlastSubjectHit]) -> list[tuple[int, int]]:
+    return [interval for hit in hits
+            for interval in (hit.query_intervals or [(hit.query_start, hit.query_end)])]
+
+
+def measure_te_coverage(evidence: TEAlignmentEvidence, hits: list[BlastSubjectHit],
+                        insert_len: int) -> None:
+    """Fill in the `te_union_*` and `te_dominant_*` fields.
+
+    This is TEBench's rule (`tebench.normalize.annotate_from_repeatmasker`),
+    with this run's BLAST hits standing in for RepeatMasker's:
+
+      * non-TE classes do not count;
+      * the gate is on the union over every TE hit, since a full-length
+        element may be split across several library entries;
+      * the element named is the family covering the most bases.
+
+    `hits` are the element hits: each already carries informative (not
+    simple-repeat) bases.
+    """
+    te_hits = [hit for hit in hits if hit.name_parts.te_class is not TeClass.NON_TE]
+    if insert_len <= 0 or not te_hits:
+        return
+    evidence.te_union_covered_bp = covered_bases_from_intervals(insert_len,
+                                                                _hit_intervals(te_hits))
+    evidence.te_union_coverage = evidence.te_union_covered_bp / insert_len
+    by_family: dict[str, list[BlastSubjectHit]] = {}
+    for hit in te_hits:
+        family = hit.name_parts.family
+        by_family.setdefault(family if family and family != "NA" else "UNKNOWN",
+                             []).append(hit)
+    ranked = sorted(
+        ((covered_bases_from_intervals(insert_len, _hit_intervals(members)),
+          max(hit.bitscore for hit in members), family, members)
+         for family, members in by_family.items()),
+        key=lambda item: (-item[0], -item[1], item[2]))
+    covered, _, family, members = ranked[0]
+    top = max(members, key=lambda hit: (hit.bitscore, hit.subject_id))
+    evidence.te_dominant_family = family
+    evidence.te_dominant_class = top.name_parts.te_class.value
+    evidence.te_dominant_covered_bp = covered
 
 
 def _finalize_evidence(evidence: TEAlignmentEvidence, insert_seq: str,
@@ -845,6 +915,7 @@ def build_insert_alignment_evidence_from_blast_hits(
         return _finalize_evidence(evidence, insert_seq,
                                   evidence.best_query_coverage, sequence_background)
     hits = element_hits
+    measure_te_coverage(evidence, hits, len(insert_seq))
 
     if not hits:
         evidence.qc_reason = "NO_TE_ALIGNMENT_MATCH"
@@ -1044,6 +1115,13 @@ def combine_side_alignments(main: TEAlignmentEvidence,
     out = replace(best)
     agree = len(sides) == 2 and sides[1][0].best_family == best.best_family
     if agree:
+        # Coverage of what was assembled -- the two side consensuses -- since
+        # the insert between them was never seen.
+        out.te_union_covered_bp = sum(ev.te_union_covered_bp for ev, _ in sides)
+        out.te_dominant_covered_bp = sum(ev.te_dominant_covered_bp for ev, _ in sides)
+        side_bases = sum(len(seq) for _, seq in sides)
+        out.te_union_coverage = (out.te_union_covered_bp / side_bases
+                                 if side_bases > 0 else 0.0)
         total = sum(aligned(ev) for ev, _ in sides)
         if total > 0:
             out.best_identity = sum(ev.best_identity * aligned(ev) for ev, _ in sides) / total

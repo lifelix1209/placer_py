@@ -230,6 +230,11 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.transduction_len = te_alignment.element_structure.transduction_len
     row.ltr_form = te_alignment.ltr_form
     row.te_from_clip_sides = te_alignment.from_clip_sides
+    row.te_union_covered_bp = te_alignment.te_union_covered_bp
+    row.te_union_coverage = te_alignment.te_union_coverage
+    row.te_dominant_family = te_alignment.te_dominant_family
+    row.te_dominant_class = te_alignment.te_dominant_class
+    row.te_dominant_covered_bp = te_alignment.te_dominant_covered_bp
     row.family_alignment_resolved = bool(getattr(te_alignment, "pass_", False))
     row.final_qc = _with_poa_cap_token(joint.final_qc, consensus)
     row.posterior_qc = joint.posterior_qc
@@ -367,6 +372,11 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.transduction_len = te_alignment.element_structure.transduction_len
     call.ltr_form = te_alignment.ltr_form
     call.te_from_clip_sides = te_alignment.from_clip_sides
+    call.te_union_covered_bp = te_alignment.te_union_covered_bp
+    call.te_union_coverage = te_alignment.te_union_coverage
+    call.te_dominant_family = te_alignment.te_dominant_family
+    call.te_dominant_class = te_alignment.te_dominant_class
+    call.te_dominant_covered_bp = te_alignment.te_dominant_covered_bp
     call.te_sequence_model_label = te_alignment.sequence_model_label
     call.te_sequence_model_score = te_alignment.sequence_model_score
     call.te_sequence_model_gc = te_alignment.sequence_model_gc

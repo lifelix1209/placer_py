@@ -64,6 +64,12 @@ class EvidenceLedgerRow:
     ltr_form: str = "NA"
     #: Named from the insert's two ends, assembled from clips (no read spans it).
     te_from_clip_sides: bool = False
+    #: TEBench's TE rule on the insert (`te_classifier.measure_te_coverage`).
+    te_union_covered_bp: int = 0
+    te_union_coverage: float = 0.0
+    te_dominant_family: str = "NA"
+    te_dominant_class: str = "NA"
+    te_dominant_covered_bp: int = 0
     #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
     #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
     #: current decision so the two can be compared before one replaces the
@@ -215,6 +221,12 @@ class FinalCall:
     ltr_form: str = "NA"
     #: Named from the insert's two ends, assembled from clips (no read spans it).
     te_from_clip_sides: bool = False
+    #: TEBench's TE rule on the insert (`te_classifier.measure_te_coverage`).
+    te_union_covered_bp: int = 0
+    te_union_coverage: float = 0.0
+    te_dominant_family: str = "NA"
+    te_dominant_class: str = "NA"
+    te_dominant_covered_bp: int = 0
     #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
     #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
     #: current decision so the two can be compared before one replaces the

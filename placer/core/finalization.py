@@ -2036,6 +2036,11 @@ def promoted_call_from_ledger_row(row: EvidenceLedgerRow) -> FinalCall:
     call.transduction_len = row.transduction_len
     call.ltr_form = row.ltr_form
     call.te_from_clip_sides = row.te_from_clip_sides
+    call.te_union_covered_bp = row.te_union_covered_bp
+    call.te_union_coverage = row.te_union_coverage
+    call.te_dominant_family = row.te_dominant_family
+    call.te_dominant_class = row.te_dominant_class
+    call.te_dominant_covered_bp = row.te_dominant_covered_bp
     call.mech_log_lr_vs_non_te = row.mech_log_lr_vs_non_te
     call.mech_log_lr_vs_artifact = row.mech_log_lr_vs_artifact
     call.mech_decoy_count = row.mech_decoy_count

@@ -718,3 +718,61 @@ def _batches_for_jobs(seen):
         aligner.align(inserts)                   # nothing carried over: same batches
         batches[jobs] = sorted(map(tuple, seen))
     return batches
+
+
+# ------------------------------------------------- TEBench's TE rule, on BLAST
+def _coverage_evidence(hsps, length):
+    hits = T.collapse_blast_hsps(hsps, length)
+    return call_or_skip(T.build_insert_alignment_evidence_from_blast_hits,
+                        insert(length), True, hits, 0.04)
+
+
+def test_the_te_rule_counts_the_union_of_every_te_hit():
+    """Dfam keeps a full-length L1 as `_5end` and `_3end` entries; the TE rule
+    is on their union, as TEBench's is, not on either entry alone."""
+    evidence = _coverage_evidence([
+        hsp("L1HS_5end#LINE/L1", length=300, qlen=1000, qstart=1, qend=300),
+        hsp("L1HS_3end#LINE/L1", length=400, qlen=1000, qstart=501, qend=900),
+        hsp("L1HS_3end#LINE/L1", length=200, qlen=1000, qstart=701, qend=900),
+    ], 1000)
+    assert evidence.te_union_covered_bp == 700
+    close(evidence.te_union_coverage, 0.70)
+    assert evidence.te_dominant_family == "L1"
+    assert evidence.te_dominant_class == "LINE"
+    assert evidence.te_dominant_covered_bp == 700
+
+
+def test_non_te_classes_do_not_count_toward_the_te_rule():
+    """A satellite expansion must not become a TE insertion by coverage."""
+    evidence = _coverage_evidence([
+        hsp("ALR#Satellite/centr", length=600, qlen=1000, qstart=1, qend=600),
+        hsp("AluY#SINE/Alu", length=300, qlen=1000, qstart=601, qend=900),
+    ], 1000)
+    assert evidence.te_union_covered_bp == 300
+    assert evidence.te_dominant_family == "Alu"
+
+
+def test_the_dominant_element_is_the_one_covering_the_most_bases():
+    """An old LTR carrying a young Alu: the Alu wins by score (identity x
+    coverage) and still names the call, but the LTR covers more of the insert
+    and is what a RepeatMasker-based truth set calls it. Its LTR and internal
+    entries are one family, so they count together."""
+    evidence = _coverage_evidence([
+        hsp("AluY#SINE/Alu", pident=99.0, length=600, qlen=2000, qstart=1, qend=600),
+        hsp("MLT1J1#LTR/ERVL-MaLR", pident=70.0, length=300, qlen=2000,
+            qstart=701, qend=1000, bitscore=200.0, evalue=1e-40),
+        hsp("MLT1J-int#LTR/ERVL-MaLR", pident=70.0, length=500, qlen=2000,
+            qstart=1001, qend=1500, bitscore=250.0, evalue=1e-50),
+    ], 2000)
+    assert evidence.best_family == "Alu"
+    assert evidence.te_dominant_family == "ERVL-MaLR"
+    assert evidence.te_dominant_class == "LTR"
+    assert evidence.te_dominant_covered_bp == 800
+    assert evidence.te_union_covered_bp == 1400
+
+
+def test_an_insert_with_no_hit_carries_no_te_coverage():
+    evidence = _coverage_evidence([], 500)
+    assert evidence.te_union_covered_bp == 0
+    assert evidence.te_union_coverage == 0.0
+    assert evidence.te_dominant_family == "NA"
