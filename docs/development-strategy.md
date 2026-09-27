@@ -31,7 +31,7 @@ policy. The evidence ledger of a finished scan is the record.
 | term | here |
 |---|---|
 | **world** | One scan commit's output on one dataset and region, frozen: its evidence ledger (every evaluated hypothesis, with everything measured about it), its insert sequences (`--record-world`), and their RepeatMasker annotation. Registered in `placer_dev/dream/worlds.json`. |
-| **policy** | Code that maps a world's rows to calls: which loci to select, what to call them, where to place them. `tools/dream/policies/current.py` is PLACER's own decision, calling the production function. |
+| **policy** | Code that maps a world's rows to calls: which loci to select, what to call them, where to place them. `tools/dream/policies/current.py` is PLACER's own decision, calling the production function. (Until 2026-09-27 it was 4cbf656's likelihood-gated decision, and the tables of rounds 1-3 below mean that by `current`; it is now `coverage_placed`.) |
 | **objective** | How a policy's calls are scored. It uses TEBench's own evaluator and nothing else (`tools/dream/objective.py`). |
 | **candidate** | A proposed policy. It lives in `placer_dev/dream/candidates/` until it is accepted. |
 | **round** | Diagnose, propose, replay, accept or reject, log. |
@@ -283,7 +283,7 @@ writes, and only FILTER=PASS calls count.
 |---|---|---|---|---|
 | `current` (+ collapse fix) | 128 | 13 | 90.8% | 55.9% |
 | `coverage_rule` | 145 | 21 | 87.3% | 63.3% |
-| `coverage_placed` (the rule + precise placement; production `--te-rule coverage`) | 157 | 10 | 94.0% | 68.6% |
+| `coverage_placed` (the rule + precise placement; production since 2026-09-26) | 157 | 10 | 94.0% | 68.6% |
 | sniffles2, for reference | 180 | 11 | 94.2% | 78.6% |
 
 Accepted: `coverage_placed` against `current`, gain +0.450, 90% [+0.050,

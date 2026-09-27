@@ -325,14 +325,11 @@ def _summary_lines(result) -> list[str]:
 
 
 def _shadow_lines(result) -> list[str]:
-    """The shadow decision's selection and its decoy check, per class."""
+    """The decision's selection and its decoy check, per class."""
     shadow = getattr(result, "mech_shadow", None)
     if shadow is None:
         return []
-    lines = [f"mech_identity_priors\tmean_identity={_number(shadow.identity.mean_identity)}"
-             f";q_null={_number(shadow.identity.q_ambient)}"
-             f";loci={shadow.identity.loci}",
-             f"mech_shadow_loci\t{shadow.loci}",
+    lines = [f"mech_shadow_loci\t{shadow.loci}",
              f"mech_shadow_te_selected\t{shadow.te_selected}",
              f"mech_shadow_structural_selected\t{shadow.structural_selected}",
              f"mech_collapse_region_items\t{shadow.collapse_items}"]

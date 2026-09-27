@@ -2,9 +2,8 @@
 The run configuration, as one value.
 
 Ported from `struct PipelineConfig` in `include/pipeline.h`. Every default here
-is the C++ default, verbatim, including the ones the README argues against --
-`min_final_raw_cigar_insert_len_bp = 50` and the TE-calibrated report mode among
-them. A migration that "improves" a default while porting cannot be validated by
+was the C++ default, verbatim, including the ones the README argued against. A
+migration that "improves" a default while porting cannot be validated by
 diffing against the thing it replaces, because every difference then has two
 possible causes.
 
@@ -22,20 +21,6 @@ part of a config that rots first and the part a reader actually needs.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from enum import Enum
-
-
-class FinalReportMode(str, Enum):
-    """What the main output file is allowed to contain.
-
-    `LEGACY` keeps structural insertions in `final_calls`; `TE_CALIBRATED` (the
-    default) moves them to `structural_calls` so the TE output is TE-only. The
-    string VALUES are the C++ enum's spelling, because finalization compares
-    against them.
-    """
-
-    LEGACY = "Legacy"
-    TE_CALIBRATED = "TeCalibrated"
 
 
 @dataclass
@@ -149,23 +134,16 @@ class PipelineConfig:
     genotype_overdispersion: float = 0.02
 
     # ------------------------------------------------------------- selection
-    #: A statistical risk level, not an evidence weight. The distinction is the
-    #: whole argument of the selection layer.
+    #: The decision (`core/mechanism_selection.select_loci_coverage`): the
+    #: per-class artifact ratio, checked by decoys, under one e-BH; TEBench's
+    #: coverage rule on the insert; precise placement. Validated on HG002
+    #: chr2-8 on 2026-09-26 (never dreamt on): pooled TP 858 / FP 42 (P 95.3%,
+    #: R 69.2%), against 718 / 68 (91.3%, 57.9%) for the likelihood-gated TE
+    #: rule it replaced; bootstrap 90% gain [+0.30, +0.64].
+    #:
+    #: `final_fdr_q` is a statistical risk level, not an evidence weight. The
+    #: distinction is the whole argument of the selection layer.
     final_fdr_q: float = 0.10
-    min_final_raw_cigar_insert_len_bp: int = 50
-    final_report_mode: FinalReportMode = FinalReportMode.TE_CALIBRATED
-    #: "legacy": the policy's emission gates, the dependency bound and e-BH /
-    #: conformal selection decide. "mechanism": the per-class likelihood
-    #: ratios, checked by decoys, under e-BH (`core/mechanism_selection.py`).
-    decision_mode: str = "mechanism"
-    #: Under the mechanism decision, what makes a selected insertion a TE call.
-    #: "likelihood": the per-class vs_non_te ratio gates it (4cbf656).
-    #: "coverage": TEBench's rule on the insert, one e-BH on the artifact
-    #: ratio, and precise placement (`mechanism_selection.select_loci_coverage`).
-    #: "coverage" became the default on 2026-09-26, after chr2-8 validation (never
-    #: dreamt on): pooled TP 858 / FP 42 (P 95.3%, R 69.2%) against 718 / 68
-    #: (91.3%, 57.9%) for "likelihood"; bootstrap 90% gain [+0.30, +0.64].
-    mechanism_te_rule: str = "coverage"
     #: Write every evaluated row's insert sequence into the ledger, so the run
     #: can serve as a replay world for `tools/dream` (development only).
     record_world: bool = False

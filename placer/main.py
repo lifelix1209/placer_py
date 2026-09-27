@@ -8,11 +8,12 @@ arguments, apply the environment overrides, build the three external
 dependencies (BAM, reference, TE library), run the pipeline, write five files.
 Every decision lives in the stages; nothing here chooses anything.
 
-THE FOUR FLAGS are the ones that survived. `--final-fdr-q` is the single policy
-knob -- a target false-call RISK, not an evidence weight -- and the other three
-are output shape. `--threads` is a fifth that decides nothing: it sets how
-many processes scan (`placer/parallel.py`), and the files are the same
-bytes for any value. The read-count, GQ, insert-length and segmentation-score
+FEW FLAGS survived. `--final-fdr-q` is the single policy knob -- a target
+false-call RISK, not an evidence weight. `--library-completeness` says what a
+miss against the TE library means, and `--region` and `--output-dir` are
+input and output shape. `--threads` decides nothing: it sets how many
+processes scan (`placer/parallel.py`), and the files are the same bytes for
+any value. The read-count, GQ, insert-length and segmentation-score
 ladders that used to be flags were deleted along with the thresholds behind
 them; see `placer/core/policy.py`.
 
@@ -30,7 +31,7 @@ import sys
 from collections.abc import Mapping
 
 from placer import __version__
-from placer.config import BamRegionScope, FinalReportMode, PipelineConfig
+from placer.config import BamRegionScope, PipelineConfig
 from placer.report.writer import write_outputs
 
 #: `PLACER_*` environment overrides, and the config field each sets. The C++
@@ -81,8 +82,6 @@ _ENV_STRING_FIELDS = {
 UNCLASSIFIED_LIBRARY_WARN_FRACTION = 0.5
 
 USAGE = ("placer [--region <chrom:start-end>] [--threads <n>] [--final-fdr-q <q>] "
-         "[--final-report-mode <legacy|te-calibrated>] "
-         "[--min-final-raw-cigar-insert-len-bp <bp>] "
          "[--library-completeness <curated|denovo>] <input.bam> <ref.fa> <te.fa>")
 
 
@@ -190,16 +189,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
                              "identical for any value")
     parser.add_argument("--final-fdr-q", type=float, default=None,
                         help="target false-call risk for the final selection")
-    parser.add_argument("--final-report-mode", default=None,
-                        choices=("legacy", "te-calibrated"),
-                        help="legacy keeps structural insertions in the main output")
-    parser.add_argument("--min-final-raw-cigar-insert-len-bp", type=int, default=None)
-    parser.add_argument("--decision", default=None, choices=("legacy", "mechanism"),
-                        help="mechanism (default): e-BH on the decoy-checked artifact "
-                             "ratio decides which insertions are there. legacy: the "
-                             "old policy gates and calibrated selection (deprecated; "
-                             "its VCF reports aggregated calls at the left end of "
-                             "intervals up to kilobytes wide)")
     parser.add_argument("--library-completeness", default=None,
                         choices=("curated", "denovo"),
                         help="curated (default; Dfam, RepBase): an insert that "
@@ -207,11 +196,6 @@ def build_arg_parser() -> argparse.ArgumentParser:
                              "RepeatModeler2 on a non-model genome): such an "
                              "insert may be an element the library never saw, "
                              "and the miss is not held against it")
-    parser.add_argument("--te-rule", default=None, choices=("likelihood", "coverage"),
-                        help="what makes a selected insertion a TE call: coverage "
-                             "(default): TE hits cover >=50%% and >=100 bp of the "
-                             "insert, the rule TEBench and GIAB annotation use. "
-                             "likelihood: the per-class vs_non_te ratio (deprecated)")
     parser.add_argument("--record-world", action="store_true",
                         help="development: also write each evaluated row's insert "
                              "sequence to the ledger, so tools/dream can replay "
@@ -242,18 +226,8 @@ def config_from_args(args, environ: dict[str, str] | None = None) -> PipelineCon
         config.scan_workers = args.threads
     if args.final_fdr_q is not None:
         config.final_fdr_q = args.final_fdr_q
-    if args.final_report_mode is not None:
-        config.final_report_mode = (FinalReportMode.LEGACY
-                                    if args.final_report_mode == "legacy"
-                                    else FinalReportMode.TE_CALIBRATED)
-    if args.min_final_raw_cigar_insert_len_bp is not None:
-        config.min_final_raw_cigar_insert_len_bp = args.min_final_raw_cigar_insert_len_bp
     if args.library_completeness is not None:
         config.te_library_completeness = args.library_completeness
-    if args.decision is not None:
-        config.decision_mode = args.decision
-    if args.te_rule is not None:
-        config.mechanism_te_rule = args.te_rule
     if args.record_world:
         config.record_world = True
     return config

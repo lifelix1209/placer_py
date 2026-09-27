@@ -3,8 +3,8 @@
 A world is what one scan commit recorded on one dataset and region. Its rows
 are the ledger's EVALUATED rows, with every column the ledger carries. Numeric
 columns become numbers, so the rows can be handed to placer's own selection
-code (`placer.core.mechanism_selection.select_loci`) exactly as the scan hands
-it ledger rows.
+code (`placer.core.mechanism_selection.select_loci_coverage`) exactly as
+finalization hands it ledger rows.
 
 A world goes stale when the scan changes what a column means. Record the scan
 commit with each world (`worlds.json`) and replay only against worlds whose

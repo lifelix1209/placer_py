@@ -61,12 +61,12 @@ from the source rather than maintained by hand:
 | `pipeline_segmentation_stage.inc` | `core/segmentation.py` |
 | `pipeline_hypothesis_emission_stage.inc` | `core/hypotheses.py` |
 | `decision_policy.cpp` | `core/policy.py`, `core/genotype.py` |
-| `mechanistic_evidence.cpp` | `core/blocks.py`, `core/dependency.py` |
+| `mechanistic_evidence.cpp` | `core/blocks.py` |
 | `event_explanation.cpp` | `core/explanation.py` |
-| `conformal_selector.cpp` | `core/conformal.py` |
+| `conformal_selector.cpp` | (ported, then deleted with the legacy decision) |
 | `null_control.cpp` | `core/null_control.py` |
-| `pipeline_call_selection.inc` | `core/call_selection.py` |
-| `pipeline_finalization_stage.inc` | `core/finalization.py` |
+| `pipeline_call_selection.inc` | (ported, then deleted with the legacy decision) |
+| `pipeline_finalization_stage.inc` | `core/finalize.py` (rewritten: `core/mechanism_selection.py`) |
 | `pipeline_{entrypoints,bin_processing_stage}.inc` | `pipeline.py`, `core/scan.py`, `core/bins.py` |
 | `main.cpp` | `main.py`, `wiring.py`, `report/tsv.py` |
 
@@ -127,8 +127,8 @@ placer/
   (naming)        te_classifier breakpoints events consensus segmentation
                   hypotheses
   (deciding)      policy blocks structure explanation genotype tsd
-  (selecting)     dependency selection conformal decoys null_control
-                  call_selection finalization integrate tprt
+  (selecting)     tprt mechanism locus_evidence null_control selection
+                  mechanism_selection
 
   --- report/: everything that renders; every function returns a string --
   report/tsv.py     scientific.txt, structural_calls.tsv, evidence_ledger.tsv
@@ -155,11 +155,11 @@ tests/
   test_26_breakpoints.py  the priority ladder
   test_27_segmentation.py the tripartite decode
   test_28_events.py     counts, event strings, clip concordance
-  test_29_finalization.py the whole-run stage
-  test_30_call_selection.py  one call per component, the interval cache
+  test_30_interval_cache.py  fetching each stretch of reads once
   test_31_outputs.py    triage, posterior, output contracts, the CLI
   test_32_pipeline.py   THE end-to-end acceptance test, and de novo
   test_38_parallel.py   --threads N writes the same bytes as --threads 1
+  test_44_mechanism_selection.py  the decision, and finalization's use of it
 tools/
   run_tests_without_pytest.py    zero-dependency runner
 ```
@@ -193,7 +193,7 @@ or, without installing, `python3 -m placer.main ...` from the repository
 root.
 
 The decision layer needs none of the scan dependencies:
-`placer.core.finalization` and everything it imports run on a ledger alone,
+`placer.core.finalize` and everything it imports run on a ledger alone,
 which is why they are optional rather than required.
 
 ## Speed
@@ -291,7 +291,7 @@ python3 tools/run_tests_without_pytest.py test_04    # one module
 ```
 
 ```
-total: 736 passed, 0 failed, 2 skipped, 2 xfail (known issues)
+total: 770 passed, 0 failed, 0 skipped, 2 xfail (known issues)
 ```
 
 | module | status |
@@ -301,11 +301,9 @@ total: 736 passed, 0 failed, 2 skipped, 2 xfail (known issues)
 | `genotype.py` | GQ as posterior Phred, count invariants |
 | `structure.py` | path confidence, poly(A) state |
 | `blocks.py` | 8 certificates, aggregate algebra, robust lfdr |
-| `dependency.py` | bound invariants + 3 regressions |
-| `selection.py` | e-BH, mean-not-max, dominance, BY, FDR simulation |
-| `decoys.py` | the validity check that replaced calibration |
-| `integrate.py` | both selection paths, joined to the mechanistic layer |
+| `selection.py` | e-BH, FDR simulation |
 | `tprt.py` | the coincidence model, 10 behaviour cases |
+| `mechanism_selection.py` | the decision: decoy check, loci, e-BH, TE rule, placement |
 
 ## How to read the suite
 
@@ -325,19 +323,23 @@ total: 736 passed, 0 failed, 2 skipped, 2 xfail (known issues)
    step-up rule that a handful of fixed cases would miss.
 2. **Regression** (`@pytest.mark.regression`) — bugs found and fixed during this
    work, pinned so a port cannot reintroduce them:
-   - the dependency cap applied *after* the penalty instead of before (a
-     validity bug: `sigma` bounds `E[min(Y,C)]`, so only `min(Y,C)/sigma` is an
-     e-value);
-   - the calibration sample selected by the very aggregate being calibrated,
-     which truncated `sigma`'s right tail and collapsed it onto its floor of 1;
-   - `max()` instead of the mean when combining e-value constructions (the
-     maximum of e-values is not an e-value);
    - GQ implemented as a likelihood difference instead of the posterior error in
      Phred;
    - a minimum-depth gate that duplicated what GQ already does.
+
+   (Three more -- the dependency cap applied after the penalty, the
+   calibration sample selected by the aggregate being calibrated, and `max()`
+   instead of the mean when combining e-values -- went with the legacy
+   decision they pinned, on 2026-09-27.)
 3. **Contract** (`@pytest.mark.contract`) — the ledger schema, i.e. the seam.
 
 ## What joining the layers found
+
+> History. This section and the two after it record how the decision layer
+> was redesigned. `integrate.py`, `decoys.py`, `dependency.py`, `conformal.py`
+> and `tests/test_13_end_to_end.py`, which they cite, were deleted with the
+> legacy decision on 2026-09-27. The decision they argued for is
+> `core/mechanism_selection.py`.
 
 `integrate.py` puts the existing mechanistic score under e-BH, which gives the
 Python side FDR control for the first time. Running it produced a result worth
@@ -461,8 +463,10 @@ Measured on the TPRT terms over 20,000 simulated nulls: `E_null[e^score] =
 penalty, and e-BH works.
 
 What remains for a null set is **verification, not estimation** — a likelihood
-approach's real risk is misspecification, so `placer/core/decoys.py` checks
-`E_null[e^score] <= 1` and refuses to proceed if it fails. That is a far weaker
+approach's real risk is misspecification, so the decision checks
+`E_null[e^score] <= 1` on shifted-breakpoint decoys, per class, and divides a
+class's e-values by the bound where it fails
+(`core/mechanism_selection.decoy_checks`). That is a far weaker
 requirement than calibration: an approximate null set can still falsify the
 inequality, whereas estimating sigma from one would need a faithful draw.
 
@@ -561,8 +565,7 @@ questions, each of which has evidence attached rather than an opinion:
   TE truth set from GIAB Tier1, with development and holdout regions labelled
   in the manifest. A change that needs the holdout to justify it is a fit,
   not a fix.
-- **Four unimported modules** — `tprt.py`, `integrate.py`, `decoys.py` and
-  `null_control.py` are reachable only from tests, and every one of them is
-  deliberate: see `docs/off-pipeline-modules.md` for which is which.
-  `selection.py` was the fifth and was the only genuine duplicate; it is now
-  imported by `finalization.py` and the inline copy is gone.
+- **The four once-unimported modules** — `tprt.py` and `null_control.py` are
+  on the calling path now, and `integrate.py` and `decoys.py` were deleted
+  once the decision they prototyped replaced the legacy one:
+  `docs/off-pipeline-modules.md` records which went where.

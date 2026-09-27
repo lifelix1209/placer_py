@@ -837,8 +837,8 @@ def _core_in_element_orientation(evidence: TEAlignmentEvidence,
 
 #: A hit NAMES an element only if at least this many of the insert bases it
 #: aligns are informative -- outside simple repeats (`simple_repeat_mask`).
-#: 50 bp is the structural-variant floor this tool already uses
-#: (`min_final_raw_cigar_insert_len_bp`), not a fitted value: below it the
+#: 50 bp is the conventional structural-variant floor (the C++ default of
+#: `min_final_raw_cigar_insert_len_bp`), not a fitted value: below it the
 #: alignment cannot distinguish one element from a chance match.
 #:
 #: WHY AN ABSOLUTE COUNT AND NOT A FRACTION. Many consensus sequences contain

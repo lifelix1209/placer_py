@@ -41,8 +41,10 @@ class PipelineResult:
     final_pass_calls: int = 0
     #: Re-estimated at finalization from this run's own count distribution.
     estimated_overdispersion: float = 0.02
-    #: The measured dependency bound. Earlier releases asserted 0.65 nats
-    #: (sigma = 1.92) with no evidence; these fields report what was used.
+    #: The legacy decision's dependency bound. Nothing has set these since it
+    #: was deleted (2026-09-27): they keep their defaults, which the VCF header
+    #: and the summary still print, until a release that may change the output
+    #: removes them.
     estimated_dependency_penalty: float = 0.0
     estimated_dependency_penalty_non_te: float = 0.0
     estimated_dependency_sigma: float = 1.0
@@ -51,11 +53,11 @@ class PipelineResult:
     dependency_penalty_cap_log: float = 0.0
     dependency_penalty_null_count: int = 0
     dependency_penalty_estimated: bool = False
-    #: The per-class decision's shadow selection and decoy check
-    #: (`core/mechanism_selection.py`), recorded beside the current decision.
+    #: The decision's selection counts and decoy check
+    #: (`core/mechanism_selection.py`), for the summary.
     mech_shadow: ShadowSelection = field(default_factory=ShadowSelection)
-    #: Every evaluated hypothesis's call, before any per-component selection:
-    #: what the mechanism decision selects from. Filled only in that mode.
+    #: Every evaluated hypothesis's call, one per ledger observation: what the
+    #: decision selects from. Finalization empties it.
     candidate_calls: list[FinalCall] = field(default_factory=list)
 
     final_calls: list[FinalCall] = field(default_factory=list)

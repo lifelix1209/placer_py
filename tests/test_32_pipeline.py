@@ -1,9 +1,7 @@
 """
 The whole pipeline, end to end.
 
-THE ACCEPTANCE TEST FOR THE SCANNER HALF, in the same sense that
-`test_13_end_to_end.py` is the acceptance test for the decision half. It builds
-a synthetic locus -- reads carrying a known insertion against a known reference
+THE ACCEPTANCE TEST FOR THE SCANNER HALF. It builds a synthetic locus -- reads carrying a known insertion against a known reference
 -- and runs every stage from `AlignedRead`s to written files, with no BAM, no
 reference index and no BLAST.
 
@@ -23,7 +21,7 @@ from conftest import call_or_skip
 
 from placer import main as M
 from placer.alignment import CIGAR_I, CIGAR_M, AlignedRead
-from placer.config import FinalReportMode, PipelineConfig
+from placer.config import PipelineConfig
 from placer.core.bins import group_reads_into_bins
 from placer.core.contracts import StageHooks
 from placer.core.te_classifier import TEAlignmentEvidence
@@ -37,13 +35,17 @@ REFERENCE = "".join(random.Random(11).choice("ACGT") for _ in range(20000))
 INSERT = "TTTTGGGGCCCCAAAA" * 20
 
 
-def te_evidence(seq: str) -> TEAlignmentEvidence:
+def te_evidence(seq: str, coverage: float = 0.95) -> TEAlignmentEvidence:
+    covered = int(coverage * len(seq))
     return TEAlignmentEvidence(
         best_family="L1", best_subfamily="L1HS", best_identity=0.98,
         best_query_coverage=0.95, best_score=0.93, cross_family_margin=0.4,
         sequence_model_label="TE_MODEL_IN_DISTRIBUTION", sequence_model_score=0.93,
         annotation_confidence="HIGH", annotation_residual_fraction=0.05,
-        qc_reason="PASS_INSERT_TE_ALIGNMENT", pass_=True)
+        qc_reason="PASS_INSERT_TE_ALIGNMENT", pass_=True,
+        te_union_covered_bp=covered, te_union_coverage=coverage,
+        te_dominant_family="L1", te_dominant_class="LINE",
+        te_dominant_covered_bp=covered)
 
 
 def synthetic_reads(alt: int = 8, ref: int = 3) -> list[AlignedRead]:
@@ -63,21 +65,24 @@ def synthetic_reads(alt: int = 8, ref: int = 3) -> list[AlignedRead]:
     return reads
 
 
-def hooks(reads):
+def hooks(reads, coverage: float = 0.95):
     return StageHooks(
         fetch_reference=lambda chrom, start, end: REFERENCE[max(0, start):max(0, end)],
-        align_insert=te_evidence)
+        align_insert=lambda seq: te_evidence(seq, coverage))
 
 
-def run(reads, **config_kw):
-    # These tests were written for the legacy decision and check its behaviour
-    # (one synthetic locus, its abstention route, its dependency bound); the
-    # mechanism decision's e-BH cannot select a family of one. They pin it until
-    # the legacy decision is deleted, and go with it.
-    config_kw.setdefault("decision_mode", "legacy")
+#: The FDR level these one-locus runs select at. e-BH over m = 1 selects only
+#: an e-value of at least 1/q, and the synthetic locus's artifact ratio is 1.7
+#: nats (8 alt reads against 3, and no TSD or motif in the insert): e = 5.5.
+#: At the default q = 0.1 nothing past the decision would be exercised.
+ONE_LOCUS_Q = 0.5
+
+
+def run(reads, coverage: float = 0.95, **config_kw):
+    config_kw.setdefault("final_fdr_q", ONE_LOCUS_Q)
     config = PipelineConfig(bin_size=100000, **config_kw)
     return run_pipeline(reads, lambda tid: "chr1", lambda c, s, e: reads,
-                        config, hooks(reads))
+                        config, hooks(reads, coverage))
 
 
 # ----------------------------------------------------------------- binning
@@ -178,24 +183,32 @@ def test_the_whole_pipeline_recovers_a_synthetic_insertion():
     assert row.insert_seq in INSERT or INSERT[4:-4] in row.insert_seq
 
 
-def test_the_locus_is_reported_somewhere_and_exactly_once():
+def test_the_locus_is_reported_as_a_te_call_exactly_once():
     """
-    Either as a TE call or -- when the calibrated risk gate abstains on the
-    element identity -- as a structural insertion. What must NOT happen is the
-    event being reported twice or dropped entirely.
+    TE hits cover 95% of the insert, so TEBench's rule makes it a TE call,
+    named after the family covering it. What must NOT happen is the event
+    being reported twice or dropped entirely.
     """
     result = run(synthetic_reads())
-    reported = result.final_calls + result.structural_calls
-    assert len(reported) == 1
-    call = reported[0]
+    assert len(result.final_calls) == 1 and result.structural_calls == []
+    call = result.final_calls[0]
     assert call.chrom == "chr1"
     assert abs(call.pos - 10000) <= 50
     assert call.alt_struct_reads == 8
+    assert (call.family, call.te_annotation_class) == ("L1", "LINE")
+    assert "PASS_TE_MECHANISM" in call.final_qc.split("|")
+
+
+def test_the_default_q_does_not_select_a_family_of_one_weak_locus():
+    """The same locus at q = 0.1 needs e >= 10 and has 5.5: e-BH's threshold
+    is m/(q r), and nothing lowers it for a small run."""
+    result = run(synthetic_reads(), final_fdr_q=0.1)
+    assert result.final_calls == [] and result.structural_calls == []
 
 
 def test_the_genotype_comes_out_heterozygous_at_eight_versus_three():
     result = run(synthetic_reads())
-    call = (result.final_calls + result.structural_calls)[0]
+    call = result.final_calls[0]
     assert call.genotype == "0/1"
     assert call.gq > 0
     assert 0.5 < call.af < 0.9
@@ -206,35 +219,29 @@ def test_a_call_carries_the_genotype_inputs_the_scan_used():
     and reuses `genotype_likelihood_input` for everything else. The scan never
     set it, so every call was re-genotyped from defaults: error 0.02 whatever
     was configured, and no length-concordance term (event length 0, no
-    observed alt lengths). The scan code is shared by both decision modes;
-    this one locus alone is too few for the mechanism mode's e-BH to select."""
+    observed alt lengths). The scan now sets it, and
+    re-genotyping must keep them."""
     result = run(synthetic_reads(), genotype_error_rate=0.07)
-    call = (result.final_calls + result.structural_calls)[0]
+    call = result.final_calls[0]
     inputs = call.genotype_likelihood_input
     assert inputs.error_rate == 0.07
     assert abs(inputs.event_length - len(INSERT)) <= 8
     assert len(inputs.alt_observed_lengths) == 8
 
 
-def test_an_abstaining_call_is_set_aside_rather_than_lost():
+def test_an_insertion_that_is_not_a_te_is_set_aside_rather_than_lost():
     """
-    Precision-first, end to end: the identity gate abstains, and the event is
-    still reported as a structural insertion with UNKNOWN family rather than
+    TE hits cover 30% of the insert, below TEBench's 50%: the insertion is
+    still reported, as a structural call with UNKNOWN family, rather than
     being discarded.
     """
-    result = run(synthetic_reads())
-    if not result.final_calls:
-        assert len(result.structural_calls) == 1
-        call = result.structural_calls[0]
-        assert call.final_qc.startswith("PASS_STRUCTURAL_INSERTION")
-        assert call.family == "UNKNOWN"
-        assert not call.family_committed
-
-
-def test_legacy_mode_keeps_the_call_in_the_main_output():
-    result = run(synthetic_reads(), final_report_mode=FinalReportMode.LEGACY)
-    assert len(result.final_calls) == 1
-    assert result.structural_calls == []
+    result = run(synthetic_reads(), coverage=0.3)
+    assert result.final_calls == []
+    assert len(result.structural_calls) == 1
+    call = result.structural_calls[0]
+    assert "PASS_STRUCTURAL_MECHANISM" in call.final_qc.split("|")
+    assert call.family == "UNKNOWN"
+    assert not call.family_committed
 
 
 def test_a_locus_with_no_alt_reads_produces_no_call():
@@ -244,15 +251,6 @@ def test_a_locus_with_no_alt_reads_produces_no_call():
     result = run(reference_only)
     assert result.final_calls == []
     assert result.structural_calls == []
-
-
-def test_the_dependency_bound_is_measured_from_the_runs_own_ledger():
-    """Not asserted. The reported sigma and null count are what make the
-    e-values auditable."""
-    result = run(synthetic_reads())
-    assert result.dependency_penalty_null_count >= 1
-    assert result.estimated_dependency_sigma >= 1.0
-    assert result.dependency_penalty_cap_log > 0.0
 
 
 def test_the_run_writes_five_files_even_when_three_are_empty():

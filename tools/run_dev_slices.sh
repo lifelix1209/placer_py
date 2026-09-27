@@ -4,7 +4,7 @@
 #
 #   sbatch tools/run_dev_slices.sh                 # outputs under $OUT_ROOT/<commit>/
 #   OUT_ROOT=/elsewhere sbatch tools/run_dev_slices.sh
-#   EXTRA_ARGS="--decision mechanism" sbatch tools/run_dev_slices.sh
+#   EXTRA_ARGS="--record-world" sbatch tools/run_dev_slices.sh
 #
 # The slices are inside TEBench's development_contigs (human chr1-8); the cichlid
 # dataset defines none, so chr1 is used. Nothing here touches a holdout contig.

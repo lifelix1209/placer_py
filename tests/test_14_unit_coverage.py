@@ -17,7 +17,7 @@ import math
 import pytest
 from conftest import call_or_skip, close
 
-from placer.core import blocks, dependency, genotype, integrate, structure, tprt
+from placer.core import blocks, genotype, structure, tprt
 from placer.core import policy as P
 
 pytestmark = pytest.mark.invariant
@@ -130,40 +130,6 @@ def test_serialize_blocks_round_trips_the_names():
     assert call_or_skip(blocks.serialize_blocks, blocks.Certificate()) == "NA"
 
 
-# -------------------------------------------------------------- dependency
-def test_empirical_bernstein_upper_is_above_the_mean_and_shrinks_with_n():
-    values = [1.0, 2.0, 3.0, 4.0] * 500
-    mean = sum(values) / len(values)
-    wide = call_or_skip(dependency.empirical_bernstein_upper, values[:8],
-                        -math.log(0.10), 20.0)
-    tight = call_or_skip(dependency.empirical_bernstein_upper, values,
-                         -math.log(0.10), 20.0)
-    assert wide > tight >= mean
-    # Fewer than two values has no variance, so the only honest bound is the cap.
-    close(call_or_skip(dependency.empirical_bernstein_upper, [3.0],
-                       -math.log(0.10), 2.0),
-          math.exp(2.0), "single value falls back to the cap")
-
-
-def test_empirical_bernstein_upper_is_floored_at_one_and_capped():
-    tiny = [0.001] * 100
-    close(call_or_skip(dependency.empirical_bernstein_upper, tiny,
-                       -math.log(0.10), 20.0), 1.0, "floored at 1")
-    huge = [1e6] * 100
-    close(call_or_skip(dependency.empirical_bernstein_upper, huge,
-                       -math.log(0.10), 2.0), math.exp(2.0), "capped")
-
-
-def test_calibration_rows_keeps_every_certificated_row():
-    ledger = [
-        {"mechanistic_blocks": "event:raw=1"},
-        {"mechanistic_blocks": "NA"},
-        {"mechanistic_blocks": ""},
-        {"mechanistic_blocks": "sequence:raw=2"},
-    ]
-    assert call_or_skip(dependency.calibration_rows, ledger) == [0, 3]
-
-
 # ---------------------------------------------------------------- genotype
 def test_log_choose_count_matches_the_binomial_coefficient():
     close(call_or_skip(genotype.log_choose_count, 10, 3),
@@ -195,26 +161,6 @@ def test_length_concordance_factor_discounts_length_discordant_alt_reads():
                                         alt_observed_lengths=[60, 900, 55, 1200])
     assert call_or_skip(genotype.length_concordance_factor, concordant) > 0.9
     assert call_or_skip(genotype.length_concordance_factor, discordant) < 0.1
-
-
-# --------------------------------------------------------------- integrate
-def test_build_e_values_floors_at_zero_and_keeps_every_hypothesis():
-    candidates = [
-        integrate.Candidate("a", log_score=5.0),
-        integrate.Candidate("b", log_score=-3.0),
-        integrate.Candidate("c", log_score=5.0, ambiguity_width=4.0),
-    ]
-    values = call_or_skip(integrate.build_e_values, candidates, 0.10, 1.0, 9.0)
-    assert set(values) == {"a", "b", "c"}, "every hypothesis stays in m"
-    close(values["a"], math.exp(5.0 - 1.0), "capped path is inert below the cap")
-    assert values["b"] == 0.0, "a negative log e-value floors at zero"
-    assert values["c"] == 0.0, "the ambiguity width can only shrink an e-value"
-
-
-def test_build_e_values_applies_the_cap_before_the_penalty():
-    candidates = [integrate.Candidate("x", log_score=50.0)]
-    values = call_or_skip(integrate.build_e_values, candidates, 0.10, 2.0, 9.0)
-    close(values["x"], math.exp(9.0 - 2.0), "min(score, cap) - penalty")
 
 
 # --------------------------------------------------------------- structure
@@ -357,24 +303,3 @@ def test_log_sum_exp_of_all_impossible_is_impossible_not_nan():
     assert policy_module.logsumexp_values([impossible] * 4) == impossible
 
 
-def test_the_two_log_sum_exp_semantics_stay_distinct():
-    """Dropping non-finite operands and propagating them are both wanted.
-
-    `finalization.log_sum_exp_pair` reads -inf as "this line of evidence said
-    nothing" and must ignore it; the policy layer reads -inf as "this
-    hypothesis is impossible" and must not. Collapsing them onto one default
-    would silently change one of the two.
-    """
-    import math
-
-    from placer.core import finalization as finalization_module
-    from placer.core import mathx
-    from placer.core import policy as policy_module
-
-    abstained, real = -math.inf, 3.0
-    assert finalization_module.log_sum_exp_pair(abstained, real) == real
-    assert mathx.log_sum_exp((abstained, real), ignore_nonfinite=True) == real
-    # Propagating: -inf contributes exp(-inf) = 0, so the answer is still the
-    # finite operand -- the difference shows when EVERY operand is -inf.
-    assert policy_module.logsumexp_pair(abstained, real) == real
-    assert mathx.log_sum_exp((abstained, abstained), ignore_nonfinite=True) == -math.inf

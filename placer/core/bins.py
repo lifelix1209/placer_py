@@ -37,7 +37,6 @@ from typing import Callable
 from placer.alignment import AlignedRead, compute_ref_end
 from placer.config import PipelineConfig
 from placer.core import breakpoints as bp_module
-from placer.core import call_selection as selection_module
 from placer.core import consensus as consensus_module
 from placer.core import events as events_module
 from placer.core import fragments as fragments_module
@@ -139,7 +138,7 @@ def _summary_ledger_row(component: ComponentCall, summary: hyp_module.Hypothesis
 
     THESE ROWS ARE WHY THE LEDGER IS A NULL SET. A hypothesis triaged away is
     exactly a locus the pipeline looked at and declined, which is what the
-    dependency bound and the conformal null need. Their `final_qc` says so
+    overdispersion estimate needs. Their `final_qc` says so
     explicitly rather than leaving them indistinguishable from evaluated
     rejections.
     """
@@ -200,9 +199,8 @@ def _evaluated_ledger_row(component: ComponentCall,
                           owner_bin_end: int) -> EvidenceLedgerRow:
     """A ledger row for a hypothesis that WAS evaluated, carrying its verdict.
 
-    Note that the raw mechanistic aggregates travel here PENALTY-FREE. The
-    dependency bound is a whole-run quantity, and finalization subtracts it from
-    these -- see `placer/finalization.apply_dependency_penalty_calibration`.
+    Everything whole-run -- the decoy check, e-BH, the overdispersion -- is
+    left to finalization (`placer/core/finalize.py`).
     """
     row = EvidenceLedgerRow()
     row.chrom = component.chrom
@@ -323,8 +321,8 @@ def _final_call_from_evaluation(component: ComponentCall,
     call.pos = (evidence.bp_left + ((evidence.bp_right - evidence.bp_left) // 2)
                 if (evidence.bp_left >= 0 and evidence.bp_right >= 0)
                 else component.anchor_pos)
-    # The hypothesis's own position, before any retether moves `pos`: the one
-    # the ledger row carries, and the one the mechanism decision places from.
+    # The hypothesis's own position, before finalization places the call: the
+    # one the ledger row carries, and the one the decision groups loci by.
     call.hypothesis_pos = call.pos
     call.window_start = component.bin_start
     call.window_end = component.bin_end
@@ -741,15 +739,15 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
     # alignment and holds it. The bin's inserts are then aligned together, and
     # pass 2 finishes each hypothesis and appends its ledger rows and calls in
     # EXACTLY the order the single-pass loop did -- the triaged-away rows of a
-    # component, then its evaluated rows, then its selected calls, component by
-    # component -- because finalization reads the ledger in order and breaks
-    # ties by it.
+    # component, then its evaluated rows and their call candidates, component
+    # by component -- because finalization reads them in order and breaks ties
+    # by it.
     #
     # Reordering the work is safe because nothing a component computes feeds
     # the next one: the only shared state touched before the alignment is a
     # pair of counters on `result`, and addition does not care about order.
-    pending: list[tuple[ComponentCall, list[EvidenceLedgerRow], list[_PreparedEvaluation],
-                        list[selection_module.ComponentFinalCallCandidate]]] = []
+    pending: list[tuple[ComponentCall, list[EvidenceLedgerRow],
+                        list[_PreparedEvaluation]]] = []
     for index, component in enumerate(components):
         projection = cache_module.project_cached_interval_reads(requests[index],
                                                                 cache_entries)
@@ -809,29 +807,17 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
 
         shortlist = hyp_module.build_expensive_stage_shortlist(validator_candidates)
 
-        # Every hypothesis -- not just the shortlisted ones -- is available as a
-        # retether ANCHOR, which is why they are collected before the expensive
-        # stages run and independently of them.
-        anchors = [selection_module.ComponentFinalCallCandidate(
-            pos=hypothesis.center, emit_te=False, anchor_support=hypothesis.support,
-            anchor_priority=hypothesis.priority,
-            anchor_hypothesis_score=hypothesis.support
-            * bp_module.breakpoint_hypothesis_support_weight(hypothesis.priority),
-            component_anchor_pos=component.anchor_pos)
-            for hypothesis in all_hypotheses
-            if hypothesis.valid and hypothesis.center >= 0]
-
         prepared = [_prepare_shortlisted(component, local_records, fragments,
                                          shortlisted, config, hooks, result)
                     for shortlisted in shortlist]
-        pending.append((component, summary_rows, prepared, anchors))
+        pending.append((component, summary_rows, prepared))
 
     # Up to three sequences per hypothesis (insert, start side, end side), all
     # in the bin's one alignment request.
     flat = _align_bin_inserts(
-        [seq for _, _, prepared, _ in pending for item in prepared
+        [seq for _, _, prepared in pending for item in prepared
          for seq in item.seqs_to_align], hooks)
-    flat_seqs = [seq for _, _, prepared, _ in pending for item in prepared
+    flat_seqs = [seq for _, _, prepared in pending for item in prepared
                  for seq in item.seqs_to_align]
     alignments = iter([[flat[i] if flat_seqs[i] is not None else None
                         for i in range(k, k + 3)]
@@ -840,12 +826,11 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
     # ONE ROW PER OBSERVATION. Neighbouring components of one locus often
     # triage or evaluate the SAME hypothesis from the same reads, and each used
     # to append its own copy: 21% of the rows on a 0.9 Mb HG002 slice were
-    # exact duplicates. The ledger is the run's null set -- the dependency
-    # bound, the overdispersion estimate and the conformal controls all count
-    # its rows as separate observations -- so a duplicate is one locus
-    # counted twice. A row is dropped only when EVERY field equals one this
-    # bin already wrote; the call candidates are unaffected, and finalization
-    # already collapses the duplicate calls.
+    # exact duplicates. The ledger is the run's null set -- the overdispersion
+    # estimate counts its rows as separate observations -- so a duplicate is
+    # one locus counted twice. A row is dropped only when EVERY field equals
+    # one this bin already wrote, and a dropped row adds no call candidate
+    # either.
     bin_rows: list[EvidenceLedgerRow] = []
 
     def append_row(row: EvidenceLedgerRow) -> bool:
@@ -855,14 +840,12 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
         result.evidence_ledger.append(row)
         return True
 
-    for component, summary_rows, prepared, anchors in pending:
+    for component, summary_rows, prepared in pending:
         for row in summary_rows:
             append_row(row)
-        evaluations: list[tuple[selection_module.ComponentFinalCallCandidate, FinalCall]] = []
         for item in prepared:
-            shortlisted = item.shortlisted
             (evidence, consensus, segmentation, te_alignment, joint, genotype,
-             seg_evidence) = _finish_shortlisted(item, next(alignments), config)
+             _) = _finish_shortlisted(item, next(alignments), config)
             shadow = locus_module.score_evaluated_locus(
                 component.chrom, evidence.bp_left, evidence.bp_right,
                 segmentation.insert_seq, te_alignment, evidence.alt_struct_reads,
@@ -887,28 +870,5 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
             # evaluated identically is one row, so it is one candidate too, and
             # the decision sees exactly the population a replay of the ledger
             # sees (`tools/dream`).
-            if config.decision_mode == "mechanism" and row_is_new:
+            if row_is_new:
                 result.candidate_calls.append(call)
-            summary = shortlisted.validator.summary
-            candidate = selection_module.ComponentFinalCallCandidate(
-                pos=call.pos, anchor_pos=summary.bp_left,
-                score=joint.best.total,
-                emit_te=(joint.emit_te_call or joint.emit_structural_event_call),
-                evidence_te=joint.emit_evidence_te_call,
-                resolved_te=(joint.emit_te_call and not joint.emit_unknown_te),
-                one_sided_segmentation=policy_module.is_one_sided_segmentation_pass(
-                    seg_evidence),
-                anchor_support=summary.hypothesis_support,
-                anchor_ref_span_reads=summary.ref_span_reads,
-                anchor_priority=summary.hypothesis_priority,
-                anchor_hypothesis_score=summary.hypothesis_score,
-                component_anchor_pos=component.anchor_pos)
-            evaluations.append((candidate, call))
-
-        candidates = [candidate for candidate, _ in evaluations] + anchors
-        selection_module.retether_evidence_supported_final_call_positions(candidates)
-        for index_, (_, call) in enumerate(evaluations):
-            call.pos = candidates[index_].pos
-        for chosen in selection_module.select_component_final_call_indices(candidates):
-            if chosen < len(evaluations):
-                result.final_calls.append(evaluations[chosen][1])

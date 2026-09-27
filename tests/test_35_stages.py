@@ -143,18 +143,29 @@ def test_the_gate_uses_the_default_config_when_none_is_given():
 
 
 # ------------------------------------------------------- scan versus finalize
-def test_the_scan_leaves_the_run_uncalibrated():
+def test_the_scan_leaves_the_run_undecided():
     """
-    `run_scan` must stop before the whole-run stage. The dependency bound is a
-    null expectation measured across every candidate, so a scan that had
-    already applied it would have measured it from a partial run.
+    `run_scan` must stop before the whole-run stage. e-BH's m, the decoy check
+    and the overdispersion are measured across every candidate, so a scan that
+    had already applied them would have measured them from a partial run.
     """
-    from placer.core.result import PipelineResult
+    from test_32_pipeline import hooks, synthetic_reads
 
+    from placer.config import PipelineConfig
+    from placer.core.contracts import ReadSource
+    from placer.core.result import PipelineResult
+    from placer.core.scan import run_scan
+
+    reads = synthetic_reads()
     result = PipelineResult()
-    assert result.dependency_penalty_estimated is False
-    assert result.estimated_dependency_penalty == 0.0
-    assert result.final_pass_calls == 0
+    run_scan(ReadSource(reads=gate_reads(reads, result),
+                        chromosome_name=lambda tid: "chr1",
+                        fetch_local=lambda chrom, start, end: reads),
+             PipelineConfig(bin_size=100000), hooks(reads), result)
+    assert len(result.candidate_calls) == 1
+    assert result.final_calls == [] and result.final_pass_calls == 0
+    assert result.mech_shadow.loci == 0
+    assert result.estimated_overdispersion == PipelineResult().estimated_overdispersion
 
 
 def test_scan_then_finalize_is_the_same_run_as_run_pipeline():
@@ -167,7 +178,7 @@ def test_scan_then_finalize_is_the_same_run_as_run_pipeline():
     for its end-to-end acceptance, because a partition that only holds on empty
     input holds for the wrong reason.
     """
-    from test_32_pipeline import hooks, synthetic_reads
+    from test_32_pipeline import ONE_LOCUS_Q, hooks, synthetic_reads
 
     from placer.config import PipelineConfig
     from placer.core.contracts import ReadSource
@@ -176,7 +187,7 @@ def test_scan_then_finalize_is_the_same_run_as_run_pipeline():
     from placer.core.scan import run_scan
     from placer.pipeline import run_pipeline
 
-    config = PipelineConfig(bin_size=100000)
+    config = PipelineConfig(bin_size=100000, final_fdr_q=ONE_LOCUS_Q)
     reads = synthetic_reads()
 
     def chrom_name(tid):
@@ -200,6 +211,7 @@ def test_scan_then_finalize_is_the_same_run_as_run_pipeline():
     assert split.final_pass_calls == whole.final_pass_calls
     assert len(split.final_calls) == len(whole.final_calls)
     assert len(split.evidence_ledger) == len(whole.evidence_ledger)
+    assert len(split.final_calls) == 1
     assert [(c.chrom, c.pos, c.te_name) for c in split.final_calls] == \
            [(c.chrom, c.pos, c.te_name) for c in whole.final_calls]
-    assert split.estimated_dependency_sigma == whole.estimated_dependency_sigma
+    assert split.estimated_overdispersion == whole.estimated_overdispersion

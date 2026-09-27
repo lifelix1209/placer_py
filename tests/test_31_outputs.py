@@ -13,7 +13,7 @@ import pytest
 from conftest import call_or_skip, close
 
 from placer import main as M
-from placer.config import FinalReportMode, PipelineConfig
+from placer.config import PipelineConfig
 from placer.core import hypotheses as H
 from placer.core import result as R
 from placer.core.clustering import (
@@ -391,11 +391,9 @@ def test_environment_overrides_apply_and_bad_values_are_ignored():
 
 def test_a_flag_beats_an_inherited_environment_variable():
     args = M.build_arg_parser().parse_args(
-        ["--final-fdr-q", "0.01", "--final-report-mode", "legacy",
-         "a.bam", "ref.fa", "te.fa"])
+        ["--final-fdr-q", "0.01", "a.bam", "ref.fa", "te.fa"])
     config = call_or_skip(M.config_from_args, args, {"PLACER_BIN_SIZE": "5000"})
     close(config.final_fdr_q, 0.01, "flag wins")
-    assert config.final_report_mode == FinalReportMode.LEGACY
     assert config.bin_size == 5000
 
 

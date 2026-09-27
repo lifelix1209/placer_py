@@ -72,8 +72,8 @@ BREAKPOINT_SLACK_BP = 200
 #: zero-slack search found nothing, because allowing it always would let the
 #: flank slide over the junction and eat into the insert.
 ENDPOINT_SLACK_BP = 32
-#: One base is enough to be an insert. The LENGTH filters live downstream, in
-#: `min_final_raw_cigar_insert_len_bp`.
+#: One base is enough to be an insert. The LENGTH filter lives downstream: a TE
+#: call needs 100 TE-covered bases (`mechanism_selection.TE_MIN_COVERED_BP`).
 MIN_INSERT_BP = 1
 #: The longest flank tried. Beyond this the alignment cost grows without
 #: improving the placement.

@@ -125,8 +125,7 @@ def infer_event_length_from_alt_support(lengths: list[int]) -> int:
     return median_i32(lengths)
 
 
-#: Re-exported from `placer/core/supports.py`; `finalization.py` had the same
-#: merge-walk, factored into two functions instead of inlined.
+#: Re-exported from `placer/core/supports.py`.
 support_jaccard = supports.jaccard
 
 

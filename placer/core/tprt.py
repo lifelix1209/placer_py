@@ -67,9 +67,9 @@ annealing to the nicked strand), so they are combined into a single term rather
 than multiplied as if independent. Multiplying them would double count, and the
 mechanism is what tells you so.
 
-NOT ON THE CALLING PATH, and that is deliberate rather than neglect --
-see `docs/off-pipeline-modules.md` for which of the four unimported
-modules this is and why deleting it would lose something.
+ON THE CALLING PATH through `core/mechanism.py`, which builds the per-class
+likelihood ratios the decision runs on from these terms
+(`docs/off-pipeline-modules.md` has the history).
 """
 
 from __future__ import annotations

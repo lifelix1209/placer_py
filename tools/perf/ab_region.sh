@@ -17,11 +17,14 @@ O=${OUT_ROOT:-/mnt/home1/miska/hl725/scratch/placer_dev/prof}/ab_$TAG
 mkdir -p "$O"
 for side in A B; do
   repo=${!side}
+  # A tree from before the legacy decision was deleted still needs the flag
+  # to run the same decision; a later one no longer accepts it.
+  decision=$(grep -q '"--decision"' "$repo/placer/main.py" && echo "--decision mechanism")
   (cd "$repo" && /usr/bin/time -v python -m placer.main \
       $T/results/alignments/human_hg002/full/r0.primary.md.bam \
       /mnt/home1/miska/hl725/scratch/placer_dev/ref/GRCh38.primary.fa \
       $T/resources/human/dfam_human.freeze.fa \
-      --region "$REGION" --threads 1 --decision mechanism --output-dir "$O/$side" 2> "$O/$side.stderr")
+      --region "$REGION" --threads 1 $decision --output-dir "$O/$side" 2> "$O/$side.stderr")
   echo "$side $repo: $(grep -E 'User time|System time|Elapsed' "$O/$side.stderr" | tr -s ' ' | tr '\n' ' ')"
 done
 for f in scientific.txt evidence_ledger.tsv structural_calls.tsv calls.vcf calls.csv; do

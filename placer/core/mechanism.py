@@ -165,8 +165,8 @@ Q_AMBIENT = 0.70
 
 #: TE-derived sequence spans every age, so under H_TE the identity to the
 #: consensus is not one number but a distribution: a grid over
-#: [Q_TE_MIN, Q_TE_MAX], weighted uniformly by default and fitted to the
-#: sample by `mechanism_selection.estimate_identity_priors`.
+#: [Q_TE_MIN, Q_TE_MAX], weighted uniformly. (A fit of the weights to the
+#: sample served only the likelihood-gated TE rule, and went with it.)
 Q_TE_MIN = 0.75
 Q_TE_MAX = 0.995
 Q_GRID = tuple(round(Q_TE_MIN + 0.005 * i, 3) for i in range(int((Q_TE_MAX - Q_TE_MIN) / 0.005) + 1))
@@ -224,10 +224,8 @@ class MechanismParameters:
     #: version asked instead whether the insert was a YOUNG copy, against the
     #: genome's resident old copies (tprt's 0.98 / 0.88, then 0.95 / 0.80), and
     #: fitting that from the sample moved q_ambient to 0.86 on the human dev
-    #: slice and rejected its truth Alus at 0.85-0.92. `q_young` is updated
-    #: from the sample (`mechanism_selection.estimate_identity_priors`), which
-    #: absorbs consensus error; `q_ambient` is a property of alignment, not of
-    #: the sample, and stays fixed.
+    #: slice and rejected its truth Alus at 0.85-0.92. `q_ambient` is a
+    #: property of alignment, not of the sample, and stays fixed.
     q_young: float = Q_YOUNG
     q_ambient: float = Q_AMBIENT
     #: The age distribution over `Q_GRID`; None is uniform.

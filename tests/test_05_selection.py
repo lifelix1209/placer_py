@@ -1,5 +1,5 @@
 """
-Selection: e-BH, the conformal route, and the combination rule.
+Selection: e-BH.
 
 Mostly INVARIANT tests rather than fixed values, because the guarantees here are
 mathematical: they must hold for any correct implementation, in any language,
@@ -12,7 +12,7 @@ import math
 import random
 
 import pytest
-from conftest import call_or_skip, close
+from conftest import call_or_skip
 
 from placer.core import selection
 
@@ -82,123 +82,3 @@ def test_controls_fdr_under_the_null_by_simulation():
     assert fdp <= q * 3.0, (
         f"false discovery proportion {fdp:.3f} against a target of {q}; "
         "e-BH should be conservative here, not anti-conservative")
-
-
-# --------------------------------------------------- combining constructions
-@pytest.mark.regression
-def test_combination_is_the_mean_not_the_max():
-    """
-    The maximum of e-values is NOT an e-value: `E_null[max_k E_k]` can exceed 1.
-    It obeys `max <= sum`, so `max / K` is valid, which means a plain `max()` is
-    anti-conservative by at most a factor of K = 3 (ln 3 = 1.10 nats).
-
-    The arithmetic mean is valid with no assumption, by linearity of
-    expectation, and DOMINATES `max / K` because it keeps the other
-    constructions' evidence instead of discarding it.
-
-    The C++ used `max()` until this was fixed.
-    """
-    got = call_or_skip(selection.combine_e_values, [900.0, 0.0, 0.0])
-    close(got, 300.0, "one construction firing")
-    assert got != 900.0, "this is max(), which is not an e-value"
-
-    both = call_or_skip(selection.combine_e_values, [900.0, 300.0, 0.0])
-    close(both, 400.0, "two constructions firing")
-    assert both > got, (
-        "the mean must reward a second construction; max() would ignore it")
-
-
-@pytest.mark.regression
-def test_the_divisor_is_the_construction_count_not_the_nonzero_count():
-    """Dividing by the number of NON-ZERO constructions would make the divisor
-    data-dependent and hand back the anti-conservatism."""
-    close(call_or_skip(selection.combine_e_values, [300.0, 0.0, 0.0]),
-          100.0, "1 of 3 firing")
-    close(call_or_skip(selection.combine_e_values, [300.0, 300.0, 300.0]),
-          300.0, "3 of 3 firing")
-
-
-def test_zero_is_a_valid_contribution():
-    close(call_or_skip(selection.combine_e_values, [0.0, 0.0, 0.0]), 0.0,
-          "nothing applies")
-
-
-# ---------------------------------------------------------- conformal route
-def _features(alt, identity, coverage, margin, ref_span):
-    """Go through the orientation helper rather than hand-building vectors.
-
-    My first fixtures passed raw `ref_span_reads`, forgetting that
-    `dominance_conformal_p` takes PRE-ORIENTED coordinates where larger is
-    always more TE-like. A candidate with 9 reference-spanning reads then looked
-    BETTER than a null with 0 on that axis, and the "dominated by every null"
-    test failed. Using the helper makes the sign convention impossible to get
-    wrong in a test, which is most of what the helper is for.
-    """
-    return call_or_skip(selection.orient_conformal_features, alt, identity,
-                        coverage, margin, ref_span)
-
-
-def test_the_orientation_helper_negates_reference_support():
-    """Fewer reference-spanning reads is more TE-like, so that coordinate must
-    enter with the opposite sign or the dominance test asks the wrong question
-    on that axis."""
-    vector = _features(10.0, 0.95, 0.9, 0.2, 7.0)
-    assert vector[:4] == [10.0, 0.95, 0.9, 0.2]
-    assert vector[4] == -7.0
-
-
-def test_dominance_p_is_add_one_smoothed_and_never_zero():
-    cand = [_features(10.0, 0.95, 0.9, 0.2, 0.0)]
-    nulls = [_features(1.0, 0.3, 0.2, 0.0, 5.0) for _ in range(99)]
-    p = call_or_skip(selection.dominance_conformal_p, cand, nulls)
-    assert len(p) == 1
-    assert p[0] > 0.0, "add-one smoothing must keep p strictly positive"
-    close(p[0], 1.0 / 100.0, "no null dominates a clearly better candidate")
-
-
-def test_a_candidate_dominated_by_every_null_gets_p_near_one():
-    cand = [_features(1.0, 0.3, 0.2, 0.0, 9.0)]
-    nulls = [_features(10.0, 0.95, 0.9, 0.2, 0.0) for _ in range(99)]
-    p = call_or_skip(selection.dominance_conformal_p, cand, nulls)
-    assert p[0] > 0.9
-
-
-def test_a_single_worse_coordinate_defeats_dominance():
-    """Dominance is a conjunction over all five axes, which is what makes it a
-    partial order: one axis where the null is worse is enough."""
-    cand = [_features(10.0, 0.95, 0.9, 0.2, 0.0)]
-    almost = [_features(11.0, 0.96, 0.91, 0.19, 0.0) for _ in range(99)]
-    p = call_or_skip(selection.dominance_conformal_p, cand, almost)
-    close(p[0], 1.0 / 100.0, "margin 0.19 < 0.20 must break dominance")
-
-
-def test_benjamini_yekutieli_pays_the_harmonic_factor():
-    """
-    H_m is the price of admitting arbitrary dependence among p-values, and it is
-    why the e-value route is primary: at m = 1000 it is about 7.49, turning a
-    nominal q = 0.10 into an effective 0.0134.
-    """
-    m = 1000
-    q = 0.10
-    h_m = sum(1.0 / i for i in range(1, m + 1))
-    assert 7.4 < h_m < 7.6
-    # A p-value just inside the rank-1 BY threshold is selected; just outside is not.
-    inside = [q / (m * h_m) * 0.99] + [0.9] * (m - 1)
-    outside = [q / (m * h_m) * 1.01] + [0.9] * (m - 1)
-    assert call_or_skip(selection.benjamini_yekutieli, inside, q) == [0]
-    assert call_or_skip(selection.benjamini_yekutieli, outside, q) == []
-
-
-def test_ebh_is_less_conservative_than_by_on_the_same_evidence():
-    """
-    The whole reason for the currency switch. An e-value of E corresponds to a
-    p-value no larger than 1/E by Markov, so feed both routes the matched
-    evidence and e-BH must select at least as much.
-    """
-    m = 1000
-    q = 0.10
-    e = [2000.0] * 20 + [1.0] * (m - 20)
-    p = [min(1.0, 1.0 / v) for v in e]
-    n_e = len(call_or_skip(selection.ebh_select, e, q))
-    n_p = len(call_or_skip(selection.benjamini_yekutieli, p, q))
-    assert n_e >= n_p

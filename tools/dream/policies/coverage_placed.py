@@ -1,4 +1,4 @@
-"""PLACER's coverage-rule decision, as `--te-rule coverage` runs it.
+"""PLACER's coverage-rule decision, as finalization runs it.
 
 It calls `placer.core.mechanism_selection.select_loci_coverage` on copies of
 the rows, so a replay of this policy is the online decision. It was promoted

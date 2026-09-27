@@ -21,7 +21,7 @@ callable, the TE alignment is a callable, the consensus is a callable. See
 literals in a test, which is in turn what lets the suite run with no
 third-party package installed at all.
 
-THIS `__init__` IMPORTS NOTHING, so that `import placer.core.finalization`
+THIS `__init__` IMPORTS NOTHING, so that `import placer.core.finalize`
 costs exactly the decision layer and not the scan.
 """
 

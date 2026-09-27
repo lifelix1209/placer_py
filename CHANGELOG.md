@@ -20,8 +20,8 @@ project's numbering, not this package's.)
 
 ### Added
 
-- **`--te-rule coverage`** (with `--decision mechanism`; transitional, default
-  off until chr2-8 validation): the decision promoted from replay.
+- **The coverage-rule decision** (introduced as `--te-rule coverage`, now the
+  only one; see Removed): the decision promoted from replay.
   - **Collapse regions:** e = 0.
   - **Selection:** ONE e-BH on the decoy-adjusted artifact ratio, over all loci.
   - **TE call** when TEBench's rule holds on the insert (TE hits cover >= 50% of
@@ -131,9 +131,10 @@ project's numbering, not this package's.)
   - bootstrap 90% gain [+0.30, +0.64];
   - better on every one of the seven chromosomes.
 
-  The old default, `--decision legacy`, is deprecated. Its `calls.vcf` writes
+  The old default, `--decision legacy`, has since been removed (see Removed).
+  Its `calls.vcf` wrote
   each call at the left end of its aggregated breakpoint interval, and those
-  intervals reach kilobytes: on HG002 chr1, 217 of 344 TE calls were written
+  intervals reached kilobytes: on HG002 chr1, 217 of 344 TE calls were written
   more than 100 bp from the call's own position. TEBench scores that VCF at
   P 27.7% / R 17.0% on chr1.
 
@@ -234,6 +235,21 @@ project's numbering, not this package's.)
 
 ### Removed
 
+- **The legacy decision and its options.** `--decision`, `--te-rule`,
+  `--final-report-mode` and `--min-final-raw-cigar-insert-len-bp` are gone,
+  with `core/finalization.py`, `core/call_selection.py` (the per-component
+  selection and retether), `core/dependency.py`, `core/conformal.py`,
+  `core/integrate.py`, `core/decoys.py`, the likelihood-gated TE rule and its
+  identity-prior fit, and their tests: 4,300 lines of the package and 1,700
+  of tests, net. The default outputs are byte-identical: `calls.vcf`, `calls.csv`,
+  `structural_calls.tsv` and `evidence_ledger.tsv` on the example data (with
+  and without `--record-world`) and on two HG002 chr1 regions
+  (30.0-30.5 Mb, and 200 kb around 24.6 Mb). `scientific.txt` loses one
+  line, `mech_identity_priors`, which reported the unfitted uniform prior. The
+  scan's joint decision (`core/policy.py`, `core/blocks.py`) stays: it still
+  sets the FILTER tokens (IMPRECISE, FAM_ABSTAIN). The dependency-bound
+  fields are no longer set, and keep their defaults in the VCF header and the
+  summary until a change that may alter the output removes them.
 - The C++ golden-vector oracle (`tests/oracle/cpp_reference.json`,
   `tools/dump_oracle.cpp`, `tools/regenerate_oracle.sh`) and the tests that
   asserted equality against it are gone; placer is now the reference

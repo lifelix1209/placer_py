@@ -1,86 +1,65 @@
 """Finalization, as the run-level stage the scan cannot be.
 
-This is a thin adapter over `placer/finalization.finalize_final_calls`: it
-unpacks the two policy numbers out of `PipelineConfig` and nothing else. The
-2800 lines of actual finalization stay where they are; what is added here is a
-NAME for the boundary, so that "scan" and "finalize" are two things a caller
-can ask for separately rather than one fused call.
+WHY THE BOUNDARY IS WORTH NAMING. The scan is per-bin and local. Finalization
+needs the whole run at once, for three jobs no bin can do:
+  * the decoy check, which measures the TSD and endonuclease-motif nulls
+    over the run;
+  * e-BH, which controls FDR across the full candidate set;
+  * the overdispersion the genotyper uses, estimated from the whole ledger.
 
-WHY THE BOUNDARY IS WORTH NAMING. Three of finalization's jobs are impossible
-locally and that is exactly what makes it a different stage: measuring the
-run's own null (the dependency bound is a whole-run expectation), controlling
-FDR across the run (e-BH and the conformal route both need the full candidate
-set), and recognising that a long insertion reported in several bins is one
-event. A pipeline that made final decisions inside the bin loop could do none
-of them.
+THE DECISION (`core/mechanism_selection.select_loci_coverage`, validated on
+HG002 chr2-8 on 2026-09-26):
+  1. alignment-collapse regions get e = 0;
+  2. one e-BH on the decoy-adjusted artifact ratio: the insertions;
+  3. a TE call when TEBench's coverage rule holds on the insert, a structural
+     call otherwise;
+  4. precise placement.
+The legacy decision (`--decision legacy`, the old `core/finalization.py`) was
+removed after it: its VCF reported calls kilobytes from their own positions.
 
-`target_fdr` is an explicit override rather than only a config field because a
-caller comparing selection routes wants to sweep it over one scan without
-rebuilding the config -- which is the whole reason for splitting scan from
-finalize in the first place.
+`target_fdr` is an explicit override rather than only a config field, so that
+a caller can sweep q over one scan without rebuilding the config.
 """
 
 from __future__ import annotations
 
 from placer.config import PipelineConfig
-from placer.core.finalization import finalize_final_calls
-from placer.core.ledger import FinalCallFilterConfig
+from placer.core.ledger import FinalCall
 from placer.core.result import PipelineResult
 
 
 def finalize_run(result: PipelineResult, config: PipelineConfig,
                  target_fdr: float | None = None) -> PipelineResult:
-    """Aggregate, de-duplicate, calibrate and select, once, over the whole run.
+    """Select, name, place and genotype, once, over the whole run.
 
     Mutates `result` in place and also returns it, so it reads naturally at the
     end of a pipeline expression.
     """
     q = target_fdr if target_fdr is not None else config.final_fdr_q
-    if config.decision_mode == "mechanism":
-        finalize_mechanism_calls(result, q, config.mechanism_te_rule)
-        return result
-    finalize_final_calls(
-        result,
-        q,
-        FinalCallFilterConfig(
-            min_raw_cigar_insert_len_bp=config.min_final_raw_cigar_insert_len_bp,
-            report_mode=config.final_report_mode.value))
+    finalize_mechanism_calls(result, q)
     return result
 
 
-def finalize_mechanism_calls(result: PipelineResult, q: float,
-                             te_rule: str = "likelihood") -> None:
-    """The mechanism decision: decoy check and e-BH over every evaluated call.
+def finalize_mechanism_calls(result: PipelineResult, q: float) -> None:
+    """The decision over every evaluated call, and the ledger's marks.
 
-    Each locus's best call is tested once (`core/mechanism_selection.py`). The
-    TE-selected ones are the run's calls, named from their own alignment -- the
-    legacy decision overwrote the family of a call it judged structural -- and
-    the structural-selected ones go to `structural_calls`. The ledger gets the
-    same selection marked on its rows, for the summary and for audit.
+    Each locus is tested once (`core/mechanism_selection.py`). The TE-selected
+    ones are the run's calls, named after the family covering the most of their
+    insert and placed at the locus's precise hypothesis. The structural ones go
+    to `structural_calls`. The ledger gets the same selection marked on its
+    rows, for the summary and for replay.
     """
-    from placer.core.finalization import (
-        apply_sample_overdispersion_calibration,
-        final_call_sort_less,
-    )
-    from placer.core.mechanism_selection import (
-        apply_mechanism_shadow_selection,
-        select_loci,
-        select_loci_coverage,
-    )
-    coverage = te_rule == "coverage"
-    if coverage:
-        select_loci_coverage([row for row in result.evidence_ledger
-                              if row.candidate_retention_reason == "EVALUATED"], q)
-        result.mech_shadow = select_loci_coverage(result.candidate_calls, q)
-    else:
-        apply_mechanism_shadow_selection(result.evidence_ledger, q)
-        result.mech_shadow = select_loci(result.candidate_calls, q)
+    from placer.core.mechanism_selection import select_loci_coverage
+
+    select_loci_coverage([row for row in result.evidence_ledger
+                          if row.candidate_retention_reason == "EVALUATED"], q)
+    result.mech_shadow = select_loci_coverage(result.candidate_calls, q)
     te_calls, structural = [], []
     for call in result.candidate_calls:
-        if coverage and (call.mech_ebh_selected or call.mech_structural_selected):
-            # Placed at the locus's precise hypothesis, not wherever the
-            # legacy retether moved it; named after the family covering most
-            # of the insert.
+        if call.mech_ebh_selected or call.mech_structural_selected:
+            # Placed at the locus's precise hypothesis, when the testing one
+            # was a wide interval, and otherwise where the hypothesis itself
+            # sits.
             if call.mech_call_pos >= 0:
                 call.pos = call.bp_left = call.bp_right = call.mech_call_pos
             else:
@@ -122,3 +101,49 @@ def finalize_mechanism_calls(result: PipelineResult, q: float,
 def _with_token(qc: str, token: str) -> str:
     """Append a decision token, keeping the evidence tokens (IMPRECISE...)."""
     return token if not qc or qc == "NA" else f"{qc}|{token}"
+
+
+def final_call_sort_less(call: FinalCall) -> tuple:
+    """A total order for output. Position first, then window, then name."""
+    return (call.tid, call.pos, call.window_start, call.window_end, call.chrom,
+            call.te_name)
+
+
+def apply_sample_overdispersion_calibration(result: PipelineResult) -> None:
+    """Re-estimate the beta-binomial overdispersion, then re-genotype.
+
+    Over the WHOLE ledger, not just the calls: the overdispersion is a property
+    of the sample's sequencing and mapping, and estimating it from the selected
+    calls alone would measure it on the loci least representative of the rest.
+
+    The likelihood inputs the call was DECIDED with are reused and only the
+    overdispersion changes. Rebuilding a default input here would silently drop
+    the configured error rate, the min-GQ threshold and the length-concordance
+    term, so the reported GQ and AF would describe a different model than the
+    decision came from.
+    """
+    from placer.core.genotype import estimate_overdispersion, genotype_from_alt_vs_ref
+
+    observations = [(max(0, row.alt_struct_reads),
+                     max(0, row.alt_struct_reads) + max(0, row.ref_span_reads))
+                    for row in result.evidence_ledger]
+    rho = estimate_overdispersion(observations, result.estimated_overdispersion)
+    result.estimated_overdispersion = rho
+
+    for call in result.final_calls:
+        depth = max(0, call.alt_struct_reads) + max(0, call.ref_span_reads)
+        if depth <= 0:
+            continue
+        inputs = call.genotype_likelihood_input
+        inputs.alt_struct_reads = call.alt_struct_reads
+        inputs.ref_span_reads = call.ref_span_reads
+        inputs.overdispersion = rho
+        decision = genotype_from_alt_vs_ref(
+            inputs.alt_struct_reads, inputs.ref_span_reads,
+            error_rate=inputs.error_rate, overdispersion=rho,
+            min_gq=inputs.min_gq, event_length=inputs.event_length,
+            alt_observed_lengths=list(inputs.alt_observed_lengths))
+        call.gq = decision.gq
+        call.af = decision.allele_fraction
+        call.genotype = decision.best_gt
+        call.genotype_likelihood_input = inputs

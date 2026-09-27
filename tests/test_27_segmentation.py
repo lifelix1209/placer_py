@@ -328,3 +328,72 @@ def test_the_search_counters_are_filled_in():
     assert stats.seed_bins_total > 0
     assert stats.edit_distance_calls > 0
     assert stats.edit_distance_cache_misses == stats.edit_distance_calls
+
+
+# ------------------------------------------- the abPOA memory budget
+
+
+def test_the_poa_budget_scales_reads_down_as_the_event_grows():
+    """Quadratic cost means a read cap cannot be a memory cap.
+
+    `event_consensus_poa_max_reads` fixes n while L varies by two orders of
+    magnitude between an Alu and a mis-assembled multi-kb insertion, and abPOA
+    costs roughly n * L^2. Measured: 24 sequences of 18 kb peaks near 6 GB,
+    which is what made an 800 kb region of ultra-long ONT peak at 4.6 GB and
+    spend 1975 s of wall clock on 1006 s of CPU.
+    """
+    from placer.core.consensus import poa_reads_within_budget
+
+    budget = 1024 * 1024 * 1024
+    counts = [poa_reads_within_budget(length, budget)
+              for length in (1000, 2000, 4000, 6000, 10000, 18000)]
+    assert counts == sorted(counts, reverse=True), counts
+    assert counts[0] > counts[-1], counts
+    # A 300 bp Alu must not be constrained at all -- the budget exists for the
+    # long tail, and squeezing the common case would cost recall for nothing.
+    assert poa_reads_within_budget(300, budget) > 48
+
+
+def test_the_poa_budget_never_returns_zero_reads():
+    """One sequence needs no alignment, so it always fits.
+
+    Returning 0 would mean refusing to report an event because its reads are
+    long, which is a worse failure than reporting it from a single uncorrected
+    read -- and at n=1 the measured cost of an 18 kb string is 19 MB, not the
+    ~2 GB the quadratic would predict.
+    """
+    from placer.core.consensus import poa_reads_within_budget
+
+    for length in (10_000, 100_000, 1_000_000):
+        assert poa_reads_within_budget(length, 1024 * 1024) == 1
+    assert poa_reads_within_budget(0, 1024) == 1
+
+
+def test_dropping_reads_for_memory_is_recorded_rather_than_silent():
+    """`consensus.py` exists on the principle that a quietly worse consensus
+    is the most damaging thing this stage can produce, so the count of
+    withheld strings is carried on the result."""
+    from placer.core.segmentation import EventConsensus
+
+    assert EventConsensus().poa_reads_dropped_for_memory == 0
+
+
+def test_a_memory_capped_consensus_is_visible_in_the_output():
+    """A thinner consensus still looks like a consensus.
+
+    The dropped-read count lives on `EventConsensus`, which never reaches a
+    file -- so on its own it records nothing a user can see. The QC token is
+    what makes the degradation legible in `final_qc`, which both the ledger
+    and the call files carry.
+    """
+    from placer.core import bins as pipeline_module
+    from placer.core.segmentation import EventConsensus
+
+    intact = EventConsensus()
+    assert pipeline_module._with_poa_cap_token("PASS_TE_CLOSED", intact) == "PASS_TE_CLOSED"
+
+    thinned = EventConsensus()
+    thinned.poa_reads_dropped_for_memory = 7
+    tagged = pipeline_module._with_poa_cap_token("PASS_TE_CLOSED", thinned)
+    assert pipeline_module.POA_MEMORY_CAPPED_QC in tagged
+    assert tagged.startswith("PASS_TE_CLOSED"), tagged

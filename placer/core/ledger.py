@@ -7,16 +7,15 @@ Ported from `struct EvidenceLedgerRow` and `struct FinalCall` in
 WHY THERE ARE TWO, and the distinction matters for reading any PLACER output.
 
 A LEDGER ROW is every candidate the pipeline examined, whatever it concluded.
-It is the sample's own null set as well as its candidate set -- the dependency
-bound in `placer/core/dependency.py` and the conformal null set in
-`placer/core/conformal.py` are both measured from rows that were NOT selected. So
-the ledger must contain the rejections, and a ledger filtered to the calls would
-silently destroy both calibrations.
+It is the sample's own null set as well as its candidate set -- the
+overdispersion the genotyper uses is estimated over every row, and e-BH's m
+counts every locus, selected or not. So the ledger must contain the
+rejections, and a ledger filtered to the calls would silently bias both.
 
 A FINAL CALL is a row promoted to an answer, carrying the genotype, the TSD, the
 family commitment and the selection outcome. Finalization's job is to decide
-which rows become calls, and much of it is about NOT letting one event become
-several calls.
+which rows become calls, testing each locus once so that one event does not
+become several calls.
 
 THE SCHEMA IS THE SEAM. `placer/schema.py` pins which columns the decision
 layer reads and with what dtype; this module is the in-memory form of the same
@@ -70,25 +69,25 @@ class EvidenceLedgerRow:
     te_dominant_family: str = "NA"
     te_dominant_class: str = "NA"
     te_dominant_covered_bp: int = 0
-    #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
-    #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
-    #: current decision so the two can be compared before one replaces the
-    #: other. They decide nothing yet.
+    #: The per-class likelihood ratios (`core/mechanism.py`) and the
+    #: shifted-breakpoint decoys (`core/locus_evidence.py`) the decision is
+    #: taken on (`core/mechanism_selection.py`).
     mech_log_lr_vs_non_te: float = 0.0
     mech_log_lr_vs_artifact: float = 0.0
     mech_decoy_count: int = 0
     mech_decoy_mean_exp_linkage: float = 0.0
     mech_terms: str = "NA"
-    #: The inputs the sequence term was computed from, so finalization can
-    #: recompute it with the sample's own identity priors.
+    #: The inputs the sequence term was computed from.
     mech_aligned_len: int = 0
     mech_sequence_term: float = 0.0
     #: Set at finalization by `core/mechanism_selection.py` on each locus's
-    #: representative row: its e-value, and whether the new decision would
-    #: select it as a TE call or as a structural call.
+    #: representative row: its e-value, whether the decision selects it as a
+    #: TE call or as a structural call, and the precise breakpoint it is placed
+    #: at (-1: its own).
     mech_e_value: float = 0.0
     mech_ebh_selected: bool = False
     mech_structural_selected: bool = False
+    mech_call_pos: int = -1
     #: Inside an alignment-collapse region, where the e-value was set to 0
     #: (`mechanism_selection.collapse_region_items`).
     mech_collapse_region: bool = False
@@ -187,7 +186,8 @@ class FinalCall:
     alt_struct_reads: int = 0
     raw_cigar_insert_reads: int = 0
     alt_indel_reads: int = 0
-    #: `pos` before any retether: the evaluated hypothesis's own position.
+    #: `pos` before finalization places the call: the evaluated hypothesis's
+    #: own position.
     hypothesis_pos: int = -1
     max_raw_cigar_insert_len: int = 0
     ref_span_reads: int = 0
@@ -235,28 +235,28 @@ class FinalCall:
     te_dominant_family: str = "NA"
     te_dominant_class: str = "NA"
     te_dominant_covered_bp: int = 0
-    #: SHADOW: the per-class likelihood ratios (`core/mechanism.py`) and the
-    #: shifted-breakpoint decoys (`core/locus_evidence.py`), recorded beside the
-    #: current decision so the two can be compared before one replaces the
-    #: other. They decide nothing yet.
+    #: The per-class likelihood ratios (`core/mechanism.py`) and the
+    #: shifted-breakpoint decoys (`core/locus_evidence.py`) the decision is
+    #: taken on (`core/mechanism_selection.py`).
     mech_log_lr_vs_non_te: float = 0.0
     mech_log_lr_vs_artifact: float = 0.0
     mech_decoy_count: int = 0
     mech_decoy_mean_exp_linkage: float = 0.0
     mech_terms: str = "NA"
-    #: The inputs the sequence term was computed from, so finalization can
-    #: recompute it with the sample's own identity priors.
+    #: The inputs the sequence term was computed from.
     mech_aligned_len: int = 0
     mech_sequence_term: float = 0.0
     mech_e_value: float = 0.0
     mech_ebh_selected: bool = False
     mech_structural_selected: bool = False
+    mech_call_pos: int = -1
     #: Inside an alignment-collapse region, where the e-value was set to 0
     #: (`mechanism_selection.collapse_region_items`).
     mech_collapse_region: bool = False
-    #: The TE alignment's own best family and subfamily, whatever the legacy
-    #: decision then did to `family` (it overwrites it with UNKNOWN for a call
-    #: it deems structural). The mechanism decision names a TE call from these.
+    #: The TE alignment's own best family and subfamily, whatever the scan's
+    #: joint decision (`core/policy.py`) then did to `family` (it overwrites it
+    #: with UNKNOWN for a call it deems structural). Finalization names a TE
+    #: call from these.
     te_best_family: str = "NA"
     te_best_subfamily: str = "NA"
     te_sequence_model_label: str = "TE_MODEL_UNAVAILABLE"
@@ -325,9 +325,3 @@ class FinalCall:
     #: has cleared a model-based argument and an assumption-free one.
     ebh_e_value: float = 0.0
     ebh_selected: bool = False
-
-
-@dataclass
-class FinalCallFilterConfig:
-    min_raw_cigar_insert_len_bp: int = 0
-    report_mode: str = "TeCalibrated"

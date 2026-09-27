@@ -8,7 +8,7 @@ something) and `placer/report/` (everything that renders).
 
 WHY THIS IS WORTH A TEST FILE. The rule is what the whole refactor buys, and
 it is the kind of rule that decays silently: one convenient import inside one
-function body, and `placer.core.finalization` stops being importable in an
+function body, and `placer.core.finalize` stops being importable in an
 environment with no pysam. Nothing else in the suite would notice, because
 every existing test either has pysam available or never reaches that module.
 
@@ -16,7 +16,7 @@ IT WALKS THE AST, NOT THE TEXT, and at every depth rather than only the top
 import block. Both choices are load-bearing. A grep matches the docstring in
 `core/__init__.py` that STATES the rule and reports a violation that is not
 one. And this codebase uses function-local imports heavily -- `consensus.py`,
-`finalization.py` and `main.py` both do it, for good reasons -- so
+`bins.py` and `main.py` both do it, for good reasons -- so
 a check that read only module-level imports would be checking the wrong half.
 
 Numbered last on purpose: `tests/test_34_runner_parity.py` pins the source

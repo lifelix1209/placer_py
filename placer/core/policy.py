@@ -310,9 +310,8 @@ class JointDecisionResult:
     worst_case_lfdr: float = 1.0
     lfdr_qc: str = "LFDR_NOT_EVALUATED"
     mechanistic_lower_log_bf_te_vs_artifact: float = 0.0
-    #: Penalty-FREE aggregates. Finalization needs them because the bound that
-    #: makes the product an e-value is a property of the whole run, not of one
-    #: locus -- see placer/core/dependency.py.
+    #: Penalty-FREE aggregates, reported. (The legacy finalization subtracted
+    #: a whole-run dependency bound from them; it was deleted 2026-09-27.)
     mechanistic_raw_log_bf_te_vs_artifact: float = 0.0
     mechanistic_raw_log_bf_te_vs_non_te: float = 0.0
     mechanistic_lower_log_bf_te_vs_non_te: float = 0.0

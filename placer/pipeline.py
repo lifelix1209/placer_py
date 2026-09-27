@@ -19,9 +19,9 @@ THE SHAPE OF A RUN:
            segmentation                                placer/segmentation
            TE alignment                                placer/te_classifier
            boundary + joint decision                   placer/policy
-      -> select one call per component, re-anchor      placer/call_selection
+           mechanism score and its decoys              placer/locus_evidence
     then, once, over the whole run:
-      -> finalize: aggregate, dedup, calibrate, select placer/core/finalize
+      -> finalize: decoy check, e-BH, TE rule, place   placer/core/finalize
 
 WHY THIS MODULE IS ALMOST EMPTY, and why that is the improvement. It used to
 hold all of the above; now it holds the three-line sentence that joins them.

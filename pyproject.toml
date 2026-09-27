@@ -39,7 +39,7 @@ Changelog = "https://github.com/lifelix1209/placer_py/blob/main/CHANGELOG.md"
 placer = "placer.main:main"
 
 [project.optional-dependencies]
-# The decision layer needs nothing at all: `placer.finalization` and
+# The decision layer needs nothing at all: `placer.core.finalize` and
 # everything it imports run on a ledger alone, which is why these are optional
 # rather than required.
 #

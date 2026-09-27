@@ -4,8 +4,8 @@ Breakpoint-shift controls and the empirical null tail.
 Ported from `src/pipeline/null_control.cpp`, pinned by
 `tests/test_17_null_control.py`.
 
-`make_breakpoint_shift_controls` is the construction `placer/core/decoys.py`
-argued for and could not build from the scalar ledger: the SAME locus with the
+`make_breakpoint_shift_controls` is the construction the old
+`placer/core/decoys.py` argued for and could not build from the scalar ledger: the SAME locus with the
 breakpoint moved, so local composition is preserved and the coincidences are
 whatever chance gives. It already existed in the C++, which is why the decoy
 module takes a callback -- this is the callback, once the evidence layer can
@@ -16,9 +16,9 @@ when neither direction fits inside the window. Alternating rather than
 scanning one side first keeps the controls balanced around the locus, so a
 coverage or composition gradient across the window does not bias them.
 
-NOT ON THE CALLING PATH, and that is deliberate rather than neglect --
-see `docs/off-pipeline-modules.md` for which of the four unimported
-modules this is and why deleting it would lose something.
+ON THE CALLING PATH since the evidence layer could recompute observables at a
+shifted position: `core/locus_evidence.py` builds every evaluated locus's
+decoys with it (`docs/off-pipeline-modules.md` has the history).
 """
 
 from __future__ import annotations

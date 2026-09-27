@@ -3,7 +3,7 @@ Fetching each stretch of reads once, and projecting it back per request.
 
 Ported from `include/../src/pipeline/local_interval_cache.cpp` and its header,
 pinned by
-`tests/test_30_call_selection.py`.
+`tests/test_30_interval_cache.py`.
 
 WHY IT EXISTS. Every component needs the reads around its breakpoints, and
 neighbouring components ask for overlapping intervals. Fetching each request

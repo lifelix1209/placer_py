@@ -4,21 +4,23 @@ The six mechanistic evidence blocks and the two aggregates.
 Ported from `src/pipeline/mechanistic_evidence.cpp`; the eight certificate
 scenarios and the cross-field algebra are pinned in `tests/test_01_blocks.py`.
 
-WHAT THIS IS FOR -- and, despite what this docstring used to say, it IS the
-decision path today. `policy.evaluate_joint_hypotheses` gates emission on
-`evaluate_robust_lfdr`, and the raw log-BFs from `build_certificate` are the
-e-values finalization feeds to the dependency cap and e-BH.
+WHAT THIS IS FOR. `policy.evaluate_joint_hypotheses` gates emission on
+`evaluate_robust_lfdr`: the scan's joint decision, whose verdict now reaches
+the output only as the calls' FILTER tokens. Until 2026-09-27 the raw log-BFs
+from `build_certificate` were also the e-values finalization fed to the
+dependency cap and e-BH.
 
 That is the problem the multi-species refactor fixes. These six affine maps
 carry nineteen hand-set constants and cannot support genome-scale FDR control:
 each block is clamped to a small range, the total caps near 9.9 nats, and
 e-BH's rank-1 threshold at m=1060, q=0.10 is 9.27 nats before any penalty.
-Their null expectation is an unknown number that has to be measured, and
-`placer/core/decoys.py` shows that it cannot be. `placer/core/tprt.py`
-holds the replacement: real log-LRs whose null expectation is 1 by
-construction (0.186 measured on simulated nulls), which recover 96% recall at
-FDP 0.000 in `tests/test_13_end_to_end.py` where these score nothing. This
-module is removed once that replacement is on the calling path.
+Their null expectation is an unknown number that has to be measured, and the
+old `placer/core/decoys.py` showed that it cannot be. The decision now runs on
+the replacement, real log-LRs whose null expectation is 1 by construction
+(`placer/core/mechanism.py`, checked by decoys in
+`placer/core/mechanism_selection.py`). This module survives only because the
+scan's joint decision, which still sets the calls' FILTER tokens, is built on
+it.
 
 Ported unchanged anyway, including two inconsistencies, because a migration that
 changes behaviour cannot be validated by diffing against the thing it replaces:

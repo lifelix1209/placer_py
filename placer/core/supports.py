@@ -1,18 +1,17 @@
 """
 Overlap between two support sets, as a merge-walk over sorted read names.
 
-WHY A MODULE OF ITS OWN. Two stages ask the same question -- "do these two
-candidates rest on the same reads?" -- and neither can import the other.
-`hypotheses.py` runs inside the per-bin loop and `finalization.py` runs once
-at the end, so a dependency either way would invert the pipeline. They had
-therefore grown the same merge-walk twice, once factored into two functions
-and once inlined.
+WHY A MODULE OF ITS OWN. Two stages asked the same question -- "do these two
+candidates rest on the same reads?" -- and neither could import the other.
+`hypotheses.py` runs inside the per-bin loop and the legacy `finalization.py`
+ran once at the end, so a dependency either way would have inverted the
+pipeline. They had therefore grown the same merge-walk twice. Since the legacy
+finalization was deleted (2026-09-27), `hypotheses.py` is its only user.
 
 WHY A MERGE-WALK RATHER THAN SETS. The support lists arrive sorted, and
 `set(lhs) & set(rhs)` would allocate two hash sets per comparison -- inside an
-O(k^2) shortlist scan in `hypotheses.py` and an O(n^2) community pass in
-`finalization.py`. The walk is O(n+m) with no allocation. This was already
-right in both copies and is worth keeping when they become one.
+O(k^2) shortlist scan in `hypotheses.py`. The walk is O(n+m) with no
+allocation.
 
 SORTEDNESS IS A PRECONDITION, not something checked. An unsorted input
 silently under-counts the intersection -- the walk advances past a name it

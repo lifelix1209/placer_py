@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from placer.core.mechanism_selection import select_loci
+from placer.core.mechanism_selection import select_loci_coverage
 from tools.dream import world
 from tools.dream.policies import Decision, coverage_rule, current
 
@@ -83,14 +83,16 @@ def test_the_insert_is_the_consensus_less_its_flanks_unless_recorded():
 
 
 def test_the_current_policy_is_placers_own_selection():
-    raw = [_row(1000 + 10_000 * i, art=4.0 * i, nonte=3.0 * i - 5) for i in range(12)]
+    raw = [_row(1000 + 10_000 * i, art=4.0 * i, union=0.9 if i % 2 else 0.3)
+           for i in range(12)]
     rows, _ = _world_rows(raw)
     direct = [r.copy() for r in rows]
-    select_loci(direct, 0.1)
+    select_loci_coverage(direct, 0.1)
     expected = {(r._row_id, "TE" if r.mech_ebh_selected else "STRUCTURAL")
                 for r in direct if r.mech_ebh_selected or r.mech_structural_selected}
     replayed = {(d.row._row_id, d.label) for d in current.select(rows, 0.1)}
     assert replayed == expected
+    assert {label for _, label in expected} == {"TE", "STRUCTURAL"}   # not vacuous
     assert all(not hasattr(r, "mech_ebh_selected") for r in rows)   # rows untouched
 
 
@@ -163,7 +165,7 @@ def test_a_replay_of_a_runs_own_ledger_is_that_runs_calls():
     from tools.dream.policies import load
 
     out = tempfile.mkdtemp(prefix="dream_online_")
-    _run(out, 1, None, "mechanism", "coverage", record_world=True)
+    _run(out, 1, None, record_world=True)
     rows, _ = world.load_rows(pathlib.Path(out) / "evidence_ledger.tsv")
     decisions = load("coverage_placed").select(rows, 0.10)
     replayed = sorted((int(d.pos) if d.pos is not None else objective.vcf_pos0(d.row), d.family)

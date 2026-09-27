@@ -19,12 +19,14 @@ T=/mnt/home1/miska/hl725/scratch/projects/TE_bechmark
 O=${OUT_ROOT:-/mnt/home1/miska/hl725/scratch/placer_dev/prof}/spy_$TAG
 mkdir -p "$O"
 cd "$REPO"
+# A tree from before the legacy decision was deleted still needs the flag.
+decision=$(grep -q '"--decision"' placer/main.py && echo "--decision mechanism")
 /usr/bin/time -v ${PYSPY:-/mnt/beegfs/scratch/miska/hl725/placer_dev/tools_bin/py-spy} record -r 100 -f raw \
     -o "$O/folded.txt" -- $PYBIN/python -m placer.main \
     $T/results/alignments/human_hg002/full/r0.primary.md.bam \
     /mnt/home1/miska/hl725/scratch/placer_dev/ref/GRCh38.primary.fa \
     $T/resources/human/dfam_human.freeze.fa \
-    --region "$REGION" --threads 1 --decision mechanism --output-dir "$O/out" 2> "$O/stderr.log"
+    --region "$REGION" --threads 1 $decision --output-dir "$O/out" 2> "$O/stderr.log"
 grep -E "Elapsed|User time|System time" "$O/stderr.log"
 # sbatch runs a spool copy of this script, so $0 is not beside fold_summary.py:
 # submit from tools/perf, or set PERF_TOOLS.
