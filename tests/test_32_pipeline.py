@@ -196,6 +196,21 @@ def test_the_genotype_comes_out_heterozygous_at_eight_versus_three():
     assert 0.5 < call.af < 0.9
 
 
+def test_a_call_carries_the_genotype_inputs_the_scan_used():
+    """Finalization re-genotypes each call with the sample's overdispersion
+    and reuses `genotype_likelihood_input` for everything else. The scan never
+    set it, so every call was re-genotyped from defaults: error 0.02 whatever
+    was configured, and no length-concordance term (event length 0, no
+    observed alt lengths). The scan code is shared by both decision modes;
+    this one locus alone is too few for the mechanism mode's e-BH to select."""
+    result = run(synthetic_reads(), genotype_error_rate=0.07)
+    call = (result.final_calls + result.structural_calls)[0]
+    inputs = call.genotype_likelihood_input
+    assert inputs.error_rate == 0.07
+    assert abs(inputs.event_length - len(INSERT)) <= 8
+    assert len(inputs.alt_observed_lengths) == 8
+
+
 def test_an_abstaining_call_is_set_aside_rather_than_lost():
     """
     Precision-first, end to end: the identity gate abstains, and the event is

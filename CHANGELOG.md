@@ -190,6 +190,14 @@ project's numbering, not this package's.)
 
 ### Fixed
 
+- **Re-genotyping ignored the scan's genotype inputs.** Finalization
+  re-genotypes each call with the sample's overdispersion and is meant to
+  reuse everything else the scan used, but the scan never passed those inputs
+  on. Every call was therefore re-genotyped with error rate 0.02, whatever
+  `PLACER_GENOTYPE_ERROR_RATE` said, and without the length-concordance term.
+  On the synthetic test locus, GQ was 16 from the defaults and 7 from the
+  configured error rate of 0.07. Both decision modes were affected.
+
 - **`blastn` concurrency is sized from the CPUs the job was given**, not from
   every core on the machine. On a 128-core cluster node with a 16-CPU SLURM
   allocation, `--threads 16` ran 128 `blastn` processes at once and two such

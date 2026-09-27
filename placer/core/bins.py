@@ -31,7 +31,7 @@ counts, consensus calls, genotype calls) are kept because they appear in
 from __future__ import annotations
 
 from collections.abc import Iterable, Iterator
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Callable
 
 from placer.alignment import AlignedRead, compute_ref_end
@@ -483,6 +483,10 @@ class _PreparedEvaluation:
     #: The insert's two ends assembled separately from clips, when no read
     #: spans it (`consensus.build_side_consensuses`); None otherwise.
     sides: consensus_module.SideConsensus | None = None
+    #: The likelihood inputs the genotype was computed from. They travel with
+    #: the call, because finalization re-genotypes with the sample's
+    #: overdispersion and must use the same model.
+    genotype_input: policy_module.EventGenotypeInput | None = None
 
     @property
     def insert_seq_to_align(self) -> str | None:
@@ -530,17 +534,17 @@ def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRe
         event_length=event_length, alt_observed_lengths=alt_lengths)
     result.genotype_calls += 1
 
-    existence = policy_module.build_event_existence_evidence(
-        policy_module.EventGenotypeInput(
-            alt_struct_reads=evidence.alt_struct_reads,
-            alt_split_reads=evidence.alt_split_reads,
-            alt_indel_reads=evidence.alt_indel_reads,
-            alt_left_clip_reads=evidence.alt_left_clip_reads,
-            alt_right_clip_reads=evidence.alt_right_clip_reads,
-            ref_span_reads=evidence.ref_span_reads,
-            error_rate=config.genotype_error_rate,
-            overdispersion=config.genotype_overdispersion,
-            event_length=event_length, alt_observed_lengths=alt_lengths))
+    genotype_input = policy_module.EventGenotypeInput(
+        alt_struct_reads=evidence.alt_struct_reads,
+        alt_split_reads=evidence.alt_split_reads,
+        alt_indel_reads=evidence.alt_indel_reads,
+        alt_left_clip_reads=evidence.alt_left_clip_reads,
+        alt_right_clip_reads=evidence.alt_right_clip_reads,
+        ref_span_reads=evidence.ref_span_reads,
+        error_rate=config.genotype_error_rate,
+        overdispersion=config.genotype_overdispersion,
+        event_length=event_length, alt_observed_lengths=alt_lengths)
+    existence = policy_module.build_event_existence_evidence(genotype_input)
 
     def segment(consensus_to_segment):
         gate = seg_module.pre_segmentation_gate_reason(
@@ -596,7 +600,7 @@ def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRe
         component=component, local_records=local_records, fragments=fragments,
         shortlisted=shortlisted, evidence=evidence, consensus=consensus,
         segmentation=segmentation, seg_evidence=seg_evidence, existence=existence,
-        genotype=genotype, sides=sides)
+        genotype=genotype, sides=sides, genotype_input=genotype_input)
 
 
 def _finish_shortlisted(prepared: _PreparedEvaluation,
@@ -866,6 +870,10 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                                                segmentation, te_alignment, joint,
                                                genotype, config, hooks)
             _record_shadow(call, shadow)
+            if item.genotype_input is not None:
+                call.genotype_likelihood_input = replace(
+                    item.genotype_input,
+                    alt_observed_lengths=list(item.genotype_input.alt_observed_lengths))
             call.te_best_family = te_alignment.best_family or "NA"
             call.te_best_subfamily = te_alignment.best_subfamily or "NA"
             if config.decision_mode == "mechanism":
