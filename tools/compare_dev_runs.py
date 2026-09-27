@@ -15,8 +15,15 @@ benchmark: a 10 Mb slice holds a handful of truth insertions, so a recall of
 5/6 against 6/6 is one locus, and the listing of gained and lost calls matters
 more than the rates. The benchmark is TEBench.
 
-MATCHING. A call matches a truth insertion within `--window` bp (500 by
-default, truvari's reference distance), one-to-one, nearest first. Only truth
+NOT THE SCORE OF RECORD. Replay scoring (`python3 -m tools.dream.run`,
+`docs/development-strategy.md`) is TEBench's own evaluator, with RepeatMasker
+re-annotation, and is what accepts or rejects a change. This tool is a quick
+diff between two runs' calls.
+
+MATCHING. TEBench's rule: a call matches a truth insertion within `--window`
+bp (100, TEBench's tolerance), one-to-one, using TEBench's own matcher when its
+checkout is importable (nearest first otherwise). Truth records TEBench lists
+twice are counted twice unless `--dedupe-truth` is given. Only truth
 records inside the confident regions and the region are counted, and a call
 outside the confident regions is neither a TP nor an FP. Structural calls (the
 TE-calibrated mode's set-aside) are listed but scored separately: they are
@@ -62,6 +69,18 @@ def parse_region(text: str) -> tuple[str, int, int]:
     return chrom, int(start) - 1, int(end)
 
 
+def _vcf_pos_minus_one(row: dict) -> int:
+    """Where the call is reported: placer's VCF POS (`report.vcf.vcf_pos`, the
+    left breakpoint when there is one), less one, so that `pos + 1` is what
+    TEBench reads. The midpoint `pos` is used only when there is no breakpoint."""
+    bp_left = int(row.get("bp_left", -1) or -1)
+    if bp_left >= 1:
+        return bp_left - 1
+    if bp_left == 0:
+        return 0
+    return int(row["pos"])
+
+
 def read_shadow_calls(run_dir: Path) -> list[Call]:
     """What the shadow (per-class likelihood-ratio) decision selected, from the
     ledger's mech_ebh_selected / mech_structural_selected columns."""
@@ -74,7 +93,7 @@ def read_shadow_calls(run_dir: Path) -> list[Call]:
             if not (te or sv):
                 continue
             calls.append(Call(
-                chrom=row["chrom"], pos=int(row["pos"]),
+                chrom=row["chrom"], pos=_vcf_pos_minus_one(row),
                 call_set="final" if te else "structural",
                 label=row.get("subfamily") or row.get("family") or "NA",
                 te_class=row.get("te_annotation_class", "NA") or "NA",
@@ -94,7 +113,7 @@ def read_calls(run_dir: Path) -> list[Call]:
             if label in ("NA", ""):
                 label = row.get("family", "NA")
             calls.append(Call(
-                chrom=row["chrom"], pos=int(row["pos"]), call_set=row["call_set"],
+                chrom=row["chrom"], pos=_vcf_pos_minus_one(row), call_set=row["call_set"],
                 label=label, te_class=row.get("te_annotation_class", "NA") or "NA",
                 strand=row.get("strand", "NA") or "NA",
                 genotype=row.get("gt", "NA") or "NA",
@@ -145,8 +164,34 @@ def dedupe_truth(truth: list[Truth], window: int) -> list[Truth]:
     return out
 
 
+def _tebench_match_calls():
+    import os
+    import sys
+    root = os.environ.get("TEBENCH", "/mnt/home1/miska/hl725/scratch/projects/TE_bechmark")
+    if os.path.join(root, "src") not in sys.path:
+        sys.path.insert(0, os.path.join(root, "src"))
+    try:
+        from tebench.evaluate import match_calls
+        from tebench.model import Call as TCall
+    except ImportError:
+        return None
+    return match_calls, TCall
+
+
 def match(calls: list[Call], truth: list[Truth], window: int) -> dict[int, int]:
-    """One-to-one, nearest pairs first. Returns call index -> truth index."""
+    """One-to-one, by TEBench's matcher when available. Returns call index ->
+    truth index."""
+    tebench = _tebench_match_calls()
+    if tebench is not None:
+        match_calls, TCall = tebench
+        # TEBench's coordinates: a call's pos0 is the VCF POS placer writes
+        # (`pos + 1`), a truth record's is its own `pos0` (`Truth.pos - 1`).
+        tq = [TCall(call_id=f"q{i}", sample="S", caller="q", contig=c.chrom,
+                    pos0=c.pos + 1, end0=c.pos + 1) for i, c in enumerate(calls)]
+        tt = [TCall(call_id=f"t{i}", sample="S", caller="t", contig=t.chrom,
+                    pos0=t.pos - 1, end0=t.pos - 1) for i, t in enumerate(truth)]
+        return {int(q.call_id[1:]): int(t.call_id[1:])
+                for t, q in match_calls(tt, tq, tolerance=window)}
     pairs = sorted((abs(c.pos - t.pos), ci, ti)
                    for ci, c in enumerate(calls) for ti, t in enumerate(truth)
                    if c.chrom == t.chrom and abs(c.pos - t.pos) <= window)
@@ -163,7 +208,9 @@ def match(calls: list[Call], truth: list[Truth], window: int) -> dict[int, int]:
 def summarise(name: str, calls: list[Call], truth: list[Truth], bed, window: int) -> str:
     te = [c for c in calls if c.call_set == "final"]
     structural = [c for c in calls if c.call_set != "final"]
-    te_confident = [c for c in te if bed is None or in_bed(bed, c.chrom, c.pos)]
+    # `in_bed` tests `pos - 1`, a truth record's pos0. For a call TEBench tests
+    # its pos0, the VCF POS `pos + 1`.
+    te_confident = [c for c in te if bed is None or in_bed(bed, c.chrom, c.pos + 2)]
     matched = match(te_confident, truth, window)
     any_matched = match(calls, truth, window)
     class_ok = sum(1 for ci, ti in matched.items()
@@ -227,7 +274,9 @@ def main() -> int:
     parser.add_argument("--truth", type=Path)
     parser.add_argument("--confident", type=Path)
     parser.add_argument("--region", default=None)
-    parser.add_argument("--window", type=int, default=500)
+    parser.add_argument("--window", type=int, default=100)
+    parser.add_argument("--dedupe-truth", action="store_true",
+                        help="merge truth records at the same position (TEBench does not)")
     parser.add_argument("--shadow", action="store_true",
                         help="also score each run's shadow (per-class likelihood "
                              "ratio) selection, read from the ledger")
@@ -242,7 +291,8 @@ def main() -> int:
             truth = [t for t in truth if t.chrom == chrom and start < t.pos <= end]
         if bed is not None:
             truth = [t for t in truth if in_bed(bed, t.chrom, t.pos)]
-        truth = dedupe_truth(truth, args.window)
+        if args.dedupe_truth:
+            truth = dedupe_truth(truth, args.window)
 
     runs = [(str(path), read_calls(path)) for path in args.runs]
     if args.shadow:

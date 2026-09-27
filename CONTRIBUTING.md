@@ -13,7 +13,22 @@ they are reviewed differently:
 |---|---|
 | **Porting more of the C++** | The module docstring names the C++ file. Match it, including the parts that look wrong — and pin the ones that look wrong in a test that says so. |
 | **Fixing a bug** | A test that fails before and passes after, and a line in the test explaining what went wrong. |
-| **Changing what PLACER decides** | A test that pins the new behaviour, and a `CHANGELOG.md` entry saying what moved and how it was measured. |
+| **Changing what PLACER decides** | Developed replay-first, as [`docs/development-strategy.md`](docs/development-strategy.md) describes: diagnosed and accepted against frozen scan worlds (`tools/dream/`), every candidate logged, validated online from frozen code before a default moves. Plus a test that pins the new behaviour, and a `CHANGELOG.md` entry with the replay and online numbers. |
+
+## Changing the algorithm
+
+**Do not rerun the scan to test a decision-layer idea.** A finished scan's
+evidence ledger is a world that a decision policy replays against in under a
+second, and scoring there is TEBench's own. A HG002 chr1 scan takes over two
+hours on 16 cores. [`docs/development-strategy.md`](docs/development-strategy.md) is
+the method:
+- which changes can be replayed and which need the scan;
+- the round of diagnose, candidate, replay, accept, log;
+- the objective and the acceptance rule;
+- the no-peeking rules;
+- which data is dreamt on, which validates, and which is never touched.
+
+It is not optional for anything that changes what PLACER calls.
 
 ## Running the tests
 

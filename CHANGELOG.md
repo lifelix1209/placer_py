@@ -46,6 +46,17 @@ project's numbering, not this package's.)
   yet.
 - **`--record-world`** (development): write each evaluated row's insert
   sequence into the ledger, so the run can be replayed.
+- **`tools/dream/`, replay-first development** (after Dream-RSI): a finished
+  scan's ledger is a frozen world that decision policies are replayed against
+  in under a second.
+  - Scoring uses TEBench's own evaluator and RepeatMasker re-annotation.
+  - A candidate is accepted by a paired block bootstrap, and a
+    coordinate-shift invariance check guards against peeking.
+  - Every candidate is logged.
+  - The method is in [`docs/development-strategy.md`](docs/development-strategy.md),
+    and `CONTRIBUTING.md` and `CLAUDE.md` make it the route for any change to
+    what PLACER decides.
+
 - **The form of an LTR insertion** -- `full` (LTR-internal-LTR), `solo`,
   `internal` or `partial` -- read across the library's separate LTR and
   internal-region entries (`MER41A` + `MER41-int`, EDTA's `_LTR`/`_INT`), in

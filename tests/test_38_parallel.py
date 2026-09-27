@@ -157,7 +157,8 @@ def _real_run_available() -> str:
 
 
 def _run(out_dir: str, workers: int, region: str | None,
-         decision: str = "legacy", te_rule: str = "likelihood") -> None:
+         decision: str = "legacy", te_rule: str = "likelihood",
+         record_world: bool = False) -> None:
     from placer.config import PipelineConfig
     from placer.main import parse_region_scope, run_pipeline_once
 
@@ -167,6 +168,7 @@ def _run(out_dir: str, workers: int, region: str | None,
     config.scan_workers = workers
     config.decision_mode = decision
     config.mechanism_te_rule = te_rule
+    config.record_world = record_world
     # One bin per chunk, so the 108 kb contig is cut many times and every
     # 8 kb read near a cut is handed to two chunks by the fetch.
     config.scan_chunk_bp = config.bin_size
