@@ -10,11 +10,16 @@ this implementation departed from the C++ up to that point is recorded in
 [`docs/departures-from-cpp.md`](docs/departures-from-cpp.md). Every module's
 docstring still names the C++ file it came from.
 
-## 1.0.0a1: where it stands
+## 1.0.0a2: where it stands
 
-The first tagged version, an alpha of PLACER 1.0. It calls **TE insertions**
-from long reads (ONT): BAM in, VCF out. An insertion that is not a TE is
-recorded in the evidence ledger but not reported.
+An alpha of PLACER 1.0. It calls **TE insertions** from long reads (ONT): BAM
+in, VCF out. An insertion that is not a TE is recorded in the evidence ledger
+but not reported.
+
+1.0.0a2 makes exactly the calls 1.0.0a1 made, about five times faster:
+- every 1.0.0a1 release run was rerun with its own arguments, and its output
+  files are the same bytes;
+- HG002 chr1-8 takes 8.4 CPU-hours, against 42.4 (see [Speed](#speed)).
 
 **How it decides.**
 
@@ -51,13 +56,14 @@ recorded in the evidence ledger but not reported.
      with CIPOS.
    - FAM_ABSTAIN marks a TE call whose class is not committed.
 
-**How well** -- this version's own runs, scored by TEBench's pipeline
-(`tools/tebench_score.py`), HG002, GIAB v5.0q TE truth, confident regions,
-+-100 bp:
+**How well**:
+- the runs are 1.0.0a1's, which 1.0.0a2 reproduces byte for byte;
+- scored by TEBench's pipeline (`tools/tebench_score.py`);
+- HG002, GIAB v5.0q TE truth, confident regions, +-100 bp.
 
 | caller | chr1 TP / FP | chr1 P / R | chr2-8 TP / FP | chr2-8 P / R |
 |---|---|---|---|---|
-| **PLACER 1.0.0a1** | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
+| **PLACER 1.0.0a2** (= 1.0.0a1) | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
 | Sniffles2 | 180 / 11 | 94.2% / 78.6% | 1025 / 46 | 95.7% / 82.7% |
 | GraffiTE | 166 / 10 | 94.3% / 72.5% | 909 / 49 | 94.9% / 73.4% |
 | cuteSV | 171 / 15 | 91.9% / 74.7% | 957 / 63 | 93.8% / 77.2% |
@@ -72,15 +78,15 @@ recorded in the evidence ledger but not reported.
 - **Cichlid**, `chr1:10-20 Mb`, no truth set. 180 PASS TE calls:
   - 80.0% lie within 100 bp of a Sniffles2 insertion;
   - 58 of tldr's 78 PASS calls are matched.
-- **Cost**, 16 threads:
-  - HG002 chr1-8 took 42.4 CPU-hours in all;
-  - chr1 took 10.3 CPU-hours and 2 h 55 min, with a peak of 11.9 GB in the
-    pericentromere, against 2-3 GB elsewhere;
-  - cichlid took 6.2 CPU-hours per 10 Mb.
+- **Cost**, 16 threads, 1.0.0a2:
+  - HG002 chr1-8 took 8.4 CPU-hours in all (1.0.0a1: 42.4);
+  - chr1 took 2.05 CPU-hours and 13 min (1.0.0a1: 10.3 and 2 h 55 min);
+  - one chr1 worker peaks at 12.6 GB in 1q21, the others at 2-4 GB;
+  - cichlid took 0.6 CPU-hours per 10 Mb (1.0.0a1: 6.2).
 
 **What it does not do yet.**
-- **Speed.** Chr1 takes 10.3 CPU-hours against a target of 2.5, mostly in
-  the pericentromere; the WGS target is 30.
+- **Whole genome.** It has not been run on a whole genome yet. Scaled by
+  length, chr1-8 point to about 17 CPU-hours, against a target of 30.
 - **Tandem repeats.** An allele that the aligner scatters across a tandem
   repeat loses its reads to the reference count; that is most of what is
   left of the recall gap to Sniffles2.
@@ -278,47 +284,46 @@ which is why they are optional rather than required.
 
 ## Speed
 
-Measured on HG002 ONT-UL (GIAB, GRCh37), `21:18,704,270-19,599,876` -- 0.9 Mb,
-2,065 reads, 203 evaluated candidates -- on an 11-core Apple M3 Pro laptop.
-Every row writes the same files, byte for byte, as the first.
+The run:
+- HG002 ONT (TEBench, full coverage), GRCh38 chr1, `--threads 16`;
+- 16 CPUs of an AMD EPYC 75F3 node, with the inputs on BeeGFS;
+- from a frozen snapshot.
 
-| | wall | CPU | peak memory |
-|---|---|---|---|
-| before any of this | 1450-2425 s | 977-986 s | 469 MB |
-| one process | 80 s | 73 s | 711 MB |
-| `--threads 8` | 21 s | 109 s | 503 MB per process |
+Both rows write the same four files, byte for byte.
 
-The "before" wall time is a range because it was measured twice and most of
-it was spent launching `blastn` one process after another, which on this
-machine varies from run to run; CPU is the stable comparison (~13x on one
-process). Memory went UP on one process: each read now carries its CIGAR
-index while it is in use, and up to 32 Mbp of recently fetched reads are kept
-for reuse (`io/bam.RecordCache`). Both are bounded -- by the bin and by the
-cache -- so neither grows with the genome.
+| | CPU (user + sys) | of which sys | wall | peak memory, one worker |
+|---|---|---|---|---|
+| 1.0.0a1 | 10.28 CPU-h | 3.8 h | 2 h 55 min | 12.5 GB |
+| 1.0.0a2 | 2.05 CPU-h | 0.28 h | 13 min | 12.6 GB |
 
-Where the single-process time went, and what was done about it -- every change
-exact, each checked by comparing the output files byte for byte:
+What changed, each change exact (`CHANGELOG.md`, 1.0.0a2):
 
-| was | fix |
+| was | now |
 |---|---|
-| 63% in the flank-placement edit distance | `rapidfuzz` when installed (optional; the pure-Python DP is the fallback and gives the same answer) |
-| every window re-walking an ultra-long read's whole CIGAR (p90 ~5,000 operations) | one walk per read into a cached index; windows are binary searches |
-| one `blastn` per candidate, run one after another | the same one-insert-per-process calls, run concurrently per bin, and remembered per sequence so a repeated insert is not re-aligned |
-| each read decoded from pysam ~5 times, once per fetch that returned it | a bounded cache hands back the same read object |
-| the TE library hashed and its k-mer tables rebuilt per call / per process | once per run; k-mers folded per distinct key |
+| every `blastn` exec paging in 86 conda libraries from the network filesystem, 0.6-0.9 s of system time per call on a busy node | blastn staged once per node on local disk, used only when it resolves and searches exactly as the original |
+| every bin re-reading its ultra-long reads from the BAM index (~50x the chunk) | local reads answered from the chunk's own stream when it provably holds them all |
+| ~10^4 reference fetches per evaluated locus (TSD detector, 100 decoys) | 64 kb cached blocks, and two windows per detection |
+| the soft-clip complexity test walking clips of tens of kb four times per fragment (27% of chr1) | base counts, cheapest test first, and a 4^k bound that decides long clips without a k-mer set |
+| the flank search computing an edit distance per (length, offset) | one diagonal chain at a time, a few distances per chain |
+| abPOA re-assembling the same reads for neighbouring hypotheses (62% of calls) | answers reused for the same input |
+| three chunks (the pericentromere, 1q21) running for most of the wall time on one worker | the heaviest chunks start first and are cut into pieces |
 
-**`blastn` is not batched, on purpose.** Packing several inserts into one
-`blastn` run changes the HSPs it reports for repetitive ones (measured: a
-112 bp (AT)n insert's `cross_family_margin` moved from 0.0610 to 0.0662), so
-each insert still gets its own process and the processes run side by side.
+**`blastn` batches are fixed, on purpose.** Packing inserts differently changes
+the HSPs blastn reports for repetitive ones: a 112 bp (AT)n insert's
+`cross_family_margin` moved from 0.0610 to 0.0662. So the batches are a
+function of the bin alone, 32 sorted inserts each.
 
-**What is left is mostly `blastn` starting up.** Each launch costs ~0.8 s of
-CPU and ~1.3 s of wall time on the laptop above, whatever the query -- that is
-BLAST+ 2.17 initialising, and `blastn -version` alone pays it. It is about half
-of the single-process time. It cannot be cut without sharing a process between
-inserts, which is the change measured above to alter results, so the next
-lever there is a decision rather than an optimisation. The largest pure-Python
-cost left is the flank search in `core/segmentation.py` (~25%).
+**What is left**, on HG002 chr1:
+- **abPOA**, about a quarter of the interpreter's time, and **blastn**, about
+  a quarter of the CPU. Both are compiled code on inputs the decision fixes.
+- **Collapsed pericentromeric and segmental-duplication regions.** Their loci
+  are removed from the calls by the collapse rule. Skipping their expensive
+  stages leaves every chr1 decision unchanged in replay, and would save about
+  a quarter of the CPU. It changes the ledger, so it is a decision change,
+  judged as one.
+
+To see where a run's time goes, set `PLACER_PERF_LOG=perf.tsv` and run
+`tools/perf/perf_summary.py perf.tsv`.
 
 ## The output files
 

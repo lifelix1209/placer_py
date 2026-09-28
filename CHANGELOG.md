@@ -14,6 +14,115 @@ that file says what it cost.
 
 Nothing yet.
 
+## [1.0.0a2] - 2026-09-28
+
+**The same calls as 1.0.0a1, about five times faster.** Every release run of
+1.0.0a1 was rerun from the frozen 1.0.0a2 code with that run's own arguments:
+HG002 chr1-8 and the cichlid slice, 16 threads, `--record-world`. All four
+output files are byte-identical to 1.0.0a1's, `calls.vcf` apart from the
+`##source` line that names the version. So every accuracy number of 1.0.0a1
+stands unchanged.
+
+| run, 16 CPUs | 1.0.0a1 CPU-h | 1.0.0a2 CPU-h | | 1.0.0a1 wall | 1.0.0a2 wall | peak memory of a worker (GB) |
+|---|---|---|---|---|---|---|
+| HG002 chr1 | 10.28 | 2.05 | 5.0x | 2 h 55 min | 12.8 min | 12.5 -> 12.6 |
+| HG002 chr2 | 7.26 | 1.17 | 6.2x | 2 h 13 min | 6.4 min | 2.2 -> 2.2 |
+| HG002 chr3 | 5.58 | 0.89 | 6.3x | 2 h 5 min | 5.1 min | 2.3 -> 2.4 |
+| HG002 chr4 | 4.08 | 0.99 | 4.1x | 43 min | 7.3 min | 3.6 -> 4.3 |
+| HG002 chr5 | 3.16 | 0.84 | 3.8x | 32 min | 4.6 min | 1.9 -> 1.9 |
+| HG002 chr6 | 3.36 | 0.86 | 3.9x | 35 min | 5.0 min | 2.9 -> 3.5 |
+| HG002 chr7 | 4.64 | 0.86 | 5.4x | 81 min | 4.5 min | 2.3 -> 2.1 |
+| HG002 chr8 | 4.06 | 0.73 | 5.6x | 75 min | 4.0 min | 2.3 -> 2.3 |
+| **HG002 chr1-8** | **42.4** | **8.38** | **5.1x** | | | |
+| cichlid chr1:10-20 Mb | 6.19 | 0.60 | 10.3x | 60 min | 2.4 min | 2.0 -> 2.0 |
+
+CPU is user + sys, as TEBench's `cpu_hours` counts it. The target for HG002
+chr1 was 2.5 CPU-h. Scaled by length, chr1-8 point to about 17 CPU-h for the
+whole genome, against a target of 30.
+
+**Known: a little more memory in the worst region.** The 1q21 segmental
+duplications, chr1:143.13-143.32 Mb, run by one worker with `--threads 1`:
+
+| | CPU | peak memory |
+|---|---|---|
+| 1.0.0a1 | 4,434 s | 12.4 GB |
+| 1.0.0a2 | 880 s | 13.3 GB |
+
+In the 16-thread chr1 run the heaviest worker peaks at 12.6 GB, against 12.5.
+chr4's heaviest worker went from 3.6 to 4.3 GB, and chr6's from 2.9 to 3.5.
+
+### Changed
+
+- **Nothing about the decision.** No threshold, model or output field moved.
+- **Measured the same way throughout.** Every change was run from frozen
+  snapshots on four workloads, with all four outputs compared byte for byte:
+  typical, pericentromeric and centromeric HG002 regions; a cichlid slice;
+  three concurrent 16-worker jobs; and whole HG002 chr1. Each rewritten
+  kernel also has a test that keeps the old implementation verbatim beside the
+  new one (`tests/test_49`-`test_57`).
+- **System time: blastn is staged on node-local disk** (`io/blast.staged_blastn`).
+  - **The cause.** A conda BLAST+ loads 86 libraries (535 MB) at every exec,
+    and BeeGFS kept none of their pages cached. With 48 workers on a node that
+    cost 0.6-0.9 s of system time per call. It was 90% of the run's sys time,
+    and why sys reached 50-200% of user time on some nodes.
+  - **The safeguards.** The copy is used only when `ldd` resolves it exactly
+    as the original, and a canary search gives the same bytes.
+    `PLACER_STAGE_BLASTN=0/1` overrides the choice.
+  - **The effect.** HG002 chr1's sys time went from 13,755 s to 1,010 s.
+- **Reads and reference.**
+  - **Local reads come from the chunk's own stream** (`io/bam.StreamedReadBuffer`)
+    wherever it provably holds every read an indexed fetch would return, and
+    from the index otherwise. Filesystem input on chr1 went from 1.43e9 to
+    4.4e7 blocks. `PLACER_VERIFY_LOCAL_FETCH=1` answers every fetch both ways
+    and fails on any difference.
+  - **The reference is read in cached 64 kb blocks.**
+- **The soft-clip low-complexity test was 27% of chr1's CPU.** It ran four
+  per-base passes over clips of up to tens of kb, for every fragment of every
+  hypothesis.
+  - The four tests now run cheapest first, on base counts.
+  - A clip with more k-mers than 4^k / threshold is decided without building
+    its k-mer set.
+- **The flank search follows diagonal chains** (`segmentation._chain_candidates`).
+  - Along a diagonal the edit distance never decreases and grows by at most
+    one per base, so a few kernel calls per chain answer every length.
+  - The pair search stops as soon as no remaining flank can beat the best
+    pair's weaker side.
+  - Replayed on 2,243 real segmentation calls, the stage is 10-20x faster
+    with identical results.
+- **The TSD detector**, run for every locus and each of its 100 decoys.
+  - Its windows are sliced, not fetched per candidate length.
+  - The exact pass is a substring search, and the tolerant pass counts
+    mismatches bit-parallel.
+  - The insertion form is one pass outward from the junction.
+- **Answers reused for the same input:**
+  - abPOA consensuses, 62% of calls on chr1;
+  - insert composition features and simple-repeat masks;
+  - canonical k-mer keys.
+- **Other pure-Python kernels.**
+  - The breakpoint posterior uses tabulated kernels, in the same summation
+    order.
+  - The tandem and microsatellite masks compare the sequence with itself
+    shifted.
+  - The low-complexity window slides.
+  - Each read's CIGAR is walked once, for its index, the gate's summary and
+    its long insertions.
+- **Load balance.** The chunks holding the most alignment data, from the BAM
+  index, start first. A chunk estimated above twice the median is cut into
+  bin-aligned pieces. On chr1, three chunks (the pericentromere and 1q21) had
+  been 52% of the CPU and set the wall time.
+
+### Added
+
+- `PLACER_PERF_LOG=PATH` writes one TSV row per scanned chunk: wall time; the
+  CPU of the worker and of its blastn children; I/O; fetch and cache
+  counters. `tools/perf/perf_summary.py` summarises it.
+- `tools/perf/ab_step.sh` A/Bs two frozen snapshots, including three
+  concurrent 16-worker jobs.
+- `tools/perf/kernel_corpus.py` records a region's segmentation calls and
+  replays them against the code on disk.
+- `PLACER_SCAN_CHUNK_BP` and `PLACER_TE_BLAST_JOBS` set the chunk width and the
+  blastn concurrency. Neither changes an output.
+
 ## [1.0.0a1] - 2026-09-27
 
 The first tagged version: an alpha of 1.0. It is on GitHub only, not on PyPI
