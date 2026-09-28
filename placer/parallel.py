@@ -45,7 +45,7 @@ import multiprocessing
 import sys
 import time
 from collections.abc import Iterator
-from concurrent.futures import ProcessPoolExecutor
+from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures.process import BrokenProcessPool
 from dataclasses import dataclass
 
@@ -315,13 +315,14 @@ def map_in_worker_processes(fn, items, workers: int, initializer=None,
         with ProcessPoolExecutor(max_workers=workers, mp_context=context,
                                  initializer=initializer,
                                  initargs=initargs) as pool:
-            futures = [None] * len(items)
+            futures: list[Future | None] = [None] * len(items)
             for index in order:
                 futures[index] = pool.submit(fn, items[index])
-            for index, future in enumerate(futures):
-                result = future.result()
+            for index in range(len(futures)):
+                future = futures[index]
+                assert future is not None
                 futures[index] = None      # the merged result is the caller's now
-                yield result
+                yield future.result()
     except BrokenProcessPool as error:
         raise WorkerDiedError(str(error)) from error
 

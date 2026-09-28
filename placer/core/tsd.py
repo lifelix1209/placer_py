@@ -444,12 +444,12 @@ _BASE4 = str.maketrans("ACGT", "0123")
 _LOW_BITS = [int("01" * length, 2) if length else 0 for length in range(257)]
 
 
-def _popcount(value: int) -> int:
+def _popcount_by_bin(value: int) -> int:
     return bin(value).count("1")
 
 
-if hasattr(int, "bit_count"):             # Python 3.10+
-    _popcount = int.bit_count             # noqa: F811
+#: `int.bit_count` from Python 3.10, the same count by `bin` before it.
+_popcount: Callable[[int], int] = getattr(int, "bit_count", _popcount_by_bin)
 
 
 def _acgt_run(seq: str, from_end: bool) -> int:

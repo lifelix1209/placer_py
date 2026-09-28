@@ -547,7 +547,7 @@ class _Segmenter:
                     points = sorted(known)
                     for index, x in enumerate(points):
                         value = known[x]
-                        span = [x]
+                        span = range(x, x + 1)
                         if index + 1 < len(points) and known[points[index + 1]] == value:
                             span = range(x, points[index + 1])
                         for length in span:
