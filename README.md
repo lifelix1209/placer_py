@@ -10,11 +10,91 @@ this implementation departed from the C++ up to that point is recorded in
 [`docs/departures-from-cpp.md`](docs/departures-from-cpp.md). Every module's
 docstring still names the C++ file it came from.
 
-**This is mid-refactor toward PLACER 1.0**, a multi-species caller: the
-TE taxonomy, the structure grammar and the decision layer are being made
-class-aware (LINE/SINE/LTR/DNA/Helitron) rather than human-specific. The
-sections below describe the implementation as it stands, and this README will be
-rewritten for users before the release.
+## 1.0.0a1: where it stands
+
+The first tagged version, an alpha of PLACER 1.0. It calls **TE insertions**
+from long reads (ONT): BAM in, VCF out. An insertion that is not a TE is
+recorded in the evidence ledger but not reported.
+
+**How it decides.**
+
+1. **The scan**, per bin, on `--threads N` processes with the same bytes out
+   for any N:
+   - it gates the reads and clusters their insertion signals;
+   - it enumerates breakpoint hypotheses and counts the alt and reference
+     reads of each;
+   - for the shortlisted hypotheses it assembles the insert (abPOA), segments
+     it from its flanks, and aligns it to the TE library (BLAST).
+   - It then measures TEBench's TE rule on the insert: how much of it TE hits
+     cover, and the family covering the most.
+   - It scores two per-class likelihood ratios (`core/mechanism.py`):
+     - *is an insertion here* (`vs_artifact`): the read counts, a TSD by the
+       superfamily, the L1 endonuclease motif;
+     - *is it a TE* (`vs_non_te`): identity to the element, 3' anchoring,
+       tail, termini.
+   - It checks the linkage terms against 100 shifted-breakpoint decoys.
+   - Every evaluated hypothesis is one ledger row.
+2. **Finalization**, once, over the whole run (`core/mechanism_selection.py`):
+   - hypotheses in alignment-collapse regions get e = 0;
+   - a per-class decoy check bounds each class's e-values;
+   - hypotheses within 300 bp are one locus, tested once, on the mean of its
+     hypotheses' e-values;
+   - one e-BH at q = 0.1 controls the FDR of "an insertion is here";
+   - a selected insertion is a TE call when TE hits cover >= 50% and >= 100 bp
+     of it, and it is named after the family covering the most;
+   - a call tested by a breakpoint interval moves to the locus's exact
+     hypothesis with the most indel reads, where one lies within 100 bp;
+   - calls are genotyped with the sample's own overdispersion.
+3. **The VCF.**
+   - FILTER=IMPRECISE only when the breakpoint is known to no better than an
+     interval wider than 200 bp; a narrower interval is written at its middle,
+     with CIPOS.
+   - FAM_ABSTAIN marks a TE call whose class is not committed.
+
+**How well** -- this version's own runs, scored by TEBench's pipeline
+(`tools/tebench_score.py`), HG002, GIAB v5.0q TE truth, confident regions,
++-100 bp:
+
+| caller | chr1 TP / FP | chr1 P / R | chr2-8 TP / FP | chr2-8 P / R |
+|---|---|---|---|---|
+| **PLACER 1.0.0a1** | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
+| Sniffles2 | 180 / 11 | 94.2% / 78.6% | 1025 / 46 | 95.7% / 82.7% |
+| GraffiTE | 166 / 10 | 94.3% / 72.5% | 909 / 49 | 94.9% / 73.4% |
+| cuteSV | 171 / 15 | 91.9% / 74.7% | 957 / 63 | 93.8% / 77.2% |
+| tldr | 119 / 2 | 98.3% / 52.0% | 674 / 15 | 97.8% / 54.4% |
+
+- **Where the numbers come from.** The other callers are TEBench's own runs,
+  scored the same way. chr1 is where the decision layer was developed. chr2-8
+  were used only to validate candidates, never to develop them. TEBench's
+  holdout contigs have not been looked at.
+- **The same numbers two ways.** Each run's PASS calls are exactly the
+  replay of its own evidence ledger, and the replay scores the same numbers.
+- **Cichlid**, `chr1:10-20 Mb`, no truth set. 180 PASS TE calls:
+  - 80.0% lie within 100 bp of a Sniffles2 insertion;
+  - 58 of tldr's 78 PASS calls are matched.
+- **Cost**, 16 threads:
+  - HG002 chr1-8 took 42.4 CPU-hours in all;
+  - chr1 took 10.3 CPU-hours and 2 h 55 min, with a peak of 11.9 GB in the
+    pericentromere, against 2-3 GB elsewhere;
+  - cichlid took 6.2 CPU-hours per 10 Mb.
+
+**What it does not do yet.**
+- **Speed.** Chr1 takes 10.3 CPU-hours against a target of 2.5, mostly in
+  the pericentromere; the WGS target is 30.
+- **Tandem repeats.** An allele that the aligner scatters across a tandem
+  repeat loses its reads to the reference count; that is most of what is
+  left of the recall gap to Sniffles2.
+- **Other species.** Only human is scored against a truth set. The cichlid
+  slice is checked for consistency with Sniffles2 and tldr; mouse is not
+  run yet.
+- **Inputs and outputs.** No `--ploidy` and no CRAM.
+- **Distribution.** It is not on PyPI or bioconda.
+
+How the decision layer is developed -- replayed against frozen scans, and
+accepted only on a TEBench-exact bootstrap -- is in
+[`docs/development-strategy.md`](docs/development-strategy.md).
+
+## How it got here
 
 **The migration is complete, and it now covers the whole pipeline rather than
 the decision layer alone.** The first pass ported `decision_policy.cpp`,

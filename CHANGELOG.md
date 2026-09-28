@@ -22,7 +22,23 @@ below is what 1.0.0a1 is rather than what changed since a release. (The `0.0.5`
 mentioned in `placer/config.py` is a *PLACER* release -- the C++ project's
 numbering, not this package's.)
 
-RELEASE_SUMMARY_PLACEHOLDER
+**Where it stands**, from this version's own runs, scored by TEBench's
+pipeline (`tools/tebench_score.py`): HG002, GIAB v5.0q TE truth, confident
+regions, +-100 bp.
+
+| | TP / FP | precision | recall |
+|---|---|---|---|
+| chr1 (development) | 171 / 10 | 94.5% | 74.7% |
+| chr2-8 pooled (validation) | 923 / 42 | 95.6% | 74.5% |
+| Sniffles2 on chr2-8, for reference | 1025 / 46 | 95.7% | 82.7% |
+
+- **Cichlid.** On the cichlid slice, 80.0% of the 180 PASS TE calls lie
+  within 100 bp of a Sniffles2 insertion, and 58 of tldr's 78 PASS calls are
+  matched.
+- **Cost.** HG002 chr1-8 took 42.4 CPU-hours.
+
+The README's "1.0.0a1: where it stands" describes how it decides and what it
+does not do yet.
 
 ### Added
 
