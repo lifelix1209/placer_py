@@ -56,6 +56,7 @@ from typing import Callable
 from placer.config import PipelineConfig
 from placer.core.breakpoints import (
     edit_identity_if_at_least,
+    levenshtein_kernel,
     max_edits_for_identity_threshold,
 )
 from placer.core.policy import FinalBoundaryInput, check_boundary_consistency
@@ -212,8 +213,18 @@ def better_event_flank_placement(placement: EventFlankPlacement) -> tuple:
             placement.ref_start, placement.ref_end)
 
 
+def reference_seed_index(ref_window: str) -> dict[int, list[int]]:
+    """Every SEED_K-mer of the window, by key, with its positions in order."""
+    ref_hits: dict[int, list[int]] = {}
+    for pos, key in for_each_valid_kmer(ref_window, SEED_K):
+        ref_hits.setdefault(key, []).append(pos)
+    return ref_hits
+
+
 def collect_anchor_seed_bins(query: str, breakpoint: int, ref_window_start: int,
-                             ref_window: str, is_left: bool) -> list[AnchorSeedBin]:
+                             ref_window: str, is_left: bool,
+                             ref_hits: dict[int, list[int]] | None = None
+                             ) -> list[AnchorSeedBin]:
     """Bin shared 11-mers by the DIAGONAL they imply, keeping the best eight.
 
     The diagonal `ref_start = ref_window_start + ref_pos - query_pos` is where
@@ -226,9 +237,8 @@ def collect_anchor_seed_bins(query: str, breakpoint: int, ref_window_start: int,
     elsewhere in the window with two matching k-mers cannot outrank the real
     locus with forty.
     """
-    ref_hits: dict[int, list[int]] = {}
-    for pos, key in for_each_valid_kmer(ref_window, SEED_K):
-        ref_hits.setdefault(key, []).append(pos)
+    if ref_hits is None:
+        ref_hits = reference_seed_index(ref_window)
 
     bins_by_start: dict[int, AnchorSeedBin] = {}
     for query_pos, key in for_each_valid_kmer(query, SEED_K):
@@ -270,6 +280,13 @@ class _Segmenter:
         self.fetch_window = fetch_window
         self.stats = stats
         self.edit_memo: dict[tuple[int, int, int], tuple[bool, float]] = {}
+        #: `collect_candidates` answers by argument. The one-sided searches
+        #: repeat the paired ones exactly whenever both flank limits are
+        #: MAX_FLANK_QUERY_BP, endpoint-slack retries included.
+        self.search_cache: dict[tuple, list[EventFlankPlacement]] = {}
+        #: `reference_seed_index` of each reference window searched: the
+        #: paired, slack and one-sided searches of a side share one window.
+        self.seed_index: dict[str, dict[int, list[int]]] = {}
         #: Set by the caller before `emit_unplaced_insert`. Kept off the
         #: constructor because only that one fallback reads them.
         self.alt_struct_reads = 0
@@ -293,6 +310,27 @@ class _Segmenter:
         """
         if not ref_window or flank_query_len < MIN_FLANK_ALIGN_BP:
             return []
+        # The answer is a function of these arguments alone -- the memos only
+        # hold values -- so a repeated search is answered from the first.
+        # `is_one_sided_search` changes only the diagnostic counters.
+        cache_key = (is_left, breakpoint, ref_window_start, ref_window,
+                     flank_query_len, query_endpoint_slack)
+        cached = self.search_cache.get(cache_key)
+        if cached is not None:
+            self.stats.segmentation_cache_hits += 1
+            return list(cached)
+        self.stats.segmentation_cache_misses += 1
+        found = self._collect_candidates(is_left, breakpoint, ref_window_start,
+                                         ref_window, flank_query_len,
+                                         query_endpoint_slack, is_one_sided_search)
+        self.search_cache[cache_key] = found
+        return list(found)
+
+    def _collect_candidates(self, is_left: bool, breakpoint: int, ref_window_start: int,
+                            ref_window: str, flank_query_len: int,
+                            query_endpoint_slack: int,
+                            is_one_sided_search: bool) -> list[EventFlankPlacement]:
+        """`collect_candidates`, computed."""
         if is_one_sided_search:
             self.stats.one_sided_searches += 1
         else:
@@ -302,20 +340,41 @@ class _Segmenter:
 
         consensus = self.consensus
         consensus_len = self.consensus_len
-        ref_window_end = ref_window_start + len(ref_window)
-        search_lo = max(0, breakpoint - BREAKPOINT_SLACK_BP)
-        search_hi = breakpoint + BREAKPOINT_SLACK_BP
-
         query_seed_len = min(flank_query_len + query_endpoint_slack, consensus_len)
         query_seed_start = 0 if is_left else (consensus_len - query_seed_len)
         seed_query = (consensus[:query_seed_len] if is_left
                       else consensus[query_seed_start:])
+        ref_hits = self.seed_index.get(ref_window)
+        if ref_hits is None:
+            ref_hits = self.seed_index[ref_window] = reference_seed_index(ref_window)
         seed_bins = collect_anchor_seed_bins(seed_query, breakpoint, ref_window_start,
-                                             ref_window, is_left)
+                                             ref_window, is_left, ref_hits)
         self.stats.seed_bins_total += len(seed_bins)
         if not seed_bins:
             return []
+        kernel = levenshtein_kernel()
+        if kernel is not None:
+            return self._chain_candidates(kernel, is_left, breakpoint, ref_window_start,
+                                          ref_window, flank_query_len,
+                                          query_endpoint_slack, query_seed_len, seed_bins)
+        return self._scan_candidates(is_left, breakpoint, ref_window_start, ref_window,
+                                     flank_query_len, query_endpoint_slack,
+                                     query_seed_start, seed_bins)
 
+    def _scan_candidates(self, is_left: bool, breakpoint: int, ref_window_start: int,
+                         ref_window: str, flank_query_len: int,
+                         query_endpoint_slack: int, query_seed_start: int,
+                         seed_bins: list[AnchorSeedBin]) -> list[EventFlankPlacement]:
+        """The search, one (length, query start, reference start) at a time.
+
+        What runs without the compiled kernel, and the definition
+        `_chain_candidates` is checked against (`tests/test_53`).
+        """
+        consensus = self.consensus
+        consensus_len = self.consensus_len
+        ref_window_end = ref_window_start + len(ref_window)
+        search_lo = max(0, breakpoint - BREAKPOINT_SLACK_BP)
+        search_hi = breakpoint + BREAKPOINT_SLACK_BP
         candidates: list[EventFlankPlacement] = []
         for align_len in range(flank_query_len, MIN_FLANK_ALIGN_BP - 1, -1):
             max_query_start = consensus_len - align_len
@@ -387,6 +446,138 @@ class _Segmenter:
                     break
                 candidates.append(placement)
 
+        candidates.sort(key=better_event_flank_placement)
+        return candidates
+
+    def _chain_candidates(self, kernel, is_left: bool, breakpoint: int,
+                          ref_window_start: int, ref_window: str, flank_query_len: int,
+                          query_endpoint_slack: int, query_seed_len: int,
+                          seed_bins: list[AnchorSeedBin]) -> list[EventFlankPlacement]:
+        """`_scan_candidates`, one diagonal CHAIN at a time.
+
+        THE CHAINS. On the left, a placement with endpoint offset e starts its
+        query at e and its reference at `bin + e + j` for every length, so the
+        pairs one `(e, bin, j)` visits as the length shrinks are PREFIXES of
+        one another; on the right they END at fixed positions and are suffixes.
+        The bounds the scan applies per length (the search window around the
+        breakpoint, the reference window, the consensus) leave each chain one
+        contiguous range of lengths, solved for below. Every
+        (length, query start, reference start) the scan visits is on exactly
+        one chain.
+
+        WHY FEW DISTANCES ARE ENOUGH. Along a diagonal of one edit-distance
+        matrix the distance never decreases and grows by at most one per base
+        (Ukkonen), so over a chain it is a non-decreasing step function of the
+        length. Asked with the chain's largest budget as the cutoff, the kernel
+        returns the exact distance wherever it can pass and "over" elsewhere,
+        which is still non-decreasing. Equal values at two lengths fix every
+        length between them; a value already over the budget at the longer end
+        of a range fails the whole range. Bisection fills in the rest. A
+        placement that passes gets the identity `edit_identity_if_at_least`
+        would give -- the same expression of the same integer -- and the
+        per-length ranking and uniqueness margin are the scan's, so the result
+        is the scan's list (`tests/test_53_segmentation_search_cache.py` holds
+        the two against each other).
+        """
+        consensus = self.consensus
+        cl = self.consensus_len
+        rws = ref_window_start
+        rwe = rws + len(ref_window)
+        search_lo = max(0, breakpoint - BREAKPOINT_SLACK_BP)
+        search_hi = breakpoint + BREAKPOINT_SLACK_BP
+        top = min(flank_query_len, cl)
+        if top < MIN_FLANK_ALIGN_BP:
+            return []
+        budget = [0] * (top + 1)
+        for length in range(MIN_FLANK_ALIGN_BP, top + 1):
+            budget[length] = max_edits_for_identity_threshold(length, length,
+                                                              MIN_FLANK_IDENTITY)
+        slack = max(0, query_endpoint_slack)
+        by_length: dict[int, list[tuple]] = {}
+        calls = 0
+        for e in range(slack + 1):
+            if cl - e < MIN_FLANK_ALIGN_BP:
+                break
+            for seed_bin in seed_bins:
+                for j in range(SEED_BIN_BP):
+                    if is_left:
+                        fixed = seed_bin.ref_bin_start + e + j        # ref start
+                        if fixed < rws:
+                            continue
+                        lo = max(MIN_FLANK_ALIGN_BP, search_lo - fixed)
+                        hi = min(top, cl - e, search_hi - fixed, rwe - fixed)
+                    else:
+                        fixed = seed_bin.ref_bin_start + query_seed_len - e + j  # ref end
+                        if fixed > rwe:
+                            continue
+                        lo = max(MIN_FLANK_ALIGN_BP, fixed - search_hi)
+                        hi = min(top, cl - e, fixed - max(search_lo, rws))
+                    if lo > hi:
+                        continue
+                    cutoff = budget[hi]
+                    offset = fixed - rws
+
+                    def distance(length: int, e: int = e, offset: int = offset,
+                                 cutoff: int = cutoff) -> int:
+                        if is_left:
+                            return kernel(consensus[e:e + length],
+                                          ref_window[offset:offset + length],
+                                          score_cutoff=cutoff)
+                        return kernel(consensus[cl - e - length:cl - e],
+                                      ref_window[offset - length:offset],
+                                      score_cutoff=cutoff)
+
+                    known = {lo: distance(lo)}
+                    calls += 1
+                    if known[lo] > cutoff:
+                        continue                  # over every budget in the range
+                    if hi > lo:
+                        known[hi] = distance(hi)
+                        calls += 1
+                        pending = [(lo, hi)]
+                        while pending:
+                            x, y = pending.pop()
+                            if y - x <= 1 or known[x] == known[y] or known[x] > budget[y]:
+                                continue
+                            mid = (x + y) // 2
+                            known[mid] = distance(mid)
+                            calls += 1
+                            pending.append((x, mid))
+                            pending.append((mid, y))
+                    points = sorted(known)
+                    for index, x in enumerate(points):
+                        value = known[x]
+                        span = [x]
+                        if index + 1 < len(points) and known[points[index + 1]] == value:
+                            span = range(x, points[index + 1])
+                        for length in span:
+                            if value > budget[length]:
+                                continue
+                            identity = min(1.0, max(0.0, 1.0 - (value / length)))
+                            if is_left:
+                                query_start, ref_start = e, fixed
+                                delta = abs(fixed + length - breakpoint)
+                            else:
+                                query_start, ref_start = cl - e - length, fixed - length
+                                delta = abs(ref_start - breakpoint)
+                            by_length.setdefault(length, []).append(
+                                (-identity, delta, e, ref_start, identity, query_start))
+        self.stats.edit_distance_calls += calls
+        self.stats.edit_distance_cache_misses += calls
+
+        candidates: list[EventFlankPlacement] = []
+        for length, rows in by_length.items():
+            # The scan's per-length order: identity, then breakpoint distance,
+            # endpoint offset and reference start (unique within a length).
+            rows.sort()
+            best_identity = rows[0][4]
+            for _, delta, e, ref_start, identity, query_start in rows:
+                if (identity + UNIQUENESS_MARGIN) < best_identity:
+                    break
+                candidates.append(EventFlankPlacement(
+                    query_start=query_start, query_end=query_start + length,
+                    ref_start=ref_start, ref_end=ref_start + length, align_len=length,
+                    identity=identity, breakpoint_delta=delta, endpoint_offset=e))
         candidates.sort(key=better_event_flank_placement)
         return candidates
 
@@ -603,13 +794,21 @@ def segment_event_consensus(chrom: str, bp_left_in: int, bp_right_in: int,
                           paired_max_flank_query_len, False)
 
     best_pair: tuple[EventFlankPlacement, EventFlankPlacement] | None = None
+    # A pair's key leads with -min(identity), both lists run identity-first,
+    # and the best pair's min only rises: a flank whose identity is already
+    # strictly below it cannot be in a better pair, nor can any after it.
+    best_key: tuple | None = None
     for left_candidate in left_search:
+        if best_key is not None and left_candidate.identity < -best_key[0]:
+            break
         for right_candidate in right_search:
+            if best_key is not None and right_candidate.identity < -best_key[0]:
+                break
             if left_candidate.query_end + MIN_INSERT_BP > right_candidate.query_start:
                 continue
-            if best_pair is None or _Segmenter.pair_key(
-                    left_candidate, right_candidate) < _Segmenter.pair_key(*best_pair):
-                best_pair = (left_candidate, right_candidate)
+            key = _Segmenter.pair_key(left_candidate, right_candidate)
+            if best_key is None or key < best_key:
+                best_pair, best_key = (left_candidate, right_candidate), key
 
     tethered_pair = False
     if best_pair is None:

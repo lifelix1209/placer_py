@@ -31,7 +31,9 @@ def read_from_pysam(record) -> AlignedRead:
         tid=int(record.reference_id),
         pos=int(record.reference_start if record.reference_start is not None else 0),
         mapq=int(record.mapping_quality),
-        cigar=[(int(op), int(length)) for op, length in (record.cigartuples or [])],
+        # Already a fresh list of (int, int) tuples from pysam; copying each
+        # pair through int() was a third of the conversion on a 150 kb read.
+        cigar=record.cigartuples or [],
         seq=record.query_sequence or "",
         tags=tags,
     )

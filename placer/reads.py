@@ -94,6 +94,9 @@ _first_non_hard_clip = find_first_non_hard_clip
 _last_non_hard_clip = find_last_non_hard_clip
 
 
+_MATCH_LIKE_OPS = frozenset({CIGAR_M, CIGAR_EQ, CIGAR_X})
+
+
 def summarize_cigar(cigar: list[tuple[int, int]]) -> CigarSummary:
     """
     One pass for the aggregate statistics, then the two ends for the
@@ -108,9 +111,11 @@ def summarize_cigar(cigar: list[tuple[int, int]]) -> CigarSummary:
     if not cigar:
         return summary
 
+    # `is_match_like`, inlined: this walks every streamed read's whole CIGAR.
+    match_like = _MATCH_LIKE_OPS
     current_block = 0
     for op, length in cigar:
-        if is_match_like(op):
+        if op in match_like:
             summary.total_match_bases += length
             current_block += length
             summary.max_match_block = max(summary.max_match_block, current_block)
@@ -149,7 +154,8 @@ def summarize_cigar(cigar: list[tuple[int, int]]) -> CigarSummary:
 
 def pass_preliminary(cigar: list[tuple[int, int]], flag: int, seq_len: int,
                      mapq: int, has_sa_tag: bool, nm: int | None = None,
-                     config: Gate1SignalConfig | None = None) -> bool:
+                     config: Gate1SignalConfig | None = None,
+                     summary: CigarSummary | None = None) -> bool:
     """
     Port of `placer::SignalFirstGate1Module::pass_preliminary`.
 
@@ -165,7 +171,8 @@ def pass_preliminary(cigar: list[tuple[int, int]], flag: int, seq_len: int,
     if seq_len < cfg.min_seq_len:
         return False
 
-    summary = summarize_cigar(cigar)
+    if summary is None:     # the gate hands in the read's (`alignment.cigar_summary`)
+        summary = summarize_cigar(cigar)
 
     has_supplementary = (flag & FLAG_SUPPLEMENTARY) != 0
     has_long_soft_clip = summary.max_soft_clip >= cfg.long_soft_clip_min

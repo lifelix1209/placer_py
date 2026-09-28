@@ -43,6 +43,7 @@ import math
 import os
 from bisect import bisect_left, bisect_right
 from dataclasses import dataclass
+from typing import Callable
 
 from placer.alignment import (
     CIGAR_S,
@@ -234,6 +235,14 @@ def _load_levenshtein_kernel():
 
 
 _LEVENSHTEIN = _load_levenshtein_kernel()
+
+
+def levenshtein_kernel() -> Callable[..., int] | None:
+    """The compiled `distance(lhs, rhs, score_cutoff=k)` -- the distance when
+    it is at most k, else k + 1 -- or None when the pure-Python path is in use.
+    For callers that choose their own cutoff (`placer/core/segmentation.py`).
+    """
+    return _LEVENSHTEIN
 
 
 def edit_identity_if_at_least(lhs: str, rhs: str, max_edits: int) -> float | None:

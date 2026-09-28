@@ -39,7 +39,7 @@ from __future__ import annotations
 from collections.abc import Callable, Iterable, Iterator
 from typing import Protocol
 
-from placer.alignment import AlignedRead
+from placer.alignment import AlignedRead, cigar_summary
 from placer.reads import Gate1SignalConfig, pass_preliminary
 
 
@@ -79,8 +79,11 @@ def gate_reads(stream: Iterable[AlignedRead], counters: GateCounters,
         if counted:
             counters.total_reads += 1
         nm = read.get_int_tag("NM")
+        # The summary comes from the read's CIGAR index, which the scan builds
+        # for it anyway: one walk of the CIGAR, not two.
         if not pass_preliminary(read.cigar, read.flag, read.seq_len,
-                                read.mapq, read.has_sa_tag(), nm, cfg):
+                                read.mapq, read.has_sa_tag(), nm, cfg,
+                                summary=cigar_summary(read)):
             continue
         if counted:
             counters.gate1_passed += 1

@@ -27,8 +27,10 @@ the hp-tier thresholds fitted against another caller's calls.
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
+from operator import eq
 
 from .taxonomy import TeClass, classify
 
@@ -114,9 +116,23 @@ def reverse_complement_kmer_key(key: int, k: int) -> int:
     return rc
 
 
+#: Canonical keys already worked out, per k, for the short k the composition
+#: features use (5, 6, 9): at most 4^k entries each.
+_CANONICAL_MEMO: dict[int, dict[int, int]] = {}
+_CANONICAL_MEMO_MAX_K = 10
+
+
 def canonical_kmer_key(key: int, k: int) -> int:
     """Strand-folded key: the smaller of the k-mer and its reverse complement."""
-    return min(key, reverse_complement_kmer_key(key, k))
+    if k > _CANONICAL_MEMO_MAX_K:
+        return min(key, reverse_complement_kmer_key(key, k))
+    memo = _CANONICAL_MEMO.get(k)
+    if memo is None:
+        memo = _CANONICAL_MEMO[k] = {}
+    found = memo.get(key)
+    if found is None:
+        found = memo[key] = min(key, reverse_complement_kmer_key(key, k))
+    return found
 
 
 def max_homopolymer_run(seq: str) -> int:
@@ -134,30 +150,37 @@ def max_homopolymer_run(seq: str) -> int:
     return best
 
 
+def has_homopolymer_run(seq: str, length: int) -> bool:
+    """`max_homopolymer_run(seq) >= length`, without walking the sequence: a
+    run of `length` of some base is that base `length` times as a substring."""
+    if not seq:
+        return length <= 0
+    if length <= 1:
+        return True
+    return any(base * length in seq for base in set(seq))
+
+
+def acgt_counts(seq: str) -> tuple[int, int, int, int]:
+    """How many A, C, G and T (upper case, as `_CODE`) the sequence holds."""
+    return seq.count("A"), seq.count("C"), seq.count("G"), seq.count("T")
+
+
 def at_fraction(seq: str) -> float:
-    at = 0
-    total = 0
-    for c in seq:
-        if c not in _CODE:
-            continue
-        total += 1
-        if c in ("A", "T"):
-            at += 1
-    return (at / total) if total > 0 else 0.0
+    a, c, g, t = acgt_counts(seq)
+    total = a + c + g + t
+    return ((a + t) / total) if total > 0 else 0.0
 
 
 def shannon_entropy_acgt(seq: str) -> float:
     """Shannon entropy of the ACGT composition, in bits. Same as
     :func:`sequence_entropy_bits`; both C++ names are kept because the two
     translation units that define them are pinned by different tests."""
-    counts = [0, 0, 0, 0]
-    total = 0
-    for c in seq:
-        code = _CODE.get(c, 4)
-        if code > 3:
-            continue
-        counts[code] += 1
-        total += 1
+    return entropy_from_counts(acgt_counts(seq))
+
+
+def entropy_from_counts(counts: tuple[int, int, int, int]) -> float:
+    """`shannon_entropy_acgt` from the A, C, G, T counts, summed in that order."""
+    total = counts[0] + counts[1] + counts[2] + counts[3]
     if total <= 0:
         return 0.0
     entropy = 0.0
@@ -173,9 +196,33 @@ sequence_entropy_bits = shannon_entropy_acgt
 
 
 def kmer_uniqueness_ratio(seq: str, k: int) -> float:
-    """Distinct k-mers over total k-mers. Low means the sequence repeats itself."""
+    """Distinct k-mers over total k-mers. Low means the sequence repeats itself.
+
+    Counted on the k-mers' substrings within the runs of A, C, G and T, which
+    are the valid k-mers, one to one with their packed keys below k = 32.
+    """
     if k <= 0 or len(seq) < k:
         return 0.0
+    if k >= 32:
+        return _kmer_uniqueness_ratio_packed(seq, k)
+    uniq: set[str] = set()
+    total = 0
+    for run in _ACGT_RUNS.findall(seq):
+        n = len(run) - k + 1
+        if n > 0:
+            total += n
+            uniq.update({run[i:i + k] for i in range(n)})
+    if total <= 0:
+        return 0.0
+    return len(uniq) / total
+
+
+def valid_kmer_count(seq: str, k: int) -> int:
+    """How many k-mers of `seq` lie within its runs of A, C, G and T."""
+    return sum(max(0, len(run) - k + 1) for run in _ACGT_RUNS.findall(seq))
+
+
+def _kmer_uniqueness_ratio_packed(seq: str, k: int) -> float:
     uniq = set()
     total = 0
     for _, key in for_each_valid_kmer(seq, k):
@@ -184,6 +231,9 @@ def kmer_uniqueness_ratio(seq: str, k: int) -> float:
     if total <= 0:
         return 0.0
     return len(uniq) / total
+
+
+_ACGT_RUNS = re.compile("[ACGT]+")
 
 
 def sequence_gc_fraction(seq: str) -> float:
@@ -209,25 +259,8 @@ def sequence_tandem_fraction(seq: str) -> float:
     n = len(seq)
     if n < 2:
         return 0.0
-    covered = [False] * n
-    for period in range(1, MAX_TANDEM_PERIOD + 1):
-        p = period
-        if p >= n:
-            break
-        run_start = p
-        run = 0
-        for i in range(p, n + 1):
-            match = i < n and seq[i] in _CODE and seq[i] == seq[i - p]
-            if match:
-                if run == 0:
-                    run_start = i
-                run += 1
-                continue
-            if run >= p:
-                for j in range(run_start - p, run_start + run):
-                    covered[j] = True
-            run = 0
-    return sum(covered) / n
+    covered = _periodic_runs(seq, MAX_TANDEM_PERIOD, lambda run, p: run >= p)
+    return covered.count(1) / n
 
 
 #: A microsatellite, for `microsatellite_mask`: a unit of 1-6 bp repeated
@@ -249,23 +282,65 @@ def microsatellite_mask(seq: str) -> list[bool]:
     say which bases of an insert carry no information about which element it
     is.
     """
+    covered = _periodic_runs(
+        seq, MICROSATELLITE_MAX_PERIOD,
+        lambda run, p: run + p >= max(MICROSATELLITE_MIN_BP, MICROSATELLITE_MIN_COPIES * p))
+    return list(map(bool, covered))
+
+
+#: Every character but A, C, G and T, sent to a sentinel -- a different one on
+#: each side, so a non-ACGT base never equals anything.
+_SENTINEL_LEFT = {code: "\x01" for code in range(128) if chr(code) not in "ACGT"}
+_SENTINEL_RIGHT = {code: "\x02" for code in range(128) if chr(code) not in "ACGT"}
+_TRUE_RUN = re.compile(rb"\x01+")
+
+
+def _periodic_runs(seq: str, max_period: int, keep) -> bytearray:
+    """Bases covered by an exact run of `seq[i] == seq[i - p]` (an A, C, G or
+    T at i), p = 1..max_period, for the runs `keep(run, p)` accepts. A run of
+    length `run` starting at i covers `[i - p, i + run)`.
+
+    The comparison of every base with the one `p` back is done in C: the
+    sequence is compared with itself shifted, after sending every other
+    character to a sentinel on each side. Non-ASCII input takes the loop.
+    """
     n = len(seq)
-    covered = [False] * n
-    for period in range(1, MICROSATELLITE_MAX_PERIOD + 1):
-        if period >= n:
+    covered = bytearray(n)
+    if not seq.isascii():
+        return _periodic_runs_loop(seq, max_period, keep)
+    left = seq.translate(_SENTINEL_LEFT)
+    right = seq.translate(_SENTINEL_RIGHT)
+    for p in range(1, max_period + 1):
+        if p >= n:
             break
-        min_span = max(MICROSATELLITE_MIN_BP, MICROSATELLITE_MIN_COPIES * period)
+        matches = bytes(map(eq, left[p:], right[:n - p]))
+        for found in _TRUE_RUN.finditer(matches):
+            first, end = found.span()
+            run = end - first
+            if run > 0 and keep(run, p):
+                start = p + first
+                covered[start - p:start + run] = b"\x01" * (run + p)
+    return covered
+
+
+def _periodic_runs_loop(seq: str, max_period: int, keep) -> bytearray:
+    """`_periodic_runs`, one base at a time: what both masks did before."""
+    n = len(seq)
+    covered = bytearray(n)
+    for p in range(1, max_period + 1):
+        if p >= n:
+            break
         run = 0
-        run_start = period
-        for i in range(period, n + 1):
-            if i < n and seq[i] in _CODE and seq[i] == seq[i - period]:
+        run_start = p
+        for i in range(p, n + 1):
+            if i < n and seq[i] in _CODE and seq[i] == seq[i - p]:
                 if run == 0:
                     run_start = i
                 run += 1
                 continue
-            if run > 0 and run + period >= min_span:
-                for j in range(run_start - period, run_start + run):
-                    covered[j] = True
+            if run > 0 and keep(run, p):
+                for j in range(run_start - p, run_start + run):
+                    covered[j] = 1
             run = 0
     return covered
 
@@ -290,22 +365,31 @@ def low_complexity_mask(seq: str) -> list[bool]:
     if n == 0:
         return []
     window = min(LOW_COMPLEXITY_WINDOW, n)
+    # The window's base counts are slid rather than recounted, and the union of
+    # the passing windows is marked once; the test is the same ratio of the
+    # same two integers.
+    codes = [_CODE.get(base, 4) for base in seq]
+    counts = [0, 0, 0, 0, 0]              # the fifth slot takes non-ACGT
+    for code in codes[:window]:
+        counts[code] += 1
     covered = [False] * n
-    for start in range(n - window + 1):
-        counts = [0, 0, 0, 0]
-        total = 0
-        for i in range(start, start + window):
-            code = _CODE.get(seq[i], 4)
-            if code > 3:
-                continue
-            counts[code] += 1
-            total += 1
-        if total <= 0:
-            continue
-        counts.sort(reverse=True)
-        if (counts[0] + counts[1]) / total >= LOW_COMPLEXITY_TOP2_FRACTION:
-            for i in range(start, start + window):
-                covered[i] = True
+    marked_to = 0
+    last = n - window
+    start = 0
+    while True:
+        a, c, g, t = counts[0], counts[1], counts[2], counts[3]
+        total = a + c + g + t
+        if total > 0:
+            ranked = sorted((a, c, g, t))
+            if (ranked[3] + ranked[2]) / total >= LOW_COMPLEXITY_TOP2_FRACTION:
+                begin = max(start, marked_to)
+                marked_to = start + window
+                covered[begin:marked_to] = [True] * (marked_to - begin)
+        if start == last:
+            break
+        counts[codes[start]] -= 1
+        counts[codes[start + window]] += 1
+        start += 1
     return covered
 
 
@@ -400,6 +484,10 @@ class TeSequenceBackground:
     freq_k6: dict[int, float] = field(default_factory=dict)
     present_k9: set[int] = field(default_factory=set)
     valid: bool = False
+    #: Per-insert answers measured against THESE tables, kept with them
+    #: (`te_classifier._sequence_features`): the same inserts come back for
+    #: every hypothesis that assembles the same reads. Not part of the value.
+    feature_cache: dict = field(default_factory=dict, repr=False, compare=False)
 
 
 def build_te_sequence_background(sequences: Sequence[str]) -> TeSequenceBackground:

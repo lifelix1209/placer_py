@@ -191,6 +191,62 @@ def test_three_workers_write_the_same_bytes_as_one(region):
 
 
 # ------------------------------------------------------------- a dying worker
+def test_a_start_order_changes_when_items_start_not_the_order_they_come_back():
+    from _worker_helpers import square
+
+    from placer.parallel import map_in_worker_processes
+    assert list(map_in_worker_processes(square, [5, 1, 4, 2, 3], 2,
+                                        start_order=[4, 2, 0, 3, 1])) == [25, 1, 16, 4, 9]
+    with pytest.raises(ValueError):
+        list(map_in_worker_processes(square, [1, 2], 1, start_order=[0, 0]))
+
+
+class _OffsetsReader:
+    """Compressed offsets by position, as the BAM index would give them."""
+
+    def __init__(self, offsets):
+        self.offsets = offsets
+
+    def compressed_offset_at(self, chrom, pos, end=None):
+        return self.offsets.get((chrom, pos))
+
+
+def test_chunks_holding_the_most_data_start_first_and_ties_keep_genome_order():
+    from placer.parallel import expensive_first
+    chunks = plan_chunks([("chr1", 0, 4 * BIN), ("chr2", 0, 2 * BIN)], BIN, BIN, False)
+    assert len(chunks) == 6
+    reader = _OffsetsReader({("chr1", 0): 0, ("chr1", BIN): 10, ("chr1", 2 * BIN): 90,
+                             ("chr1", 3 * BIN): 100, ("chr2", 0): 110, ("chr2", BIN): 111,
+                             ("chr2", 2 * BIN): 400})
+    # chr1 chunks hold 10, 80, 10, 10; chr2's hold 1 and, to its end, 289.
+    assert expensive_first(reader, chunks) == [5, 1, 0, 2, 3, 4]
+    # Nothing to estimate from: genome order.
+    assert expensive_first(object(), chunks) == list(range(len(chunks)))
+    assert expensive_first(_OffsetsReader({}), chunks) == list(range(len(chunks)))
+
+
+def test_a_heavy_chunk_is_cut_into_bin_aligned_pieces_that_keep_its_reads():
+    from placer.parallel import split_heavy_chunks
+    for region_scoped in (False, True):
+        chunks = plan_chunks([("chr1", 5_000, 8 * BIN)], 2 * BIN, BIN, region_scoped)
+        estimates = [10, 10, 95, 10][:len(chunks)]
+        pieces = split_heavy_chunks(chunks, estimates, BIN)
+        assert [piece.index for piece in pieces] == list(range(len(pieces)))
+        assert len(pieces) > len(chunks)
+        # The pieces own the same bins, each once, in order ...
+        owned = [b for piece in pieces for b in range(*piece.bin_range(BIN))]
+        assert owned == [b for chunk in chunks for b in range(*chunk.bin_range(BIN))]
+        # ... and keep every read exactly where the chunks kept it.
+        for pos in range(0, 9 * BIN, 997):
+            read = AlignedRead(pos=pos)
+            assert sum(piece.keeps(read) for piece in pieces) \
+                == sum(chunk.keeps(read) for chunk in chunks)
+        assert all(piece.fetch_start % BIN == 0 for piece in pieces[1:])
+    # Nothing heavy, or nothing estimated: unchanged.
+    assert split_heavy_chunks(chunks, [10] * len(chunks), BIN) == chunks
+    assert split_heavy_chunks(chunks, [0] * len(chunks), BIN) == chunks
+
+
 def test_the_worker_map_returns_results_in_input_order():
     from _worker_helpers import square
 

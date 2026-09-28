@@ -47,18 +47,19 @@ from enum import IntEnum
 
 from placer.alignment import (
     CIGAR_D,
+    CIGAR_EQ,
     CIGAR_I,
+    CIGAR_M,
     CIGAR_N,
     CIGAR_S,
+    CIGAR_X,
     AlignedRead,
     CigarStringOp,
     QueryInterval,
     SAEntryWithQuality,
     cigar_index,
     compute_ref_end,
-    consumes_query,
     consumes_query_char,
-    consumes_ref,
     consumes_ref_char,
     find_first_non_hard_clip,
     find_last_non_hard_clip,
@@ -244,7 +245,8 @@ def analyze_clip_info(read: AlignedRead) -> ClipInfo:
 
 def contiguous_match_run_after(cigar: list[tuple[int, int]], idx: int) -> int:
     run = 0
-    for op, length in cigar[idx + 1:]:
+    for j in range(idx + 1, len(cigar)):      # no copy of the CIGAR's tail
+        op, length = cigar[j]
         if not is_match_like(op):
             break
         run += length
@@ -285,29 +287,20 @@ def _find_long_insertions(read: AlignedRead, min_long_ins: int) -> list[InsOp]:
     ops: list[InsOp] = []
     if not read.cigar:
         return ops
-
-    qpos = 0
-    rpos = read.pos
-    prev_match_run = 0
-    for i, (op, length) in enumerate(read.cigar):
-        if is_match_like(op):
-            prev_match_run += length
-            qpos += length
-            rpos += length
-            continue
-        if op == CIGAR_I:
-            if length >= min_long_ins:
-                ops.append(InsOp(start=qpos, len=length, ref_pos=rpos,
-                                 left_anchor=prev_match_run,
-                                 right_anchor=contiguous_match_run_after(read.cigar, i)))
-            qpos += length
-            prev_match_run = 0
-            continue
-        if consumes_query(op):
-            qpos += length
-        if consumes_ref(op):
-            rpos += length
-        prev_match_run = 0
+    # From the read's CIGAR index, whose walk records each insertion's query
+    # offset, reference position and the match run before it: the same values
+    # this used to walk the CIGAR for, in CIGAR order.
+    index = cigar_index(read)
+    cigar = read.cigar
+    lengths = index.ins_len
+    for k in range(len(lengths)):
+        length = lengths[k]
+        if length >= min_long_ins:
+            ops.append(InsOp(start=index.ins_query_pos[k], len=length,
+                             ref_pos=index.ins_ref_pos[k],
+                             left_anchor=index.ins_left_run[k],
+                             right_anchor=contiguous_match_run_after(
+                                 cigar, index.ins_op_index[k])))
     return ops
 
 
@@ -507,16 +500,34 @@ def cigar_to_query_interval_with_indel(ops: list[CigarStringOp], read_len: int
     return out, ref_aligned_len, has_large_indel
 
 
+_MATCH_OR_INSERTION_OPS = frozenset({CIGAR_M, CIGAR_EQ, CIGAR_X, CIGAR_I})
+
+
+def _query_aligned_bases(read: AlignedRead) -> int:
+    """Query bases in M, =, X and I ops, once per read: it is asked once per
+    component the read supports."""
+    memo = read_memo(read)
+    if memo is not None:
+        found = memo.get(("query_aligned_bases",))
+        if found is not None:
+            return found
+    q_aligned = 0
+    ops = _MATCH_OR_INSERTION_OPS
+    for op, length in read.cigar:
+        if op in ops:
+            q_aligned += length
+    if memo is not None:
+        memo[("query_aligned_bases",)] = q_aligned
+    return q_aligned
+
+
 def bam_to_query_interval_with_clip(read: AlignedRead,
                                     clip: ClipInfo) -> QueryInterval | None:
     """Query interval of the primary, using an already-computed `ClipInfo`."""
     read_len = read.seq_len
     if read_len <= 0 or not read.cigar:
         return None
-    q_aligned = 0
-    for op, length in read.cigar:
-        if is_match_like(op) or op == CIGAR_I:
-            q_aligned += length
+    q_aligned = _query_aligned_bases(read)
     if q_aligned <= 0:
         return None
 

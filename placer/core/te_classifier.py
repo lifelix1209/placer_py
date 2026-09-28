@@ -35,6 +35,7 @@ number: the tiers are naming SPECIFICITY, not evidence strength.
 from __future__ import annotations
 
 from dataclasses import dataclass, field, replace
+from itertools import accumulate
 
 from placer.config import PipelineConfig
 from placer.core import mathx
@@ -46,23 +47,24 @@ from placer.core.seqtools import (
     FNV1A_OFFSET_BASIS,
     TeNameParts,
     TeSequenceBackground,
-    at_fraction,
+    acgt_counts,
     compute_te_sequence_composition,
     confidence_from_qc_reason,
+    entropy_from_counts,
     fnv1a_append_int32,
     fnv1a_append_string,
     for_each_valid_kmer,
+    has_homopolymer_run,
     kmer_uniqueness_ratio,
-    max_homopolymer_run,
     parse_kmer_sizes_csv,
     parse_te_name_parts,
     reverse_complement,
-    shannon_entropy_acgt,
     simple_repeat_mask,
     take_header_token,
     te_kmer_containment,
     te_kmer_jsd_vs_background,
     upper_acgt,
+    valid_kmer_count,
 )
 from placer.core.structure import SequenceExplanation, explain_te_sequence_structure
 from placer.core.taxonomy import TeClass
@@ -186,11 +188,27 @@ def is_low_complexity_softclip(fragment: InsertionFragment, seq: str,
     """
     if not is_softclip_source(fragment.source) or not seq:
         return False
-    return (at_fraction(seq) >= at_fraction_min
-            or max_homopolymer_run(seq) >= homopolymer_run_min
-            or shannon_entropy_acgt(seq) < max(0.0, entropy_min)
-            or kmer_uniqueness_ratio(seq, LOW_COMPLEXITY_UNIQUENESS_K)
-            < min(1.0, max(0.0, kmer_uniqueness_min)))
+    # The four tests are pure and joined by OR, so they are asked cheapest
+    # first. The base counts serve the AT fraction and the entropy both. And a
+    # sequence has at most 4^k distinct k-mers, so once 4^k / (its k-mer count)
+    # is already under the uniqueness bound -- an all-ACGT clip over ~2.9 kb
+    # at the default 0.35 -- the ratio is too, and the set is not built.
+    # Soft clips here run to tens of kb; this was 27% of a chr1 run's CPU.
+    counts = acgt_counts(seq)
+    total = counts[0] + counts[1] + counts[2] + counts[3]
+    at = ((counts[0] + counts[3]) / total) if total > 0 else 0.0
+    if at >= at_fraction_min:
+        return True
+    if has_homopolymer_run(seq, homopolymer_run_min):
+        return True
+    if entropy_from_counts(counts) < max(0.0, entropy_min):
+        return True
+    bound = min(1.0, max(0.0, kmer_uniqueness_min))
+    k = LOW_COMPLEXITY_UNIQUENESS_K
+    kmers = valid_kmer_count(seq, k) if len(seq) >= k else 0
+    if kmers > 0 and (4 ** k) / kmers < bound:
+        return True
+    return kmer_uniqueness_ratio(seq, k) < bound
 
 
 @dataclass
@@ -794,18 +812,15 @@ def _finalize_evidence(evidence: TEAlignmentEvidence, insert_seq: str,
     no name for" from "a low-complexity artifact".
     """
     if insert_seq:
-        composition = compute_te_sequence_composition(insert_seq)
-        evidence.sequence_model_gc = composition.gc
-        evidence.sequence_model_entropy = composition.entropy_bits
-        evidence.sequence_model_tandem_fraction = composition.tandem_fraction
-        evidence.sequence_model_low_complexity_fraction = composition.low_complexity_fraction
-        if background is not None and background.valid:
-            evidence.sequence_model_jsd_k5 = te_kmer_jsd_vs_background(
-                insert_seq, 5, background.freq_k5)
-            evidence.sequence_model_jsd_k6 = te_kmer_jsd_vs_background(
-                insert_seq, 6, background.freq_k6)
-            evidence.sequence_model_k9_containment = te_kmer_containment(
-                insert_seq, 9, background.present_k9)
+        gc, entropy, tandem, low_complexity, library = _sequence_features(insert_seq,
+                                                                          background)
+        evidence.sequence_model_gc = gc
+        evidence.sequence_model_entropy = entropy
+        evidence.sequence_model_tandem_fraction = tandem
+        evidence.sequence_model_low_complexity_fraction = low_complexity
+        if library is not None:
+            (evidence.sequence_model_jsd_k5, evidence.sequence_model_jsd_k6,
+             evidence.sequence_model_k9_containment) = library
     evidence.te_sequence_explanation = explain_te_sequence_structure(
         insert_seq, evidence.qc_reason, evidence.best_family,
         evidence.best_subfamily, evidence.best_identity, effective_query_coverage,
@@ -820,6 +835,57 @@ def _finalize_evidence(evidence: TEAlignmentEvidence, insert_seq: str,
         evidence.te_element_length, core_end, evidence.annotation_order,
         core_start)
     return evidence
+
+
+#: Inserts whose features one background keeps (`_sequence_features`). The
+#: repeats come from hypotheses of one locus, close together in the scan, so a
+#: short memory catches them; each mask is a list of bools, 8 bytes a base.
+SEQUENCE_FEATURE_CACHE_MAX = 1_024
+
+
+def _sequence_features(insert_seq: str, background: TeSequenceBackground | None):
+    """`(gc, entropy, tandem, low complexity, library)` of an insert, where
+    `library` is `(JSD k5, JSD k6, k9 containment)` against a valid background
+    and None otherwise.
+
+    Pure functions of the insert and the background's tables, so they are kept
+    on the background, per insert, and a repeated insert -- every hypothesis
+    that assembles the same reads -- is answered from the first.
+    """
+    cache = background.feature_cache if background is not None else None
+    if cache is not None:
+        found = cache.get(insert_seq)
+        if found is not None:
+            return found
+    composition = compute_te_sequence_composition(insert_seq)
+    library = None
+    if background is not None and background.valid:
+        library = (te_kmer_jsd_vs_background(insert_seq, 5, background.freq_k5),
+                   te_kmer_jsd_vs_background(insert_seq, 6, background.freq_k6),
+                   te_kmer_containment(insert_seq, 9, background.present_k9))
+    found = (composition.gc, composition.entropy_bits, composition.tandem_fraction,
+             composition.low_complexity_fraction, library)
+    if cache is not None:
+        if len(cache) >= SEQUENCE_FEATURE_CACHE_MAX:
+            cache.pop(next(iter(cache)))
+        cache[insert_seq] = found
+    return found
+
+
+def _simple_repeat_mask(insert_seq: str,
+                        background: TeSequenceBackground | None) -> list[bool]:
+    """`simple_repeat_mask`, kept per insert beside the features. The mask is
+    only read (`informative_aligned_bases`)."""
+    if background is None:
+        return simple_repeat_mask(insert_seq)
+    cache = background.feature_cache
+    key = ("simple_repeat_mask", insert_seq)
+    found = cache.get(key)
+    if found is None:
+        if len(cache) >= SEQUENCE_FEATURE_CACHE_MAX:
+            cache.pop(next(iter(cache)))
+        found = cache[key] = simple_repeat_mask(insert_seq)
+    return found
 
 
 def _core_in_element_orientation(evidence: TEAlignmentEvidence,
@@ -853,14 +919,32 @@ def _core_in_element_orientation(evidence: TEAlignmentEvidence,
 MIN_ELEMENT_ALIGNED_BP = 50
 
 
-def informative_aligned_bases(hit: BlastSubjectHit, mask: list[bool]) -> int:
-    """Insert bases the hit aligns that are NOT simple repeat, counted once."""
+def informative_aligned_bases(hit: BlastSubjectHit, mask: list[bool],
+                              informative_before: list[int] | None = None) -> int:
+    """Insert bases the hit aligns that are NOT simple repeat, counted once.
+
+    `informative_before[i]` -- how many of the first i bases are unmasked,
+    `informative_prefix(mask)` -- makes it one subtraction per merged interval
+    instead of a pass over the insert per hit.
+    """
     intervals = hit.query_intervals or [(hit.query_start, hit.query_end)]
-    covered = [False] * len(mask)
-    for start, end in intervals:
-        for i in range(max(0, start), min(len(mask), end)):
-            covered[i] = True
-    return sum(1 for i, c in enumerate(covered) if c and not mask[i])
+    if informative_before is None:
+        informative_before = informative_prefix(mask)
+    size = len(mask)
+    clipped = sorted((max(0, start), min(size, end)) for start, end in intervals)
+    total = 0
+    reach = 0
+    for start, end in clipped:
+        start = max(start, reach)
+        if end > start:
+            total += informative_before[end] - informative_before[start]
+            reach = end
+    return total
+
+
+def informative_prefix(mask: list[bool]) -> list[int]:
+    """`[number of unmasked bases among the first i]` for i = 0..len(mask)."""
+    return list(accumulate((not masked for masked in mask), initial=0))
 
 
 def build_insert_alignment_evidence_from_blast_hits(
@@ -905,9 +989,11 @@ def build_insert_alignment_evidence_from_blast_hits(
     # nothing else is left, the insert is reported as unnamed -- a real
     # insertion, just not one an element can be read off -- rather than as the
     # TE whose consensus happened to contain the same repeat or a short match.
-    mask = simple_repeat_mask(insert_seq)
+    mask = _simple_repeat_mask(insert_seq, sequence_background)
+    informative_before = informative_prefix(mask) if hits else []
     element_hits = [hit for hit in hits
-                    if informative_aligned_bases(hit, mask) >= MIN_ELEMENT_ALIGNED_BP]
+                    if informative_aligned_bases(hit, mask, informative_before)
+                    >= MIN_ELEMENT_ALIGNED_BP]
     if hits and not element_hits:
         evidence.qc_reason = "TE_ALIGNMENT_UNINFORMATIVE"
         evidence.sequence_model_label = "TE_MODEL_OUTLIER"

@@ -43,6 +43,7 @@ from placer.reads import (  # noqa: F401  (re-exported: one definition of each)
     FLAG_SECONDARY,
     FLAG_SUPPLEMENTARY,
     FLAG_UNMAP,
+    CigarSummary,
     find_first_non_hard_clip,
     find_last_non_hard_clip,
     is_match_like,
@@ -219,6 +220,15 @@ class CigarIndex:
     op_ref_start: array = field(default_factory=lambda: array("q"))
     max_soft_clip: int = 0
     max_insertion: int = 0
+    #: Beside `ins_ref_pos` / `ins_len`, per `I` operation: its query offset,
+    #: its CIGAR index, and the uninterrupted match run just before it
+    #: (`fragments.find_long_insertions`).
+    ins_query_pos: array = field(default_factory=lambda: array("q"))
+    ins_op_index: array = field(default_factory=lambda: array("q"))
+    ins_left_run: array = field(default_factory=lambda: array("q"))
+    #: `reads.summarize_cigar`'s two totals, from the same walk (`cigar_summary`).
+    total_match_bases: int = 0
+    max_match_block: int = 0
 
 
 def _build_cigar_index(read: AlignedRead) -> CigarIndex:
@@ -230,32 +240,102 @@ def _build_cigar_index(read: AlignedRead) -> CigarIndex:
     last = find_last_non_hard_clip(cigar)
     index.first = first
     index.last = last
+    # ONE WALK for every per-read CIGAR fact: the reference position of each
+    # op, the insertions, the clips, and what `summarize_cigar` (the gate) and
+    # `find_long_insertions` (fragment extraction) each used to walk the whole
+    # CIGAR again for. `run` is the uninterrupted match block, which any
+    # non-match op resets.
     ins_ref_pos = index.ins_ref_pos
     ins_len = index.ins_len
+    ins_query_pos = index.ins_query_pos
+    ins_op_index = index.ins_op_index
+    ins_left_run = index.ins_left_run
     op_ref_start = index.op_ref_start
-    consuming = _CONSUMES_REF_OPS
+    match_like = _MATCH_LIKE_OPS
+    ref_only = _CONSUMES_REF_ONLY_OPS
     ref_pos = read.pos
+    query_pos = 0
+    run = 0
+    total_match = 0
+    max_block = 0
     max_soft_clip = 0
     max_insertion = 0
     for i, (op, length) in enumerate(cigar):
         op_ref_start.append(ref_pos)
-        if i == first:
-            index.first_op, index.first_len, index.first_ref_pos = op, length, ref_pos
-        if i == last:
-            index.last_op, index.last_len, index.last_ref_pos = op, length, ref_pos
+        if op in match_like:
+            total_match += length
+            run += length
+            if run > max_block:
+                max_block = run
+            ref_pos += length
+            query_pos += length
+            continue
         if op == CIGAR_I:
             ins_ref_pos.append(ref_pos)
             ins_len.append(length)
+            ins_query_pos.append(query_pos)
+            ins_op_index.append(i)
+            ins_left_run.append(run)
             if length > max_insertion:
                 max_insertion = length
-        elif op in consuming:
+            query_pos += length
+        elif op in ref_only:
             ref_pos += length
-        elif op == CIGAR_S and length > max_soft_clip:
-            max_soft_clip = length
+        elif op == CIGAR_S:
+            if length > max_soft_clip:
+                max_soft_clip = length
+            query_pos += length
+        run = 0
+    if first >= 0:
+        index.first_op, index.first_len = cigar[first]
+        index.first_ref_pos = op_ref_start[first]
+    if last >= 0:
+        index.last_op, index.last_len = cigar[last]
+        index.last_ref_pos = op_ref_start[last]
     index.ref_end = ref_pos
     index.max_soft_clip = max_soft_clip
     index.max_insertion = max_insertion
+    index.total_match_bases = total_match
+    index.max_match_block = max_block
     return index
+
+
+_MATCH_LIKE_OPS = frozenset({CIGAR_M, CIGAR_EQ, CIGAR_X})
+#: Ops that consume the reference and not the query.
+_CONSUMES_REF_ONLY_OPS = frozenset(_CONSUMES_REF_OPS - _CONSUMES_QUERY_OPS)
+
+
+def cigar_summary(read: AlignedRead) -> CigarSummary:
+    """`reads.summarize_cigar(read.cigar)`, from the read's `CigarIndex`: the
+    totals come from its walk, and the clip anchors are the short runs of match
+    ops next to each clip, read off the CIGAR ends."""
+    index = cigar_index(read)
+    summary = CigarSummary(total_match_bases=index.total_match_bases,
+                           max_match_block=index.max_match_block,
+                           max_soft_clip=index.max_soft_clip,
+                           max_insertion=index.max_insertion)
+    cigar = read.cigar
+    first, last = index.first, index.last
+    if not cigar or first < 0 or last < 0 or first > last:
+        return summary
+    match_like = _MATCH_LIKE_OPS
+    if cigar[first][0] == CIGAR_S:
+        summary.leading_soft_clip = cigar[first][1]
+        flank = 0
+        for i in range(first + 1, last + 1):
+            if cigar[i][0] not in match_like:
+                break
+            flank += cigar[i][1]
+        summary.right_anchor_after_leading = flank
+    if cigar[last][0] == CIGAR_S:
+        summary.trailing_soft_clip = cigar[last][1]
+        flank = 0
+        for i in range(last - 1, first - 1, -1):
+            if cigar[i][0] not in match_like:
+                break
+            flank += cigar[i][1]
+        summary.left_anchor_before_trailing = flank
+    return summary
 
 
 def cigar_index(read: AlignedRead) -> CigarIndex:

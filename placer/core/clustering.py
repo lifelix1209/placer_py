@@ -32,17 +32,17 @@ from dataclasses import dataclass, field
 from enum import IntEnum
 
 from placer.alignment import (
-    CIGAR_I,
     CIGAR_S,
     AlignedRead,
+    cigar_index,
     compute_ref_end,
-    consumes_ref,
     find_first_non_hard_clip,
     find_last_non_hard_clip,
     median_i32,
     normalized_primary_alignment,
     normalized_sa_alignment,
     parse_sa_tag_z,
+    read_memo,
 )
 
 #: Tighter epsilon when both signatures come from a CIGAR insertion.
@@ -271,25 +271,43 @@ def append_insertion_signatures_from_cigar(read: AlignedRead, read_index: int,
     if read.mapq != INSERTION_CANDIDATE_REQUIRED_MAPQ or not read.cigar:
         return False
 
-    emitted = False
-    ref_pos = read.pos
-    for op, length in read.cigar:
-        if op == CIGAR_I and length >= COMPONENT_LONG_INSERTION_SIGNAL_MIN:
-            out.append(InsertionSignature(
-                pos=ref_pos,
-                end=ref_pos + 1,
-                length=length,
-                read_index=read_index,
-                source=SignatureSource.CIGAR_INSERTION,
-                class_mask=CANDIDATE_LONG_INSERTION,
-                is_reverse=read.is_reverse,
-                anchor_len=length,
-                read_id=read.qname,
-            ))
-            emitted = True
-        if consumes_ref(op):
-            ref_pos += length
-    return emitted
+    insertions = _long_cigar_insertions(read)
+    for ref_pos, length in insertions:
+        out.append(InsertionSignature(
+            pos=ref_pos,
+            end=ref_pos + 1,
+            length=length,
+            read_index=read_index,
+            source=SignatureSource.CIGAR_INSERTION,
+            class_mask=CANDIDATE_LONG_INSERTION,
+            is_reverse=read.is_reverse,
+            anchor_len=length,
+            read_id=read.qname,
+        ))
+    return bool(insertions)
+
+
+def _long_cigar_insertions(read: AlignedRead) -> tuple[tuple[int, int], ...]:
+    """`(reference position, length)` of every `I` op of at least
+    COMPONENT_LONG_INSERTION_SIGNAL_MIN, in CIGAR order, once per read.
+
+    A read is handed to every bin it overlaps -- a 150 kb read to fifteen --
+    and each used to walk its whole CIGAR for these. The positions are the
+    `CigarIndex`'s, accumulated over the same reference-consuming ops.
+    """
+    memo = read_memo(read)
+    key = ("long_cigar_insertions", COMPONENT_LONG_INSERTION_SIGNAL_MIN)
+    if memo is not None:
+        found = memo.get(key)
+        if found is not None:
+            return found
+    index = cigar_index(read)
+    found = tuple((ref_pos, length)
+                  for ref_pos, length in zip(index.ins_ref_pos, index.ins_len)
+                  if length >= COMPONENT_LONG_INSERTION_SIGNAL_MIN)
+    if memo is not None:
+        memo[key] = found
+    return found
 
 
 def append_best_split_signature(read: AlignedRead, chrom: str, read_index: int,

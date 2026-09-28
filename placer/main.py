@@ -53,6 +53,9 @@ _ENV_INT_FIELDS = {
     "PLACER_EVENT_CONSENSUS_POA_MAX_READS": "event_consensus_poa_max_reads",
     "PLACER_ALT_SIGNAL_MIN_MAPQ": "alt_signal_min_mapq",
     "PLACER_SAME_ALLELE_CARRIER_WINDOW_BP": "same_allele_carrier_window_bp",
+    # Scheduling only: neither changes an output (`placer/parallel.py`).
+    "PLACER_SCAN_CHUNK_BP": "scan_chunk_bp",
+    "PLACER_TE_BLAST_JOBS": "te_blast_jobs",
 }
 _ENV_FLOAT_FIELDS = {
     "PLACER_GENOTYPE_ERROR_RATE": "genotype_error_rate",
@@ -247,11 +250,16 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
         `TE_LIBRARY_UNAVAILABLE`, which is a silent whole-run negative.
     """
     from placer.io.bam import make_bam_reader
+    from placer.io.perf import PerfLog, snapshot, span
     from placer.io.reference import ReferenceFetcher
     from placer.io.report_context import build_report_context
     from placer.io.te_library import load_te_library, summarise_te_library
     from placer.pipeline import run_pipeline
     from placer.wiring import build_stage_hooks
+
+    # `PLACER_PERF_LOG`: per-chunk and whole-run CPU and I/O (`placer/io/perf.py`).
+    perf_log = PerfLog()
+    perf_start = snapshot()
 
     reader = make_bam_reader(config.bam_path, config.bam_threads,
                              config.bam_region_scope)
@@ -294,14 +302,18 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
             # workers find it on disk rather than racing to create it.
             TeLibraryAligner(config, entries).prepare()
             try:
-                result = run_pipeline_parallel(reader, config, config.scan_workers)
+                result = run_pipeline_parallel(reader, config, config.scan_workers,
+                                               perf_log=perf_log)
             except WorkerDiedError as error:
                 print(f"[PLACER] {error}", file=sys.stderr)
                 return 1
         else:
             hooks = build_stage_hooks(config, reference, entries)
-            result = run_pipeline(reader.stream(), reader.chromosome_name,
-                                  reader.fetch, config, hooks)
+            # Local fetches answered from the stream where it holds every read
+            # (`placer/io/bam.StreamedReadBuffer`).
+            reads, fetch_local = reader.buffered_stream()
+            result = run_pipeline(reads, reader.chromosome_name, fetch_local,
+                                  config, hooks)
         # BUILT BEFORE THE HANDLES CLOSE, and that is the only reason it is
         # inside the `try`: the contig list comes from the BAM header and the
         # VCF anchor bases come from the reference, so both must still be open.
@@ -320,6 +332,9 @@ def run_pipeline_once(config: PipelineConfig, output_dir: str = ".") -> int:
                       ("calls_vcf", "calls.vcf"),
                       ("calls_csv", "calls.csv")):
         print(f"[PLACER] wrote {name} path={paths[key]}", file=sys.stderr)
+    # The whole run. Its child columns include the workers, which the pool
+    # has joined by now, and every blastn any process ran.
+    perf_log.write(span(perf_start, "run"))
     return 0
 
 

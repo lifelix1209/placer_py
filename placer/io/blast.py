@@ -23,7 +23,9 @@ USED here.
 from __future__ import annotations
 
 import contextlib
+import hashlib
 import os
+import shutil
 import subprocess
 import tempfile
 
@@ -34,6 +36,7 @@ from placer.core.te_classifier import (
     collapse_blast_hsps,
     parse_blast_output,
 )
+from placer.io.perf import count_locked
 
 
 def blast_work_dir() -> str:
@@ -90,6 +93,165 @@ def ensure_te_blast_db(te_fasta_path: str, makeblastdb_path: str,
                 f"failed to build BLAST database for TE FASTA {te_fasta_path!r} "
                 f"with makeblastdb {makeblastdb_path!r}")
     return db_prefix
+
+
+#: Filesystems whose file pages do not stay cached between processes here
+#: (BeeGFS in `buffered` mode), or that are remote in general.
+NETWORK_FILESYSTEMS = frozenset({
+    "beegfs", "nfs", "nfs4", "lustre", "gpfs", "cifs", "smb3", "ceph",
+    "fuse.sshfs", "fuse.glusterfs", "panfs", "wekafs"})
+#: `PLACER_STAGE_BLASTN`: "0" never stages blastn, "1" always does; unset
+#: stages it when it lives on a network filesystem.
+STAGE_BLASTN_ENV = "PLACER_STAGE_BLASTN"
+_STAGED_OK = "STAGED_OK"
+
+
+def filesystem_type(path: str, mounts_text: str | None = None) -> str:
+    """The type of the filesystem `path` is on, from `/proc/mounts`; "" if
+    that cannot be read."""
+    if mounts_text is None:
+        try:
+            with open("/proc/mounts") as handle:
+                mounts_text = handle.read()
+        except OSError:
+            return ""
+    best, kind = "", ""
+    for line in mounts_text.splitlines():
+        fields = line.split()
+        if len(fields) < 3:
+            continue
+        point = fields[1]
+        inside = path == point or path.startswith(point.rstrip("/") + "/")
+        if inside and len(point) > len(best):
+            best, kind = point, fields[2]
+    return kind
+
+
+def ldd_dependencies(ldd_text: str) -> dict[str, str]:
+    """`{soname: resolved path}` from `ldd` output; unresolved ones map to ""."""
+    found: dict[str, str] = {}
+    for line in ldd_text.splitlines():
+        line = line.strip()
+        if "=>" not in line:
+            continue
+        name, _, rest = line.partition("=>")
+        target = rest.strip().split(" (")[0].strip()
+        found[name.strip()] = "" if target == "not found" else target
+    return found
+
+
+def _ldd(path: str) -> dict[str, str] | None:
+    try:
+        result = subprocess.run(["ldd", path], capture_output=True, text=True,
+                                check=False)
+    except OSError:
+        return None
+    return ldd_dependencies(result.stdout) if result.returncode == 0 else None
+
+
+def staged_blastn(blastn_path: str, canary_db: str, canary_seq: str,
+                  work_dir: str | None = None, stage: bool | None = None) -> str:
+    """A node-local copy of `blastn` and the shared libraries it loads from a
+    network filesystem, or `blastn_path` itself.
+
+    WHY. A conda BLAST+ is a small `blastn` that loads 86 libraries (535 MB)
+    from the environment. Measured on this cluster, from BeeGFS: every exec
+    took ~1,020 major page faults -- the library pages are not kept between
+    processes -- and 0.10 s of system time against 0.03 s from local disk.
+    With 48 scan workers on a node running blastn at once, that contention
+    reached 0.6-0.9 s of system time per call, three quarters of the run's
+    whole system time (`placer/io/perf.py`, perf round 1). Batching cannot remove
+    the execs without changing hits (`run_blastn_batch_against_te_library`).
+
+    WHY THE ANSWER IS UNCHANGED. The copies are the same bytes, and they are
+    used only after two checks: `ldd` of the copy resolves every library either
+    to its staged copy or to exactly the path the original resolves it to, and
+    a canary search (`canary_seq`, a library element) against `canary_db`
+    writes byte-identical output from both.
+    Any failure, or no `ldd`, keeps the original binary. The copy lives in
+    `blast_work_dir()` beside the database, one per binary version, built under
+    the same kind of lock and reused by every run on the node.
+    """
+    if stage is None:
+        setting = os.environ.get(STAGE_BLASTN_ENV, "")
+        if setting == "0":
+            return blastn_path
+        stage = setting == "1" or None
+    if stage is False:
+        return blastn_path
+    resolved = shutil.which(blastn_path)
+    if not resolved or not canary_db or not canary_seq:
+        return blastn_path
+    real = os.path.realpath(resolved)
+    if stage is None and filesystem_type(real) not in NETWORK_FILESYSTEMS:
+        return blastn_path
+    try:
+        info = os.stat(real)
+        key = hashlib.sha1(f"{real}\0{info.st_size}\0{info.st_mtime_ns}".encode()
+                           ).hexdigest()[:16]
+        target = os.path.join(work_dir or blast_work_dir(), f"blastn_{key}")
+        staged = os.path.join(target, "bin", "blastn")
+        if os.path.isfile(os.path.join(target, _STAGED_OK)):
+            return staged
+        with _exclusive(target + ".lock"):
+            if os.path.isfile(os.path.join(target, _STAGED_OK)):
+                return staged
+            if not _stage_blastn_copy(real, target):
+                return blastn_path
+            if not _same_canary_output(real, staged, canary_db, canary_seq, target):
+                return blastn_path
+            with open(os.path.join(target, _STAGED_OK), "w") as handle:
+                handle.write(real + "\n")
+        return staged
+    except (OSError, subprocess.SubprocessError):
+        return blastn_path
+
+
+def _stage_blastn_copy(real: str, target: str) -> bool:
+    """Copy the binary to `target/bin`, and every library it resolves on a
+    network filesystem to `target/lib` (its RPATH `$ORIGIN/../lib` finds them
+    there). True when `ldd` then resolves the copy as the original."""
+    original = _ldd(real)
+    if original is None or any(not path for path in original.values()):
+        return False
+    shutil.rmtree(target, ignore_errors=True)
+    os.makedirs(os.path.join(target, "bin"))
+    os.makedirs(os.path.join(target, "lib"))
+    staged = os.path.join(target, "bin", "blastn")
+    shutil.copy2(real, staged)
+    copied: dict[str, str] = {}
+    for name, path in original.items():
+        if filesystem_type(os.path.realpath(path)) in NETWORK_FILESYSTEMS:
+            destination = os.path.join(target, "lib", os.path.basename(path))
+            shutil.copyfile(path, destination)
+            copied[name] = destination
+    after = _ldd(staged)
+    if after is None or set(after) != set(original):
+        return False
+    # ldd prints what `$ORIGIN/../lib` found unnormalised (`bin/../lib/...`).
+    return all(os.path.realpath(after[name])
+               == os.path.realpath(copied.get(name, original[name]))
+               for name in original)
+
+
+def _same_canary_output(real: str, staged: str, canary_db: str, canary_seq: str,
+                        target: str) -> bool:
+    """Both binaries search one query against the run's database; True when
+    they write the same bytes."""
+    query = os.path.join(target, "canary.fa")
+    with open(query, "w") as out:
+        out.write(f">canary\n{canary_seq}\n")
+    outputs = []
+    for binary in (real, staged):
+        result = subprocess.run(
+            [binary, "-query", query, "-db", canary_db, "-task", "blastn",
+             "-dust", "no", "-soft_masking", "false",
+             "-max_target_seqs", str(BLAST_MAX_TARGET_SEQS), "-outfmt", BLAST_OUTFMT],
+            capture_output=True, check=False)
+        if result.returncode != 0:
+            return False
+        outputs.append(result.stdout)
+    return outputs[0] == outputs[1]
 
 
 @contextlib.contextmanager
@@ -153,6 +315,9 @@ def run_blastn_batch_against_te_library(blastn_path: str, blast_db_prefix: str,
         return out
 
     query_lengths = {query_id: len(sequence) for query_id, sequence in queries}
+    # Batches run on the aligner's thread pool, hence the locked counter.
+    count_locked("blastn_calls")
+    count_locked("blastn_queries", len(queries))
     query_path = write_blast_batch_query_fasta(queries)
     output_path = os.path.splitext(query_path)[0] + ".blast.tsv"
     try:

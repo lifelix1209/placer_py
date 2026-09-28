@@ -39,7 +39,12 @@ backwards.
 from __future__ import annotations
 
 import math
+import re
+from bisect import bisect_right
 from dataclasses import dataclass
+from functools import lru_cache
+from itertools import accumulate
+from operator import ne
 from typing import Callable
 
 #: Reference fetcher: (chrom, start, end) -> sequence, half-open, or "" if
@@ -106,15 +111,14 @@ def mismatch_count_within(lhs: str, rhs: str, budget: int) -> int:
     """
     if len(lhs) != len(rhs):
         return budget + 1
-    mismatches = 0
-    for a, b in zip(lhs, rhs):
-        if a != b:
-            mismatches += 1
-            if mismatches > budget:
-                return budget + 1
-    return mismatches
+    if budget <= 0:
+        return 0 if lhs == rhs else budget + 1
+    # Counted in C, then capped: the same value the early exit returned.
+    mismatches = sum(map(ne, lhs, rhs))
+    return mismatches if mismatches <= budget else budget + 1
 
 
+@lru_cache(maxsize=4096)
 def tsd_mismatch_budget(length: int, rate: float, cap: int) -> int:
     """
     Length-scaled allowance: `min(cap, floor(length * rate))`.
@@ -144,16 +148,19 @@ def background_occurrence_fraction(region: str, motif: str,
     if not region or not motif or len(region) < len(motif):
         return 1.0
     budget = max(0, max_mismatches)
-    total = 0
+    size = len(motif)
+    total = len(region) - size + 1
     hit = 0
-    for i in range(len(region) - len(motif) + 1):
-        total += 1
-        window = region[i:i + len(motif)]
-        if budget == 0:
-            if window == motif:
-                hit += 1
-        elif mismatch_count_within(window, motif, budget) <= budget:
+    if budget == 0:
+        # Every position where the motif occurs, overlaps included.
+        at = region.find(motif)
+        while at >= 0:
             hit += 1
+            at = region.find(motif, at + 1)
+    else:
+        for i in range(total):
+            if sum(map(ne, region[i:i + size], motif)) <= budget:
+                hit += 1
     return (hit / total) if total > 0 else 1.0
 
 
@@ -190,7 +197,72 @@ def detect(fetch: ReferenceFetcher, chrom: str, left_bp: int, right_bp: int,
     mismatch_cap = max(0, cfg.tsd_max_mismatches)
 
     passes = 2 if (mismatch_rate > 0.0 and mismatch_cap > 0) else 1
-    for current_pass in range(passes):
+    # Every window below is a slice of these two when both come back whole --
+    # a reference returns a sub-window's bases as a slice of the window's. Near
+    # a contig end, where one comes back short or empty, each length is
+    # fetched on its own, exactly as before. The locus and each of its hundred
+    # decoys run this, so it used to be ~180 fetches per detection.
+    upstream_start = max(0, left_bp - max_len)
+    upstream = fetch(chrom, upstream_start, left_bp)
+    downstream = fetch(chrom, right_bp, right_bp + max_len)
+    hoisted = (len(upstream) == left_bp - upstream_start
+               and len(downstream) == max_len)
+    # With whole windows, "only ACGT" at length L is L within the run of ACGT
+    # ending at the left breakpoint and the run starting at the right one.
+    acgt_left = _acgt_run(upstream, from_end=True) if hoisted else 0
+    acgt_right = _acgt_run(downstream, from_end=False) if hoisted else 0
+
+    def found(length: int, left: str, mismatches: int, budget: int) -> TsdDetection:
+        bg_region = fetch(chrom, max(0, left_bp - flank), right_bp + flank)
+        p = background_occurrence_fraction(bg_region, left, budget)
+        out.type = "DUP" if p <= bg_p_max else "UNCERTAIN"
+        out.length = length
+        out.sequence = left
+        out.mismatches = mismatches
+        out.bg_p = p
+        out.significant = p <= bg_p_max
+        return out
+
+    first_pass = 0
+    if hoisted:
+        first_pass = passes
+        # PASS 0 BY SEARCH. An exact duplication of length L >= min_len starts
+        # where the downstream window's first min_len bases occur in the
+        # upstream one, L bases from its end; `find` lists those places,
+        # longest L first, and only they are compared in full. The bounds are
+        # the loop's skips: L <= left_bp, within both ACGT runs, <= max_len.
+        size = len(upstream)
+        limit = min(max_len, acgt_left, acgt_right, left_bp)
+        if limit >= min_len:
+            seed = downstream[:min_len]
+            at = upstream.find(seed, size - limit, size)
+            while at >= 0:
+                length = size - at
+                if upstream[at:] == downstream[:length]:
+                    return found(length, upstream[at:], 0, 0)
+                at = upstream.find(seed, at + 1, size)
+        if passes == 2 and limit >= min_len:
+            # PASS 1 BIT-PARALLEL. Both windows' ACGT runs as 2-bit integers,
+            # the upstream one ending at its least significant digit: the last
+            # L upstream bases are its low 2L bits and the first L downstream
+            # bases its top 2L bits, and a mismatching base is a pair of bits
+            # that differs. The mismatch count is that popcount -- the same
+            # integer `mismatch_count_within` counts when it is within budget.
+            up = int(upstream[size - limit:].translate(_BASE4), 4)
+            down = int(downstream[:limit].translate(_BASE4), 4)
+            for length in range(limit, min_len - 1, -1):
+                budget = tsd_mismatch_budget(length, mismatch_rate, mismatch_cap)
+                if budget == 0:
+                    continue          # already covered exactly by pass 0
+                diff = (up & ((1 << (2 * length)) - 1)) ^ (down >> (2 * (limit - length)))
+                low = (_LOW_BITS[length] if length < len(_LOW_BITS)
+                       else int("01" * length, 2))
+                mismatches = _popcount((diff | (diff >> 1)) & low)
+                if mismatches <= budget:
+                    return found(length, upstream[size - length:], mismatches, budget)
+    # Windows cut short by a contig end: each length fetched and compared on
+    # its own, as the search always was.
+    for current_pass in range(first_pass, passes):
         # Longest first, so the longest duplication consistent with the budget
         # wins rather than the shortest.
         for length in range(max_len, min_len - 1, -1):
@@ -207,19 +279,15 @@ def detect(fetch: ReferenceFetcher, chrom: str, left_bp: int, right_bp: int,
                 continue
             if not has_only_acgt(left) or not has_only_acgt(right):
                 continue
-            mismatches = mismatch_count_within(left, right, budget)
-            if mismatches > budget:
-                continue
-
-            bg_region = fetch(chrom, max(0, left_bp - flank), right_bp + flank)
-            p = background_occurrence_fraction(bg_region, left, budget)
-            out.type = "DUP" if p <= bg_p_max else "UNCERTAIN"
-            out.length = length
-            out.sequence = left
-            out.mismatches = mismatches
-            out.bg_p = p
-            out.significant = p <= bg_p_max
-            return out
+            if budget == 0:
+                if left != right:
+                    continue
+                mismatches = 0
+            else:
+                mismatches = mismatch_count_within(left, right, budget)
+                if mismatches > budget:
+                    continue
+            return found(length, left, mismatches, budget)
 
     # No duplication: the breakpoints may instead bracket a small DELETION,
     # which is the other geometry TPRT can leave behind.
@@ -290,36 +358,108 @@ def detect_from_insertion(fetch: ReferenceFetcher, chrom: str, pos: int,
     upstream = fetch(chrom, max(0, pos - max_len), pos)
     downstream = fetch(chrom, pos, pos + max_len)
 
-    for current_pass in range(passes):
-        for length in range(max_len, min_len - 1, -1):
-            if length > len(insert):
-                continue
-            budget = (0 if current_pass == 0
-                      else tsd_mismatch_budget(length, mismatch_rate, mismatch_cap))
-            if current_pass == 1 and budget == 0:
-                continue              # already covered exactly by pass 0
+    # BOTH FORMS GROW OUTWARD FROM THE JUNCTION, so one pass over each gives
+    # the answer at every length. The 3' form at length L pairs the insert's
+    # last L bases with the reference's last L before `pos`; the 5' form its
+    # first L with the first L after. Base k of either pair is the same pair
+    # of bases whatever L is, so the mismatch count and "only ACGT on both
+    # sides" at length L are running totals over k <= L. The loop below then
+    # asks, in the order it always did -- pass, length descending, 3' before
+    # 5' -- what the per-length window comparisons used to compute.
+    reach = min(max_len, len(insert))
+    three_usable, three_exact, three_mismatches = _outward_tally(insert, upstream, reach,
+                                                                 from_end=True)
+    five_usable, five_exact, five_mismatches = _outward_tally(insert, downstream, reach,
+                                                              from_end=False)
 
-            for candidate, flank_seq in (
-                    (insert[-length:], upstream[len(upstream) - length:]
-                     if len(upstream) >= length else ""),
-                    (insert[:length], downstream[:length])):
-                if len(flank_seq) != length or not has_only_acgt(flank_seq):
-                    continue
-                if not has_only_acgt(candidate):
-                    continue
-                mismatches = mismatch_count_within(candidate, flank_seq, budget)
-                if mismatches > budget:
-                    continue
-                bg_region = fetch(chrom, max(0, pos - flank), pos + flank)
-                p = background_occurrence_fraction(bg_region, flank_seq, budget)
-                out.type = "DUP" if p <= bg_p_max else "UNCERTAIN"
-                out.length = length
-                out.sequence = flank_seq
-                out.mismatches = mismatches
-                out.bg_p = p
-                out.significant = p <= bg_p_max
-                return out
+    def found(length: int, form_is_three: bool, mismatches: int, budget: int) -> TsdDetection:
+        flank_seq = (upstream[len(upstream) - length:] if form_is_three
+                     else downstream[:length])
+        bg_region = fetch(chrom, max(0, pos - flank), pos + flank)
+        p = background_occurrence_fraction(bg_region, flank_seq, budget)
+        out.type = "DUP" if p <= bg_p_max else "UNCERTAIN"
+        out.length = length
+        out.sequence = flank_seq
+        out.mismatches = mismatches
+        out.bg_p = p
+        out.significant = p <= bg_p_max
+        return out
+
+    # Pass 0, exact. A form matches exactly at every length up to its reach
+    # (window, ACGT on both sides, no mismatch yet) and at none beyond, so the
+    # longest-first search stops at the longer reach -- the 3' form's on a tie,
+    # as it is tried first at each length.
+    three_reach = min(max_len, three_usable, three_exact)
+    five_reach = min(max_len, five_usable, five_exact)
+    longest = max(three_reach, five_reach)
+    if longest >= min_len:
+        return found(longest, three_reach >= longest, 0, 0)
+    if passes < 2:
+        return out
+    # Pass 1, tolerant: the running mismatch count against the length's budget.
+    for length in range(max_len, min_len - 1, -1):
+        budget = tsd_mismatch_budget(length, mismatch_rate, mismatch_cap)
+        if budget == 0:
+            continue                  # already covered exactly by pass 0
+        if length <= three_usable and three_mismatches[length] <= budget:
+            return found(length, True, three_mismatches[length], budget)
+        if length <= five_usable and five_mismatches[length] <= budget:
+            return found(length, False, five_mismatches[length], budget)
     return out
+
+
+def _outward_tally(insert: str, reference: str, reach: int,
+                   from_end: bool) -> tuple[int, int, list[int]]:
+    """The insert paired with `reference` outward from the junction -- from
+    both ends (the 3' form) or both starts (the 5' form) -- as
+    `(usable, exact, mismatches)`:
+
+      * `usable`: the longest length whose bases on both sides are all A, C,
+        G or T and that the reference window is long enough for (it is
+        `reach` long at most);
+      * `exact`: how many pairs match before the first mismatch;
+      * `mismatches[L]`: mismatches among the first L pairs.
+    """
+    size = min(reach, len(reference))
+    if from_end:
+        a = insert[len(insert) - size:][::-1]
+        b = reference[len(reference) - size:][::-1]
+    else:
+        a = insert[:size]
+        b = reference[:size]
+    usable = size
+    for seq in (a, b):
+        bad = _NOT_ACGT.search(seq)
+        if bad is not None:
+            usable = min(usable, bad.start())
+    mismatches = list(accumulate(map(ne, a, b), initial=0))
+    return usable, bisect_right(mismatches, 0) - 1, mismatches
+
+
+_ACGT = frozenset("ACGT")
+_NOT_ACGT = re.compile("[^ACGT]")
+#: A, C, G, T as base-4 digits; only ever applied to ACGT-only runs.
+_BASE4 = str.maketrans("ACGT", "0123")
+#: 0b0101...01 with L pairs, for folding each base's 2 bits onto one.
+_LOW_BITS = [int("01" * length, 2) if length else 0 for length in range(257)]
+
+
+def _popcount(value: int) -> int:
+    return bin(value).count("1")
+
+
+if hasattr(int, "bit_count"):             # Python 3.10+
+    _popcount = int.bit_count             # noqa: F811
+
+
+def _acgt_run(seq: str, from_end: bool) -> int:
+    """How many bases from the end (or the start) are all A, C, G or T."""
+    run = 0
+    for char in (reversed(seq) if from_end else seq):
+        if char not in _ACGT:
+            break
+        run += 1
+    return run
 
 
 def fetcher_from_string(sequence: str) -> ReferenceFetcher:

@@ -33,6 +33,7 @@ from placer.io.blast import (
     BlastSubjectHit,
     ensure_te_blast_db,
     run_blastn_batch_against_te_library,
+    staged_blastn,
 )
 
 
@@ -150,6 +151,7 @@ class TeLibraryAligner:
         self.background = background
         self.jobs = max(1, jobs)
         self._db_prefix: str | None = None
+        self._blastn: str | None = None
         self.blastn_calls = 0
 
     def prepare(self) -> str:
@@ -170,6 +172,12 @@ class TeLibraryAligner:
             self._db_prefix = ensure_te_blast_db(self.config.te_fasta_path,
                                                  self.config.te_makeblastdb_path,
                                                  cache_key)
+            # The same blastn, from node-local disk when it lives on a network
+            # filesystem (`placer/io/blast.staged_blastn`).
+            canary = next((entry.sequence[:300] for entry in self.entries
+                           if len(entry.sequence) >= 100), "")
+            self._blastn = staged_blastn(self.config.te_blastn_path,
+                                         self._db_prefix, canary)
         return self._db_prefix
 
     def align(self, insert_seqs: list[str]) -> list[TEAlignmentEvidence]:
@@ -185,10 +193,11 @@ class TeLibraryAligner:
         hits: dict[str, list[BlastSubjectHit]] = {}
         if groups:
             db_prefix = self._db()
+            blastn = self._blastn or config.te_blastn_path
 
             def align_group(group: list[str]) -> dict[str, list[BlastSubjectHit]]:
                 found = run_blastn_batch_against_te_library(
-                    config.te_blastn_path, db_prefix,
+                    blastn, db_prefix,
                     [(f"q{i}", seq) for i, seq in enumerate(group)])
                 return {seq: found[f"q{i}"] for i, seq in enumerate(group)}
 

@@ -20,13 +20,17 @@ for side in A B; do
   # A tree from before the legacy decision was deleted still needs the flag
   # to run the same decision; a later one no longer accepts it.
   decision=$(grep -q '"--decision"' "$repo/placer/main.py" && echo "--decision mechanism")
-  (cd "$repo" && /usr/bin/time -v python -m placer.main \
+  (cd "$repo" && PLACER_PERF_LOG="$O/$side.perf.tsv" /usr/bin/time -v python -m placer.main \
       $T/results/alignments/human_hg002/full/r0.primary.md.bam \
       /mnt/home1/miska/hl725/scratch/placer_dev/ref/GRCh38.primary.fa \
       $T/resources/human/dfam_human.freeze.fa \
       --region "$REGION" --threads 1 $decision --output-dir "$O/$side" 2> "$O/$side.stderr")
   echo "$side $repo: $(grep -E 'User time|System time|Elapsed' "$O/$side.stderr" | tr -s ' ' | tr '\n' ' ')"
 done
-for f in scientific.txt evidence_ledger.tsv calls.vcf calls.csv; do
+for f in scientific.txt evidence_ledger.tsv calls.csv; do
   if cmp -s "$O/A/$f" "$O/B/$f"; then echo "IDENTICAL $f"; else echo "DIFFERS   $f"; fi
 done
+# calls.vcf without its `##source=` line, which names the code's version: an
+# installed release says `1.0.0a1`, a source tree `1.0.0a1+source`.
+if cmp -s <(grep -v '^##source=' "$O/A/calls.vcf") <(grep -v '^##source=' "$O/B/calls.vcf"); then
+  echo "IDENTICAL calls.vcf (without ##source)"; else echo "DIFFERS   calls.vcf"; fi

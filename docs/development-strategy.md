@@ -250,6 +250,31 @@ Two measurement traps, both hit on 2026-09-26:
   gain only from repeated A/B user + sys times on a node that is not shared
   with another heavy job.
 
+Perf round 1 (2026-09-28) added two more:
+- **Attribute system time before guessing its cause.** On the release node,
+  chr1's sys time was 37% of its CPU, and on other nodes 50-200% of user time.
+  A ~50x re-read of the BAM from BeeGFS (no page cache) looked like the cause.
+  It was not: a run with the BAM and the reference in `/dev/shm` paid the same
+  sys time. `PLACER_PERF_LOG` splits each chunk's CPU into the interpreter's
+  and its children's, and 90% of the sys time was in blastn. Each exec paged
+  in 86 conda libraries from BeeGFS (~1,000 major faults), which cost 0.6-0.9 s
+  with 48 processes on a node. Staging blastn on local disk
+  (`io/blast.staged_blastn`) took chr1's sys time from 13,755 s to about
+  1,000 s.
+- **Test a single-worker win under concurrency too.** The blastn cost was
+  0.09 s of sys time per call with one worker, and ten times that on a busy
+  node. `tools/perf/ab_step.sh` runs three 16-worker jobs side by side.
+
+The tools this round added:
+- `PLACER_PERF_LOG=PATH` writes a TSV row per chunk: CPU split into self and
+  children, I/O, and fetch/cache counters. `tools/perf/perf_summary.py`
+  summarises it.
+- `tools/perf/kernel_corpus.py` records a region's real segmentation calls and
+  replays them. That checks an optimisation against the recorded results in
+  seconds, and times it.
+- An equivalence test keeps the old implementation verbatim beside the new one
+  (`tests/test_53`-`test_56`).
+
 ## 8. What the rounds found (worked examples)
 
 HG002 chr1, scored as TEBench scores. The truth has 277 rows in the confident

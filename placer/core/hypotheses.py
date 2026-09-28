@@ -293,6 +293,27 @@ def _signal_sigma(class_mask: int) -> float:
     return SIGMA_DEFAULT
 
 
+_KERNEL_TABLES: dict[float, tuple[list[float], int]] = {}
+
+
+def _kernel_table(sigma: float) -> tuple[list[float], int]:
+    """`exp(-z^2/2) / sigma` at integer offsets 0..reach, `z = offset / sigma`,
+    computed as `compute_breakpoint_position_posterior` always computed it.
+
+    Beyond `reach` the exponent is below -746, where `exp` is exactly 0.0.
+    A term is the same at `-d` as at `d`: negating `z` flips signs exactly.
+    """
+    found = _KERNEL_TABLES.get(sigma)
+    if found is None:
+        reach = int(math.ceil(38.7 * sigma)) + 1
+        table = []
+        for d in range(reach + 1):
+            z = float(d) / sigma
+            table.append(math.exp(-0.5 * z * z) / sigma)
+        found = _KERNEL_TABLES[sigma] = (table, reach)
+    return found
+
+
 def compute_breakpoint_position_posterior(candidates: list[BreakpointCandidate]
                                           ) -> BreakpointPosteriorSummary:
     """A posterior over breakpoint position, as a mixture of per-signal kernels.
@@ -332,15 +353,24 @@ def compute_breakpoint_position_posterior(candidates: list[BreakpointCandidate]
         grid_hi = grid_lo + POSTERIOR_GRID_MAX_SPAN_BP
     n = grid_hi - grid_lo + 1
 
+    # Each grid value is the signals' kernels summed IN SIGNAL ORDER, as a loop
+    # over the grid with an inner loop over the signals used to compute it.
+    # With the signals outermost, every grid value still receives its terms in
+    # signal order, so each float sum is the same sequence of additions. A
+    # term depends only on the integer offset and sigma, so it comes from a
+    # table computed with the same expression; offsets beyond the table give
+    # exactly 0.0, which leaves a non-negative sum unchanged.
     density = [0.0] * n
+    for pos, sigma in signals:
+        table, reach = _kernel_table(sigma)
+        first = max(0, pos - reach - grid_lo)
+        last = min(n - 1, pos + reach - grid_lo)
+        offset = grid_lo - pos
+        for gi in range(first, last + 1):
+            d = offset + gi
+            density[gi] += table[d if d >= 0 else -d]
     total = 0.0
-    for gi in range(n):
-        x = float(grid_lo + gi)
-        value = 0.0
-        for pos, sigma in signals:
-            z = (x - pos) / sigma
-            value += math.exp(-0.5 * z * z) / sigma
-        density[gi] = value
+    for value in density:
         total += value
     if total <= 0.0:
         return summary
