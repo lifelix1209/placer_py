@@ -196,6 +196,64 @@ Here that means:
 | **TEBench holdout contigs** | Not touched until the release benchmark. |
 | **the 10 Mb dev slices** | Smoke tests only. With six truth insertions they can neither accept nor reject anything. |
 
+### Release benchmark 1.0.0a2 (pre-registered 2026-09-28)
+
+The human holdout is spent here, once, on the released code. This was written
+before any of the runs below started.
+
+It was first drafted for 1.0.0a1, and moved to 1.0.0a2 before any run started.
+1.0.0a2 is the speed release. It writes byte-identical output on every 1.0.0a1
+release run (HG002 chr1–8 and the cichlid slice; `calls.vcf` apart from its
+`##source` line), so every 1.0.0a1 number below still stands.
+
+- **Code.** The code is v1.0.0a2 (b3cceb3), taken by `git archive` into
+  `placer_dev/frozen/v1.0.0a2`.
+  - Its `placer/` is identical to `perf-rc1`, which reran the release runs
+    byte for byte.
+  - It is pip-installed, non-editable, into TEBench's
+    `workflow/envs/placer.yaml`.
+  - It is run as a user would run it: over the whole BAM, with no `--region`.
+    It goes through TEBench's `run_caller` with 32 threads and
+    `--record-world`.
+- **Conditions.** human_hg002, under the same 13 conditions as every
+  registered caller: full/r0, and 5/10/20/30x × r1–3. The input is
+  `*.primary.md.bam`.
+- **Metric.** TEBench's `evaluate`, unchanged.
+  - It reports TP/FP/FN, precision, recall and F1, with Wilson intervals.
+  - It counts PASS calls within ±100 bp inside the confident regions, after
+    RepeatMasker re-annotation with `--require-te`.
+  - It is reported for three partitions, for PLACER and the eight other
+    registered callers alike:
+    - all, which is TEBench's summary;
+    - development: chr1–8;
+    - holdout: chr9–22, X and Y.
+  - Nothing else is scored.
+- **Reference.** The per-chromosome release runs, pooled over chr2–8, gave
+  923/42/316.
+  - Precision was 95.6% [94.2, 96.8] and recall 74.5% [72.0, 76.8] (Wilson,
+    95%).
+  - The prediction under test: full/r0 on the holdout falls inside both
+    intervals.
+- **Order.**
+  1. full/r0 runs first. It is checked only on chr1–8, and on quantities
+     that need no truth:
+     - its chr1–8 records against the per-chromosome release runs. They may
+       differ, because three things are estimated over the whole run: e-BH's
+       m, the per-class decoy factor and the genotyper's overdispersion.
+     - its CPU-h and peak RSS;
+     - its development score against 1094/52/374.
+  2. The twelve titration runs follow, checked the same way.
+  3. Only when all 13 are done is every partition scored, once, for every
+     caller.
+- **Rules.**
+  - Before the holdout is scored, a bug may be fixed. The fix is judged only
+    on chr1–8 or on the 10 Mb slices. The fixed code becomes 1.0.0a3: this
+    entry is amended and the runs are repeated.
+  - After the holdout is scored, no code changes for this benchmark, and the
+    numbers are reported whatever they are.
+  - From then on, human chr9–22, X and Y cannot accept or reject any
+    candidate. The next untouched set is mouse, once its truth is built.
+
 ## 6. Worlds
 
 - **Record from frozen code.** Use `--record-world` from a snapshot or
