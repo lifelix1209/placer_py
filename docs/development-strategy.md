@@ -223,6 +223,22 @@ before the holdout was scored.
   `placer_dev/tebench_1.0.0a2/runs` and never scored on the holdout. The 13
   runs are repeated with 1.0.0a3, and everything below applies to 1.0.0a3.
 
+**Deferred on purpose, 2026-09-29: the scan's use of the same term.**
+- **What was found.** Also found before the holdout was scored: the scan
+  still applies the length-concordance term to its own GQ.
+- **What that GQ decides.** Only the joint decision's diagnostics read it:
+  the INFO fields TEPOST, LFDRMAX, MECHART, MECHNONTE, MECH and QC. Its one
+  route to calls is the per-bin de-duplication of ledger rows.
+- **A first emulation.** The production selection, run on the 1.0.0a1
+  release ledgers with that de-duplication fixed, predicts:
+  - HG002 chr1's calls are unchanged;
+  - two cichlid TE calls go, one of them PASS;
+  - the sample overdispersion moves (chr1 0.1729 → 0.1799).
+  1.0.0a4's replay round and online A/B are to confirm or correct this.
+- **The decision.** The maintainer decided to fix it in 1.0.0a4, outside this
+  benchmark. The benchmark stays on 1.0.0a3, and 1.0.0a4 is never scored on
+  the holdout for it.
+
 - **Code.** The code is v1.0.0a3, taken by `git archive` into
   `placer_dev/frozen/v1.0.0a3`.
   - Its `placer/` differs from `a3-rc1` in one docstring only. `a3-rc1`
