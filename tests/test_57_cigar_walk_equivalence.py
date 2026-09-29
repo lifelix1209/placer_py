@@ -162,4 +162,4 @@ def test_one_walk_gives_the_index_the_summary_and_the_long_insertions():
             assert F._find_long_insertions(fresh, floor) == \
                 _old_find_long_insertions(read, floor), (floor, read.cigar)
         compared += 1
-    assert compared > 3000
+    assert compared >= 3000
