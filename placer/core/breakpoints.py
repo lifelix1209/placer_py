@@ -407,6 +407,41 @@ def _cached_split_insertion_positions(read: AlignedRead, chrom: str) -> tuple[in
     return positions
 
 
+def split_insertion_calls(read: AlignedRead, chrom: str) -> tuple[tuple[int, int], ...]:
+    """`(junction, implied insertion length)` for every SA pair that
+    `robust_local_split_insertion_positions` counts, remembered per read.
+
+    The length is the pair's own `query_gap - ref_gap`: what the read measured.
+    A SPLIT_SA `InsertionFragment`'s `length` is not this -- it is the sequence
+    window taken beyond the junction -- so a length observable reads it here.
+    The positions are the same as `_split_insertion_positions`, which stays as
+    it is so its callers' output is unchanged.
+    """
+    memo = read_memo(read)
+    key = ("split_insertion_calls", chrom)
+    if memo is not None:
+        hit = memo.get(key)
+        if hit is not None:
+            return hit
+    calls: set[tuple[int, int]] = set()
+    sa_z = read.get_string_tag("SA")
+    primary = normalized_primary_alignment(read, chrom) if sa_z else None
+    for entry in (parse_sa_tag_z(sa_z) if sa_z and primary is not None else ()):
+        if entry.rname != chrom:
+            continue
+        mate = normalized_sa_alignment(entry, read.seq_len)
+        if primary is None or mate is None or mate.is_reverse != primary.is_reverse:
+            continue
+        left, right = (primary, mate) if mate.qstart >= primary.qstart else (mate, primary)
+        length = (right.qstart - left.qend) - max(0, right.ref_start - left.ref_end)
+        if length >= LONG_INSERTION_SIGNAL_MIN:
+            calls.add((left.ref_end, length))
+    result = tuple(sorted(calls))
+    if memo is not None:
+        memo[key] = result
+    return result
+
+
 def _split_insertion_positions(read: AlignedRead, chrom: str) -> list[int]:
     positions: list[int] = []
     sa_z = read.get_string_tag("SA")

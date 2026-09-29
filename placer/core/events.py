@@ -35,7 +35,11 @@ from dataclasses import dataclass, field
 from statistics import median
 
 from placer.alignment import AlignedRead, cigar_index, compute_ref_end
-from placer.core.breakpoints import classify_local_event_signal, read_has_local_event_signal
+from placer.core.breakpoints import (
+    classify_local_event_signal,
+    read_has_local_event_signal,
+    split_insertion_calls,
+)
 from placer.core.clustering import INSERTION_CANDIDATE_REQUIRED_MAPQ, ComponentCall
 from placer.core.fragments import InsertionFragment, InsertionFragmentSource
 from placer.core.windows import LONG_INSERTION_SIGNAL_MIN
@@ -101,6 +105,17 @@ class EventReadEvidence:
     #: support-sharing tests in finalization are deterministic.
     support_qnames: list[str] = field(default_factory=list)
     ref_span_qnames: list[str] = field(default_factory=list)
+    #: What the alt reads MEASURED the insertion to be, one length per read,
+    #: sorted. Only a read that spans the insertion measures it: a CIGAR
+    #: insertion (from a uniquely mapped read, as for `alt_indel_reads`) or an
+    #: SA pair's implied insertion (as for `alt_split_reads`), at least
+    #: LONG_INSERTION_SIGNAL_MIN, inside this hypothesis's alt window. A clip is
+    #: only a lower bound and is not a measurement. A read with several takes
+    #: its CIGAR one over its split one, then the one nearest the window
+    #: centre, then the longer. Taken from the reads alone, so it does not
+    #: depend on which component evaluated the hypothesis. Recorded, not used:
+    #: whether length concordance should inform a decision is for replay.
+    alt_measured_lengths: list[int] = field(default_factory=list)
 
 
 def read_reference_spans(records: list[AlignedRead]) -> list[ReadReferenceSpan]:
@@ -147,11 +162,14 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
     right_clip_qnames: set[str] = set()
     raw_cigar_insert_qnames: set[str] = set()
     tight_lengths: list[int] = []
+    # qname -> (kind, distance from the centre, -length, length); min() wins.
+    measured: dict[str, tuple[int, int, int, int]] = {}
     nearby_left_clip_qnames: set[str] = set()
     nearby_right_clip_qnames: set[str] = set()
 
     alt_signal_start = max(0, left - ALT_SIGNAL_SLACK_BP)
     alt_signal_end = max(alt_signal_start, right + ALT_SIGNAL_SLACK_BP)
+    alt_signal_centre = alt_signal_start + ((alt_signal_end - alt_signal_start) // 2)
     ref_signal_start = max(0, left - REF_SIGNAL_SLACK_BP)
     ref_signal_end = max(ref_signal_start, right + REF_SIGNAL_SLACK_BP)
 
@@ -185,6 +203,10 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
             signal.split = signal.left_clip = signal.right_clip = False
         if signal.split:
             split_qnames.add(qname)
+            for pos, length in split_insertion_calls(read, component.chrom):
+                if alt_signal_start <= pos <= alt_signal_end:
+                    _keep_measurement(measured, qname, (1, abs(pos - alt_signal_centre),
+                                                        -length, length))
         # An insertion is believed as PRECISE evidence only from a uniquely
         # mapped read -- the same equality test the geometry stage applies, and
         # for the same reason.
@@ -193,6 +215,8 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
             length = _insertion_length_at(read, signal.indel_pos)
             if length >= LONG_INSERTION_SIGNAL_MIN:
                 tight_lengths.append(length)
+                _keep_measurement(measured, qname, (0, abs(signal.indel_pos - alt_signal_centre),
+                                                    -length, length))
         if signal.max_raw_cigar_insert_len > 0:
             raw_cigar_insert_qnames.add(qname)
             evidence.max_raw_cigar_insert_len = max(evidence.max_raw_cigar_insert_len,
@@ -270,6 +294,7 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
 
     evidence.alt_struct_reads = len(alt_qnames)
     evidence.support_qnames = sorted(alt_qnames)
+    evidence.alt_measured_lengths = sorted(entry[3] for entry in measured.values())
 
     ref_qnames: set[str] = set()
     low_mapq_ref_qnames: set[str] = set()
@@ -303,6 +328,15 @@ def collect_event_read_evidence_for_bounds(component: ComponentCall,
     evidence.low_mapq_ref_span_reads = len(low_mapq_ref_qnames)
     evidence.ref_span_qnames = sorted(ref_qnames)
     return evidence
+
+
+def _keep_measurement(measured: dict[str, tuple[int, int, int, int]], qname: str,
+                      candidate: tuple[int, int, int, int]) -> None:
+    """Keep one measured length per read: the smallest key wins, so the
+    choice does not depend on the order of the read's records."""
+    current = measured.get(qname)
+    if current is None or candidate < current:
+        measured[qname] = candidate
 
 
 def _insertion_length_at(read: AlignedRead, ref_pos: int) -> int:

@@ -34,6 +34,9 @@ DEFAULTS: dict[str, object] = {
     "te_dominant_class": "NA",
     "te_dominant_covered_bp": 0,
     "insert_seq": "",
+    # Scans before 1.0.0a4 did not record what the alt reads measured.
+    "alt_measured_length_reads": -1,
+    "alt_measured_lengths": "NA",
 }
 
 #: Columns kept as text even when they look numeric.
@@ -41,7 +44,7 @@ TEXT_COLUMNS = frozenset({
     "chrom", "family", "subfamily", "te_annotation_class", "te_annotation_order",
     "te_strand", "ltr_form", "te_dominant_family", "te_dominant_class",
     "candidate_retention_reason", "final_qc", "posterior_qc", "lfdr_qc",
-    "mech_terms", "insert_seq", "te_structure_path",
+    "mech_terms", "insert_seq", "te_structure_path", "alt_measured_lengths",
 })
 
 #: The registry of worlds, beside the scan outputs.

@@ -142,28 +142,20 @@ def test_log_choose_count_matches_the_binomial_coefficient():
     assert call_or_skip(genotype.log_choose_count, -1, 0) == -math.inf
 
 
-def test_length_concordance_factor_discounts_length_discordant_alt_reads():
+def test_the_scan_genotypes_existence_from_the_counts_alone():
     """
-    1.0 when no lengths are observed, and below 1 when the alt reads do not
-    match the event length -- they look like a different event rather than
-    support for this one.
+    The existence evidence's GQ is the counts' genotype and nothing else.
+    It used to carry a length-concordance term read off the component's own
+    breakpoint candidates. So two components that evaluated one hypothesis
+    got different GQs, and the per-bin de-duplication kept both copies of the
+    row (`docs/departures-from-cpp.md` section 10).
     """
-    base = genotype.GenotypeInput(alt_struct_reads=4, ref_span_reads=4,
-                                  event_length=320)
-    close(call_or_skip(genotype.length_concordance_factor, base), 1.0,
-          "no observed lengths")
+    for alt, ref in ((66, 0), (8, 3), (4, 60)):
+        existence = call_or_skip(P.build_event_existence_evidence,
+                                 P.EventGenotypeInput(alt_struct_reads=alt, ref_span_reads=ref))
+        decision = genotype.genotype_from_alt_vs_ref(alt, ref)
+        assert (existence.gq, existence.best_gt) == (decision.gq, decision.best_gt), (alt, ref)
 
-    concordant = genotype.GenotypeInput(alt_struct_reads=4, ref_span_reads=4,
-                                        event_length=320,
-                                        alt_observed_lengths=[318, 320, 322, 319])
-    discordant = genotype.GenotypeInput(alt_struct_reads=4, ref_span_reads=4,
-                                        event_length=320,
-                                        alt_observed_lengths=[60, 900, 55, 1200])
-    assert call_or_skip(genotype.length_concordance_factor, concordant) > 0.9
-    assert call_or_skip(genotype.length_concordance_factor, discordant) < 0.1
-
-
-# --------------------------------------------------------------- structure
 def test_interval_entropy_norm_is_zero_for_a_homopolymer_and_one_for_uniform():
     close(call_or_skip(structure.interval_entropy_norm, "AAAAAAAA", 0, 8), 0.0,
           "homopolymer")

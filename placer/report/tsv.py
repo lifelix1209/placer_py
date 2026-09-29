@@ -118,6 +118,7 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "mech_aligned_len", "mech_sequence_term",
     "mech_e_value", "mech_ebh_selected", "mech_structural_selected",
     "mech_collapse_region", "alt_carrier_reads",
+    "alt_measured_length_reads", "alt_measured_lengths",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -173,6 +174,11 @@ def _number(value) -> str:
 
 def serialize_support_qnames(qnames: Sequence[str]) -> str:
     return ",".join(qnames) if qnames else "NA"
+
+
+def serialize_measured_lengths(lengths: Sequence[int]) -> str:
+    """Comma-joined, or `NA` when no read measured the insertion."""
+    return ",".join(str(length) for length in lengths) if lengths else "NA"
 
 
 def final_call_row(call: FinalCall, include_insert_seq: bool = False) -> list[str]:
@@ -285,6 +291,7 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.mech_aligned_len, row.mech_sequence_term,
         row.mech_e_value, row.mech_ebh_selected, row.mech_structural_selected,
         row.mech_collapse_region, row.alt_carrier_reads,
+        len(row.alt_measured_lengths), serialize_measured_lengths(row.alt_measured_lengths),
     ]
     return [_number(value) for value in values]
 

@@ -116,6 +116,10 @@ class EvidenceLedgerRow:
     insert_seq: str = ""
     ref_span_reads: int = 0
     support_qnames: list[str] = field(default_factory=list)
+    #: The alt reads' own measurements of the insertion's length, one per read
+    #: (`EventReadEvidence.alt_measured_lengths`): CIGAR or SA-implied, never a
+    #: clip. A diagnostic for replay; no decision reads it.
+    alt_measured_lengths: list[int] = field(default_factory=list)
     best_te_identity: float = 0.0
     best_te_query_coverage: float = 0.0
     cross_family_margin: float = 0.0

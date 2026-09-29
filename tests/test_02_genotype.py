@@ -24,12 +24,10 @@ def test_gq_is_the_posterior_error_in_phred_not_a_likelihood_difference():
 
     for alt, ref in ((3, 3), (6, 2), (10, 1), (4, 8)):
         d = call_or_skip(genotype.genotype_from_alt_vs_ref,
-                         alt, ref, error_rate=0.02, overdispersion=0.02,
-                         event_length=320)
+                         alt, ref, error_rate=0.02, overdispersion=0.02)
         assert d.best_gt != "0/0", (alt, ref)
         inp = genotype.GenotypeInput(alt_struct_reads=alt, ref_span_reads=ref,
-                                     error_rate=0.02, overdispersion=0.02,
-                                     event_length=320)
+                                     error_rate=0.02, overdispersion=0.02)
         lls = [genotype.genotype_log_likelihood(inp, f) + math.log(prior)
                for f, prior in ((0.0, genotype.PRIOR_HOM_REF),
                                 (0.5, genotype.PRIOR_HET),
@@ -41,8 +39,7 @@ def test_gq_is_the_posterior_error_in_phred_not_a_likelihood_difference():
         assert d.gq == expected, (alt, ref)
 
     d = call_or_skip(genotype.genotype_from_alt_vs_ref,
-                     3, 3, error_rate=0.02, overdispersion=0.02,
-                     event_length=320)
+                     3, 3, error_rate=0.02, overdispersion=0.02)
     # The likelihood margin is a DIFFERENT number and is reported separately.
     assert abs(d.gq - d.best_nonref_minus_ref_ll) > 10.0, (
         "if these two are close, the port is probably conflating them")
@@ -59,9 +56,9 @@ def test_no_minimum_depth_gate():
     come back.
     """
     d = call_or_skip(genotype.genotype_from_alt_vs_ref, 2, 0,
-                     error_rate=0.02, overdispersion=0.02, event_length=320)
+                     error_rate=0.02, overdispersion=0.02)
     deep = call_or_skip(genotype.genotype_from_alt_vs_ref, 20, 0,
-                        error_rate=0.02, overdispersion=0.02, event_length=320)
+                        error_rate=0.02, overdispersion=0.02)
     assert d.best_gt == "1/1"
     assert d.depth == 2
     assert 0 < d.gq < deep.gq, "shallow support is reported as low GQ"
@@ -141,7 +138,7 @@ def test_decision_fields_are_consistent_with_the_counts():
     """
     for alt, ref, err, rho in GRID:
         d = call_or_skip(genotype.genotype_from_alt_vs_ref, alt, ref,
-                         error_rate=err, overdispersion=rho, event_length=320)
+                         error_rate=err, overdispersion=rho)
         label = f"alt={alt} ref={ref} err={err} rho={rho}"
         assert d.depth == alt + ref, label
         assert 0.0 <= d.allele_fraction <= 1.0, label
@@ -159,9 +156,9 @@ def test_overdispersion_widens_the_posterior():
     """Larger rho means more count dispersion, so the same 3v3 observation is
     less decisive."""
     tight = call_or_skip(genotype.genotype_from_alt_vs_ref, 3, 3,
-                         error_rate=0.02, overdispersion=0.02, event_length=320)
+                         error_rate=0.02, overdispersion=0.02)
     loose = call_or_skip(genotype.genotype_from_alt_vs_ref, 3, 3,
-                         error_rate=0.02, overdispersion=0.20, event_length=320)
+                         error_rate=0.02, overdispersion=0.20)
     assert loose.gq <= tight.gq
 
 

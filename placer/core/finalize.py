@@ -107,20 +107,18 @@ def apply_sample_overdispersion_calibration(result: PipelineResult) -> None:
     calls alone would measure it on the loci least representative of the rest.
 
     The configured error rate and min-GQ threshold the call was decided with
-    are reused; rebuilding a default input here would silently drop them.
+    are reused; rebuilding a default input here would silently drop them. The
+    model is the scan's: zygosity from the allele counts.
 
-    The length-concordance term is NOT. It is existence evidence -- do the alt
-    reads measure this event? -- and existence was settled by the scan and
-    e-BH before this runs. The reported genotype is zygosity, from the allele
-    counts. With the term, the model charges the mean discordance of the few
-    reads that report a length (soft-clip lengths among them, which are only
-    lower bounds) once per alt read, while the sample's overdispersion caps the
-    count evidence. So the penalty outgrows the evidence with depth.
-    HG002 chr1-8, whole genome, 1.0.0a2: 22% of PASS calls came out 0/0 at
-    full depth, 0% at 5x. Every one of the 165 true positives called 0/0 had
-    counts favouring an alt genotype (66 alt, 0 ref at chr2:171976066).
-    Dropping it moves no call. Genotype concordance with GIAB on the chr2-8
-    release runs went from 83.6% to 95.1%.
+    Up to 1.0.0a2 this also applied a length-concordance term. It charged the
+    mean discordance of the few reads that reported a length (soft-clip lower
+    bounds among them) once per alt read, while the sample's overdispersion
+    capped the count evidence, so the penalty outgrew the evidence with depth.
+    On HG002 chr1-8, whole genome, 22% of PASS calls came out 0/0 at full
+    depth and 0% at 5x (66 alt reads, 0 ref at chr2:171976066). 1.0.0a3
+    dropped it here and 1.0.0a4 everywhere (`docs/departures-from-cpp.md`
+    section 10). Genotype concordance with GIAB on the chr2-8 release runs went
+    from 83.6% to 95.1%.
     """
     from placer.core.genotype import estimate_overdispersion, genotype_from_alt_vs_ref
 

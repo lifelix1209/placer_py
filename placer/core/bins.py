@@ -173,6 +173,7 @@ def _summary_ledger_row(component: ComponentCall, summary: hyp_module.Hypothesis
     row.max_raw_cigar_insert_len = summary.max_raw_cigar_insert_len
     row.ref_span_reads = summary.ref_span_reads
     row.support_qnames = list(summary.support_qnames)
+    row.alt_measured_lengths = list(summary.event_evidence.alt_measured_lengths)
     return row
 
 
@@ -248,6 +249,7 @@ def _evaluated_ledger_row(component: ComponentCall,
     row.max_raw_cigar_insert_len = evidence.max_raw_cigar_insert_len
     row.ref_span_reads = evidence.ref_span_reads
     row.support_qnames = list(evidence.support_qnames)
+    row.alt_measured_lengths = list(evidence.alt_measured_lengths)
     row.full_context_input_reads = consensus.full_context_input_reads
     row.partial_context_input_reads = consensus.partial_context_input_reads
     row.left_anchor_input_reads = consensus.left_anchor_input_reads
@@ -528,13 +530,15 @@ def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRe
 
     from placer.core.genotype import genotype_from_alt_vs_ref
 
-    alt_lengths = hyp_module.collect_alt_observed_lengths(component, evidence)
-    event_length = hyp_module.infer_event_length_from_alt_support(alt_lengths)
+    # Zygosity from the allele counts alone, as finalization genotypes. The
+    # length-concordance term that used to ride on it read the component's own
+    # breakpoint candidates, so two components evaluating one hypothesis got
+    # different GQs, and rows the per-bin de-duplication should have merged
+    # both survived (`docs/departures-from-cpp.md` section 10).
     genotype = genotype_from_alt_vs_ref(
         evidence.alt_struct_reads, evidence.ref_span_reads,
         error_rate=config.genotype_error_rate,
-        overdispersion=config.genotype_overdispersion,
-        event_length=event_length, alt_observed_lengths=alt_lengths)
+        overdispersion=config.genotype_overdispersion)
     result.genotype_calls += 1
 
     genotype_input = policy_module.EventGenotypeInput(
@@ -545,8 +549,7 @@ def _prepare_shortlisted(component: ComponentCall, local_records: list[AlignedRe
         alt_right_clip_reads=evidence.alt_right_clip_reads,
         ref_span_reads=evidence.ref_span_reads,
         error_rate=config.genotype_error_rate,
-        overdispersion=config.genotype_overdispersion,
-        event_length=event_length, alt_observed_lengths=alt_lengths)
+        overdispersion=config.genotype_overdispersion)
     existence = policy_module.build_event_existence_evidence(genotype_input)
 
     def segment(consensus_to_segment):
@@ -777,7 +780,7 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                 hypothesis.left, hypothesis.right, config.alt_signal_min_mapq,
                 config.same_allele_carrier_window_bp)
             summaries.append(hyp_module.build_hypothesis_summary(
-                component, evidence, order, hypothesis.support, hypothesis.priority))
+                evidence, order, hypothesis.support, hypothesis.priority))
 
         collapsed = hyp_module.collapse_hypothesis_summaries(summaries)
         survivors: list[hyp_module.HypothesisSummary] = []
@@ -861,9 +864,8 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                                                genotype, config, hooks)
             _record_shadow(call, shadow)
             if item.genotype_input is not None:
-                call.genotype_likelihood_input = replace(
-                    item.genotype_input,
-                    alt_observed_lengths=list(item.genotype_input.alt_observed_lengths))
+                # A copy: finalization sets the sample's overdispersion on it.
+                call.genotype_likelihood_input = replace(item.genotype_input)
             call.te_best_family = te_alignment.best_family or "NA"
             call.te_best_subfamily = te_alignment.best_subfamily or "NA"
             # One candidate per ledger OBSERVATION: a hypothesis two components

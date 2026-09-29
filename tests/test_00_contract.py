@@ -113,6 +113,9 @@ def test_a_and_t_are_not_conflated_in_the_polya_contract():
 DERIVED_LEDGER_COLUMNS = {
     # A count of `support_qnames`, which is itself only written on request.
     "support_qname_count",
+    # A count of `alt_measured_lengths`, so a replay can filter on it without
+    # parsing the list.
+    "alt_measured_length_reads",
 }
 
 #: The same for the call file, where several columns are deliberately spelled

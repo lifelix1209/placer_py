@@ -311,6 +311,12 @@ before the holdout was scored.
   world for each dataset. Keep older worlds only to show that a change is not
   specific to one world. Columns an old scan did not record are listed at load
   and filled with defaults: do not read a default as a measurement.
+  - **Worlds scanned before 1.0.0a4** differ from later worlds in two ways.
+    - Their GQ-dependent columns include the removed length-concordance term:
+      the posteriors, the lfdr and the mechanistic_* columns.
+    - They keep rows that two components wrote for one hypothesis, which a
+      1.0.0a4 scan merges.
+  - They load `alt_measured_lengths` as NA.
 - **Check a new world before using it.** Replaying `current` on it must give
   exactly the online run's selection. It did for both worlds recorded in
   round 1: 125 TE calls on chr1, and 286 TE / 183 structural on cichlid.
@@ -625,6 +631,29 @@ both haplotypes as two heterozygous records at one position. The maintainer's
 decision (2026-09-26) was to merge them in TEBench's `evaluate()` into one 1/1
 locus, applied to every caller. The replay imports `evaluate()` and so scores
 the same way.
+
+**Round 11: a counts-only scan GQ, accepted by the maintainer as a correctness
+fix (2026-09-29).** It is not a validity fix, and nothing in it chases the
+objective.
+- **Why.** The scan's GQ carried the genotyper's length-concordance term,
+  which was misspecified (`docs/departures-from-cpp.md` section 10). Because
+  the term read each component's own candidates, it kept duplicate ledger rows
+  apart. The fix removes the term, so the per-bin de-duplication works as
+  written.
+- **Replay.** Emulated by merging rows that are equal except in the
+  GQ-dependent columns (`round11_counts_only_scan_gq`, nodes 06302ca628 and
+  97f11604c2). chr1 gain 0: "reject", as a change with no objective target
+  is.
+- **Online.** Frozen A/B on the release runs:
+  - chr1 171 / 10 / 58 and chr2-8 923 / 42 / 316, both unchanged;
+  - four true positives traded places on chr4 and chr8;
+  - cichlid lost two calls that neither Sniffles2 nor tldr supports within
+    1 kb;
+  - genotype concordance on chr2-8 went from 878 to 875 of 923, through the
+    overdispersion.
+- **Decision.** The maintainer accepted it for what it corrects, with the
+  genotype-concordance cost reported. The rule is not relaxed: a change that
+  moves the objective still needs the bootstrap.
 
 ## 9. Checklist for a change to what PLACER decides
 

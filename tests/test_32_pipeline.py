@@ -219,15 +219,25 @@ def test_a_call_carries_the_genotype_inputs_the_scan_used():
     """Finalization re-genotypes each call with the sample's overdispersion
     and reuses `genotype_likelihood_input` for everything else. The scan never
     set it, so every call was re-genotyped from defaults: error 0.02 whatever
-    was configured, and no length-concordance term (event length 0, no
-    observed alt lengths). The scan now sets it, and
-    re-genotyping must keep them."""
+    was configured. The scan now sets it, and re-genotyping must keep it."""
     result = run(synthetic_reads(), genotype_error_rate=0.07)
     call = result.final_calls[0]
     inputs = call.genotype_likelihood_input
     assert inputs.error_rate == 0.07
-    assert abs(inputs.event_length - len(INSERT)) <= 8
-    assert len(inputs.alt_observed_lengths) == 8
+    assert not hasattr(inputs, "alt_observed_lengths")
+
+
+def test_the_ledger_records_what_each_alt_read_measured():
+    """Eight reads, each spanning the 320 bp insert with a CIGAR insertion:
+    eight measurements. A diagnostic column, which no decision reads."""
+    rows = [row for row in run(synthetic_reads()).evidence_ledger
+            if row.candidate_retention_reason == "EVALUATED"]
+    assert rows
+    assert rows[0].alt_measured_lengths == [len(INSERT)] * 8
+    text = O.render_evidence_ledger_tsv(run(synthetic_reads()))
+    header, first = text.splitlines()[0].split("\t"), text.splitlines()[1].split("\t")
+    assert first[header.index("alt_measured_length_reads")] == "8"
+    assert first[header.index("alt_measured_lengths")] == ",".join([str(len(INSERT))] * 8)
 
 
 def test_the_reported_genotype_is_zygosity_from_the_counts_not_length_concordance():
@@ -245,16 +255,12 @@ def test_the_reported_genotype_is_zygosity_from_the_counts_not_length_concordanc
     from placer.core.result import PipelineResult
 
     call = FinalCall(alt_struct_reads=66, ref_span_reads=0)
-    call.genotype_likelihood_input = EventGenotypeInput(
-        alt_struct_reads=66, ref_span_reads=0, event_length=28,
-        alt_observed_lengths=[25, 28])
+    call.genotype_likelihood_input = EventGenotypeInput(alt_struct_reads=66, ref_span_reads=0)
     result = PipelineResult(final_calls=[call], estimated_overdispersion=0.142)
     apply_sample_overdispersion_calibration(result)
     assert result.estimated_overdispersion == 0.142   # no ledger: the fallback
     assert call.genotype == "1/1"
     assert call.gq > 20
-    # The call still carries what the scan decided with.
-    assert call.genotype_likelihood_input.alt_observed_lengths == [25, 28]
     assert call.genotype_likelihood_input.overdispersion == 0.142
 
 

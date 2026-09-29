@@ -36,7 +36,6 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
-from placer.alignment import median_i32
 from placer.core import supports
 from placer.core.breakpoints import (
     RESCUE_PRECISE_ANCHOR_MIN_DISTANCE_BP,
@@ -47,7 +46,6 @@ from placer.core.clustering import (
     CANDIDATE_SOFT_CLIP,
     CANDIDATE_SPLIT_SA_SUPPLEMENTARY,
     BreakpointCandidate,
-    ComponentCall,
 )
 from placer.core.events import EventReadEvidence
 
@@ -79,7 +77,6 @@ class HypothesisSummary:
     raw_cigar_insert_reads: int = 0
     max_raw_cigar_insert_len: int = 0
     ref_span_reads: int = 0
-    inferred_event_length: int = -1
     hypothesis_support: int = 0
     hypothesis_priority: int = 1 << 30
     hypothesis_score: float = 0.0
@@ -90,39 +87,6 @@ class HypothesisSummary:
 class BreakpointPosteriorSummary:
     ci_width: float = 0.0
     entropy: float = 0.0
-
-
-def collect_alt_observed_lengths(component: ComponentCall,
-                                 event_evidence: EventReadEvidence) -> list[int]:
-    """Each SUPPORTING read's own idea of how long the insertion is.
-
-    Only from reads in the support set -- a breakpoint candidate whose read did
-    not end up supporting this hypothesis is measuring something else.
-
-    A clip length is used when no insertion length is available, and it is a
-    LOWER BOUND rather than a measurement: the read ran out. That biases the
-    inferred length downward for events no read spans, which is the honest
-    direction, and the genotyper's length-concordance term is where it matters.
-    """
-    support_qnames = set(event_evidence.support_qnames)
-    lengths: list[int] = []
-    for bp in component.breakpoint_candidates:
-        if not bp.read_id or bp.read_id not in support_qnames:
-            continue
-        if bp.ins_len > 0:
-            lengths.append(bp.ins_len)
-        elif bp.clip_len > 0:
-            lengths.append(bp.clip_len)
-    return lengths
-
-
-def infer_event_length_from_alt_support(lengths: list[int]) -> int:
-    """The median observed length, or -1 when nothing observed one.
-
-    Median rather than mean or max: one read's chimeric 12 kb clip must not set
-    the event length, and the length feeds the genotyper's concordance term.
-    """
-    return median_i32(lengths)
 
 
 #: Re-exported from `placer/core/supports.py`.
@@ -251,8 +215,7 @@ def should_record_hypothesis_in_evidence_ledger(summary: HypothesisSummary) -> b
             or summary.alt_right_clip_reads > 0 or summary.ref_span_reads > 0)
 
 
-def build_hypothesis_summary(component: ComponentCall,
-                             event_evidence: EventReadEvidence,
+def build_hypothesis_summary(event_evidence: EventReadEvidence,
                              original_index: int, hypothesis_support: int,
                              hypothesis_priority: int) -> HypothesisSummary:
     """Package one evaluated hypothesis, with its ladder score.
@@ -273,8 +236,6 @@ def build_hypothesis_summary(component: ComponentCall,
     summary.raw_cigar_insert_reads = event_evidence.raw_cigar_insert_reads
     summary.max_raw_cigar_insert_len = event_evidence.max_raw_cigar_insert_len
     summary.ref_span_reads = event_evidence.ref_span_reads
-    summary.inferred_event_length = infer_event_length_from_alt_support(
-        collect_alt_observed_lengths(component, event_evidence))
     summary.hypothesis_support = hypothesis_support
     summary.hypothesis_priority = hypothesis_priority
     summary.hypothesis_score = (hypothesis_support

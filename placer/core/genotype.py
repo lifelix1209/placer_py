@@ -2,16 +2,18 @@
 Beta-binomial genotyping and the sample-level overdispersion estimate.
 
 Ported from `src/pipeline/decision_policy.cpp` and pinned by
-`tests/test_02_genotype.py`. Everything here is a faithful port; the
-commentary records the places where a reasonable-looking reimplementation
-diverges.
+`tests/test_02_genotype.py`. It is a faithful port with one deliberate
+departure: the C++'s length-concordance term is gone
+(`docs/departures-from-cpp.md` section 10). The genotype is zygosity from the
+allele counts. The commentary records the places where a
+reasonable-looking reimplementation diverges.
 """
 
 from __future__ import annotations
 
 import math
 from collections.abc import Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from placer.core import mathx
 
@@ -41,8 +43,6 @@ class GenotypeInput:
     min_gq: int = 20
     error_rate: float = 0.02
     overdispersion: float = 0.02
-    event_length: int = 0
-    alt_observed_lengths: list[int] = field(default_factory=list)
 
 
 #: Re-exported from `placer/core/mathx.py`, which defines the NaN policy
@@ -72,48 +72,6 @@ def _logsumexp3(a: float, b: float, c: float) -> float:
 log_choose_count = mathx.log_choose
 beta_binomial_log_pmf = mathx.beta_binomial_log_pmf
 binomial_log_pmf = mathx.binomial_log_pmf
-
-
-def _median_int(values: Sequence[int]) -> int:
-    if not values:
-        return 0
-    ordered = sorted(values)
-    return ordered[len(ordered) // 2]
-
-
-def _infer_event_length(inp: GenotypeInput) -> int:
-    if inp.event_length > 0:
-        return inp.event_length
-    return _median_int(inp.alt_observed_lengths)
-
-
-def _alt_length_support_probability(observed_length: int, event_length: int,
-                                    error_rate: float) -> float:
-    if event_length <= 0 or observed_length <= 0:
-        return _clamp(1.0 - (error_rate * 2.0), 0.55, 0.95)
-    norm_factor = 20.0 if error_rate <= 0.03 else 30.0
-    sigma = max(1.0, event_length / norm_factor)
-    z = (observed_length - event_length) / sigma
-    return max(1e-6, math.exp(-0.5 * z * z))
-
-
-def length_concordance_factor(inp: GenotypeInput) -> float:
-    """
-    Mean length-support probability of the alt reads, or 1.0 when no lengths are
-    observed.
-
-    Low values mean the alt reads do not match the event length -- they look
-    like a different event, or an artifact, rather than genuine support. It
-    down-weights only the NON-REFERENCE genotypes, which is the asymmetry that
-    makes it a discount on a claim rather than a generic penalty.
-    """
-    if not inp.alt_observed_lengths:
-        return 1.0
-    event_length = _infer_event_length(inp)
-    acc = sum(_alt_length_support_probability(observed, event_length,
-                                             inp.error_rate)
-              for observed in inp.alt_observed_lengths)
-    return _clamp(acc / len(inp.alt_observed_lengths), 1e-3, 1.0)
 
 
 def genotype_log_likelihood(inp: GenotypeInput, alt_copy_fraction: float) -> float:
@@ -149,19 +107,13 @@ def genotype_log_likelihood(inp: GenotypeInput, alt_copy_fraction: float) -> flo
     alpha = max(1e-6, mu * kappa)
     beta = max(1e-6, (1.0 - mu) * kappa)
 
-    ll = beta_binomial_log_pmf(alt, depth, alpha, beta)
-    if alt_copy_fraction > 0.0 and alt > 0:
-        ll += alt * math.log(length_concordance_factor(inp))
-    return ll
+    return beta_binomial_log_pmf(alt, depth, alpha, beta)
 
 
 def genotype_from_alt_vs_ref(alt_struct_reads: int, ref_span_reads: int,
                              error_rate: float = 0.02,
                              overdispersion: float = 0.02,
-                             min_gq: int = 20,
-                             event_length: int = 0,
-                             alt_observed_lengths: Sequence[int] | None = None
-                             ) -> GenotypeDecision:
+                             min_gq: int = 20) -> GenotypeDecision:
     """
     Port of `placer::genotype_event_from_alt_vs_ref`.
 
@@ -187,8 +139,6 @@ def genotype_from_alt_vs_ref(alt_struct_reads: int, ref_span_reads: int,
         min_gq=min_gq,
         error_rate=error_rate,
         overdispersion=overdispersion,
-        event_length=event_length,
-        alt_observed_lengths=list(alt_observed_lengths or []),
     )
     decision = GenotypeDecision()
 

@@ -21,9 +21,7 @@ from placer.core.clustering import (
     CANDIDATE_SOFT_CLIP,
     CANDIDATE_SPLIT_SA_SUPPLEMENTARY,
     BreakpointCandidate,
-    ComponentCall,
 )
-from placer.core.events import EventReadEvidence
 from placer.core.ledger import EvidenceLedgerRow, FinalCall
 from placer.report import tsv as O
 
@@ -34,35 +32,6 @@ def summary(**kw):
     base = dict(bp_left=1000, bp_right=1012, alt_struct_reads=4)
     base.update(kw)
     return H.HypothesisSummary(**base)
-
-
-# ------------------------------------------------------------- event lengths
-def test_only_supporting_reads_contribute_an_observed_length():
-    """A breakpoint candidate whose read did not end up supporting this
-    hypothesis is measuring something else."""
-    component = ComponentCall(chrom="chr1")
-    component.breakpoint_candidates = [
-        BreakpointCandidate(read_id="in", ins_len=300),
-        BreakpointCandidate(read_id="out", ins_len=9000)]
-    evidence = EventReadEvidence(support_qnames=["in"])
-    assert call_or_skip(H.collect_alt_observed_lengths, component, evidence) == [300]
-
-
-def test_a_clip_length_is_used_only_when_no_insertion_length_exists():
-    """It is a LOWER bound, not a measurement -- the read ran out. That biases
-    the inferred length downward for events no read spans, which is honest."""
-    component = ComponentCall(chrom="chr1")
-    component.breakpoint_candidates = [
-        BreakpointCandidate(read_id="a", ins_len=300, clip_len=80),
-        BreakpointCandidate(read_id="b", clip_len=80)]
-    evidence = EventReadEvidence(support_qnames=["a", "b"])
-    assert H.collect_alt_observed_lengths(component, evidence) == [300, 80]
-
-
-def test_the_event_length_is_a_median_so_one_chimera_cannot_set_it():
-    assert call_or_skip(H.infer_event_length_from_alt_support,
-                        [300, 310, 290, 12000]) == 310
-    assert H.infer_event_length_from_alt_support([]) == -1
 
 
 # -------------------------------------------------------------- collapsing

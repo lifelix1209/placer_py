@@ -162,8 +162,6 @@ class EventGenotypeInput:
     #: binomial limit; larger rho models the overdispersion that mapping bias
     #: and local alignment ambiguity produce in repeats.
     overdispersion: float = 0.02
-    event_length: int = 0
-    alt_observed_lengths: list[int] = field(default_factory=list)
 
 
 @dataclass
@@ -1176,8 +1174,7 @@ def build_event_existence_evidence(input_: EventGenotypeInput) -> EventExistence
     decision = genotype_from_alt_vs_ref(
         input_.alt_struct_reads, input_.ref_span_reads,
         error_rate=input_.error_rate, overdispersion=input_.overdispersion,
-        min_gq=input_.min_gq, event_length=input_.event_length,
-        alt_observed_lengths=list(input_.alt_observed_lengths))
+        min_gq=input_.min_gq)
     evidence.best_gt = decision.best_gt
     evidence.af = decision.allele_fraction
     evidence.gq = decision.gq

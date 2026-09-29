@@ -269,6 +269,46 @@ lengthened to 60), `tests/test_24_policy.py::test_a_heterozygous_insertion_is_no
 
 ---
 
+## 10. The genotype is zygosity from the allele counts
+
+**Where** `core/genotype.py::genotype_log_likelihood` and
+`genotype_from_alt_vs_ref`. **Callers** the scan's existence evidence
+(`core/bins.py::_prepare_shortlisted`, `core/policy.py::build_event_existence_evidence`)
+and finalization's re-genotyping (`core/finalize.py`).
+
+**Was** the likelihood of each non-reference genotype carried
+`alt * log(length_concordance_factor)`. The factor was the mean Gaussian
+support (sigma 5% of the length) of `alt_observed_lengths` around their
+median, taken from the component's breakpoint candidates.
+
+It had three faults:
+- **The wrong multiplier.** The mean over the few reads that reported a length
+  (2 of 66 at HG002 chr2:171976066) was charged once per alt read.
+- **Lower bounds scored as measurements.** Soft-clip lengths, which are only
+  lower bounds, were scored as measurements, such as the 25 and 28 bp clips at
+  that 8.3 kb insertion.
+- **It depended on the component.** Two components evaluating one hypothesis
+  got different GQs, so the per-bin de-duplication of ledger rows kept both
+  copies.
+
+**Now** the three genotype likelihoods are the beta-binomial of the counts,
+nothing else. What the alt reads measured is recorded, not scored:
+- `EventReadEvidence.alt_measured_lengths`, one CIGAR or SA-implied length per
+  read, taken from the reads themselves;
+- the ledger columns `alt_measured_length_reads` and `alt_measured_lengths`.
+
+**Impact measured.**
+- **1.0.0a3 (finalization only).** HG002 chr2-8 genotype concordance went from
+  83.6% to 95.1%. No call moved.
+- **1.0.0a4 (the scan too).** See `CHANGELOG.md`.
+
+**Tests**
+- `tests/test_14_unit_coverage.py::test_the_scan_genotypes_existence_from_the_counts_alone`;
+- `tests/test_32_pipeline.py::test_the_reported_genotype_is_zygosity_from_the_counts_not_length_concordance`;
+- the measured-length tests in `tests/test_28_events.py`.
+
+---
+
 ## Not divergences
 
 For the record, these look like behaviour changes and are not:

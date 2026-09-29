@@ -76,6 +76,29 @@ def test_a_world_keeps_evaluated_rows_as_numbers_and_defaults_what_it_lacks():
     assert "mech_aligned_len" in missing and row.mech_aligned_len == 0
 
 
+def test_a_world_says_it_has_no_measured_lengths_rather_than_zero():
+    """Scans before 1.0.0a4 did not record what the alt reads measured: -1
+    and NA say "not measured", where 0 would be a measurement."""
+    rows, missing = _world_rows([_row(1000, 30.0)])
+    assert {"alt_measured_length_reads", "alt_measured_lengths"} <= set(missing)
+    assert rows[0].alt_measured_length_reads == -1
+    assert rows[0].alt_measured_lengths == "NA"
+
+
+def test_a_recorded_single_length_stays_text_like_a_list_of_them():
+    columns = LEDGER_COLUMNS + ("alt_measured_length_reads", "alt_measured_lengths")
+    path = Path(tempfile.mkdtemp(prefix="dream_test_")) / "evidence_ledger.tsv"
+    values = [dict(_row(1000, 30.0), alt_measured_length_reads="1", alt_measured_lengths="312"),
+              dict(_row(9000, 30.0), alt_measured_length_reads="2",
+                   alt_measured_lengths="300,310")]
+    path.write_text("\n".join(["\t".join(columns)]
+                              + ["\t".join(r[c] for c in columns) for r in values]) + "\n")
+    rows, missing = world.load_rows(path)
+    assert "alt_measured_lengths" not in missing
+    assert [r.alt_measured_lengths for r in rows] == ["312", "300,310"]
+    assert [r.alt_measured_length_reads for r in rows] == [1, 2]
+
+
 def test_the_insert_is_the_consensus_less_its_flanks_unless_recorded():
     assert world.insert_length({"event_consensus_len": 460, "left_flank_align_len": 80,
                                 "right_flank_align_len": 81}) == 299

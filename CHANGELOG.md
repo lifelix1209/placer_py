@@ -12,7 +12,70 @@ that file says what it cost.
 
 ## [Unreleased]
 
-Nothing yet.
+**The scan genotypes from the counts too.** 1.0.0a3 took the
+length-concordance term out of the reported genotype. This takes it out of
+the scan's existence evidence as well, and out of the genotyper
+(`docs/departures-from-cpp.md` section 10).
+
+**Measured.** Every release run was rerun from frozen code
+(`placer_dev/frozen/a4-rc1`) with its own arguments: HG002 chr1-8 and the
+cichlid slice. Each was compared with its 1.0.0a3 rerun.
+- **The ledger.**
+  - The two new columns are appended.
+  - Every non-EVALUATED row is identical.
+  - EVALUATED rows fall by 2-5%: chr1 44,614 → 43,845, cichlid 35,140 →
+    33,634. Every dropped row has a kept twin that differs only in
+    GQ-dependent columns.
+- **TEBench.** chr1 (development) 171/10/58 and chr2-8 pooled (validation)
+  923/42/316, both unchanged.
+  - Four HG002 calls moved, all four true positives. chr4 lost ERV1
+    135407205 and gained Alu 90372928 and Alu 142337150. chr8 lost SVA
+    128825914.
+- **Cichlid.** Two calls went: chr1:10526957 (PASS, hAT-Ac) and 17935507
+  (IMPRECISE). Neither has a Sniffles2 or tldr call within 1 kb.
+- **The replay emulation** (dream nodes 06302ca628 and 97f11604c2) predicted
+  chr1's zero change and cichlid's two losses, and bounded every run's row
+  count.
+- **A replay of each new ledger** gives that run's PASS calls exactly.
+- **The sample overdispersion rises** (chr1 0.1729 → 0.1796). Through it,
+  genotype concordance on chr2-8 goes from 878/923 to 875/923; chr1 is
+  unchanged at 149/171.
+
+### Changed
+
+- **The scan-time GQ** is zygosity from the allele counts. Two things read it:
+  - the joint decision's diagnostics: the INFO fields TEPOST, LFDRMAX,
+    MECHART, MECHNONTE, MECH and QC, and the ledger's posterior, lfdr and
+    mechanistic_* columns;
+  - the per-bin de-duplication of ledger rows.
+- **Fewer duplicate rows.** Rows two components wrote for one hypothesis are
+  now one row. Before, the term read each component's own breakpoint
+  candidates, so the copies differed in GQ and both survived. Merging them
+  can move:
+  - the sample overdispersion, and so the reported GT and GQ;
+  - the locus-mean e-value, and so a call.
+
+### Added
+
+- **Ledger columns `alt_measured_length_reads` and `alt_measured_lengths`**:
+  what each alt read measured the insertion to be. That is a CIGAR insertion
+  or an SA-implied one, at least 50 bp, one per read, never a clip.
+  - They are recorded for a later replay candidate; no decision reads them.
+  - Worlds recorded earlier load them as -1 and NA.
+
+### Removed
+
+- **Removed functions:**
+  - `genotype.length_concordance_factor`;
+  - `hypotheses.collect_alt_observed_lengths`;
+  - `hypotheses.infer_event_length_from_alt_support`.
+- **Removed fields:**
+  - the `event_length` and `alt_observed_lengths` fields of `GenotypeInput`
+    and `EventGenotypeInput`;
+  - the parameters of the same names of `genotype_from_alt_vs_ref`;
+  - `HypothesisSummary.inferred_event_length`, which nothing read.
+- **Signature change:** `build_hypothesis_summary` no longer takes the
+  component.
 
 ## [1.0.0a3] - 2026-09-29
 

@@ -593,3 +593,64 @@ def test_a_multi_mapping_clip_read_counts_only_without_a_mapq_floor():
         min_signal_mapq=20)
     assert loose.alt_right_clip_reads == 1 or loose.alt_left_clip_reads == 1
     assert strict.alt_left_clip_reads == strict.alt_right_clip_reads == 0
+
+
+# ------------------------------------------------ measured insertion lengths
+def split_read(qname, gap=310, mapq=60):
+    """Primary 1000-1500, then its last 500 bases aligned from 1500 onward:
+    the `gap` bases in between are an insertion the SA pair implies."""
+    total = 500 + gap + 500
+    return read(qname, pos=1000, cigar=[(M, 500), (S, gap + 500)], mapq=mapq,
+                seq="A" * total, sa=f"chr1,1501,+,{500 + gap}S500M,60,0;")
+
+
+def test_each_spanning_read_contributes_what_it_measured():
+    """A CIGAR insertion and an SA-implied one are measurements; the reads'
+    own lengths, not the fragment windows (a SPLIT_SA fragment's `length` is
+    the sequence taken past the junction, at most 100 bp)."""
+    evidence = tally([alt_read("ins"), split_read("split", gap=310)],
+                     fragments=[fragment("split", 1500, F.InsertionFragmentSource.SPLIT_SA,
+                                         length=100)])
+    assert evidence.alt_indel_reads == 1 and evidence.alt_split_reads == 1
+    assert call_or_skip(getattr, evidence, "alt_measured_lengths") == [300, 310]
+
+
+def test_a_clip_is_not_a_measurement():
+    """A clip says where the read stopped explaining the reference, not how
+    long the insertion is: a lower bound."""
+    clipped = read("clip", cigar=[(M, 500), (S, 400)])
+    evidence = tally([clipped, read("clip2", pos=1500, cigar=[(S, 400), (M, 500)])])
+    assert evidence.alt_struct_reads == 2
+    assert evidence.alt_measured_lengths == []
+
+
+def test_one_read_is_one_measurement():
+    """Two insertions in one read give the one nearest the window's centre;
+    a read with both a CIGAR and an SA insertion gives the CIGAR one."""
+    two = read("two", cigar=[(M, 480), (I, 80), (M, 20), (I, 300), (M, 500)])   # 1480, 1500
+    both = read("both", cigar=[(M, 500), (I, 300), (M, 500)],
+                sa="chr1,1501,+,810S500M,60,0;")
+    assert tally([two]).alt_measured_lengths == [300]
+    assert tally([both]).alt_measured_lengths == [300]
+
+
+def test_short_insertions_and_multi_mapped_insertions_are_not_measurements():
+    """Below the 50 bp long-insertion floor it is not this event; below
+    MAPQ 60 a CIGAR insertion is not believed, as for `alt_indel_reads`."""
+    short = read("short", cigar=[(M, 500), (I, 40), (M, 500)])
+    multi = read("multi", mapq=30)
+    assert tally([short, multi]).alt_measured_lengths == []
+
+
+def test_the_measurement_does_not_depend_on_the_component():
+    """Two components evaluating one hypothesis must record the same lengths,
+    whatever their own breakpoint candidates say; otherwise the per-bin
+    de-duplication keeps both copies of the row."""
+    records = [alt_read(f"a{i}") for i in range(3)] + [split_read("s")]
+    one = component(anchor=1500, candidates=[
+        C.BreakpointCandidate(pos=1500, read_id="a0", ins_len=300)])
+    other = component(anchor=1480, candidates=[
+        C.BreakpointCandidate(pos=1480, read_id="a1", clip_len=25),
+        C.BreakpointCandidate(pos=1510, read_id="s", clip_len=28)])
+    assert (tally(records, comp=one).alt_measured_lengths
+            == tally(records, comp=other).alt_measured_lengths == [300, 300, 300, 310])
