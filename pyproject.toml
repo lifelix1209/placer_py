@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "placer-te"
-version = "1.0.0a3"
+version = "1.0.0a4"
 description = "Python port of the PLACER pipeline: BAM to TE insertion calls"
 readme = "README.md"
 # 3.9 works and is what the suite is run on: every module uses

@@ -12,6 +12,10 @@ that file says what it cost.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.0a4] - 2026-09-29
+
 **The scan genotypes from the counts too.** 1.0.0a3 took the
 length-concordance term out of the reported genotype. This takes it out of
 the scan's existence evidence as well, and out of the genotyper
@@ -40,6 +44,13 @@ cichlid slice. Each was compared with its 1.0.0a3 rerun.
 - **The sample overdispersion rises** (chr1 0.1729 → 0.1796). Through it,
   genotype concordance on chr2-8 goes from 878/923 to 875/923; chr1 is
   unchanged at 149/171.
+- **Cost.** chr4 ran on the same node both times: 1.00 CPU-h against 0.99.
+  chr1 took 2.35 against 2.06, but on another node (node11, not node6), so
+  that difference is not attributed to the change.
+- **Accepted as a correctness fix.** The maintainer accepted it on
+  2026-09-29 (`docs/development-strategy.md`, section 8, round 11). It was
+  found before the 1.0.0a3 benchmark's holdout was scored, and was kept out
+  of that benchmark on purpose.
 
 ### Changed
 
