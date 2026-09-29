@@ -59,7 +59,7 @@ DATASETS = {
     },
 }
 #: Callers whose holdout scores are pre-registered (docs/development-strategy.md,
-#: "Release benchmark 1.0.0a2"): scoring one of them outside the development
+#: "Release benchmark 1.0.0a3"): scoring one of them outside the development
 #: contigs takes `--unseal-holdout`, so that it happens once and on purpose.
 SEALED_CALLERS = frozenset({"placer"})
 PARTITIONS = ("development", "holdout", "all")
@@ -177,7 +177,7 @@ def check_seal(callers: set[str], partition: str, unseal: bool) -> None:
     if sealed and partition != "development" and not unseal:
         raise SystemExit(
             f"{', '.join(sealed)}: partition '{partition}' scores the holdout, which is "
-            "pre-registered (docs/development-strategy.md, 'Release benchmark 1.0.0a2'). "
+            "pre-registered (docs/development-strategy.md, 'Release benchmark 1.0.0a3'). "
             "Pass --unseal-holdout to score it, or leave the caller out with --callers.")
 
 

@@ -196,7 +196,7 @@ Here that means:
 | **TEBench holdout contigs** | Not touched until the release benchmark. |
 | **the 10 Mb dev slices** | Smoke tests only. With six truth insertions they can neither accept nor reject anything. |
 
-### Release benchmark 1.0.0a2 (pre-registered 2026-09-28)
+### Release benchmark 1.0.0a3 (pre-registered 2026-09-28, amended 2026-09-29)
 
 The human holdout is spent here, once, on the released code. This was written
 before any of the runs below started.
@@ -206,10 +206,28 @@ It was first drafted for 1.0.0a1, and moved to 1.0.0a2 before any run started.
 release run (HG002 chr1–8 and the cichlid slice; `calls.vcf` apart from its
 `##source` line), so every 1.0.0a1 number below still stands.
 
-- **Code.** The code is v1.0.0a2 (b3cceb3), taken by `git archive` into
-  `placer_dev/frozen/v1.0.0a2`.
-  - Its `placer/` is identical to `perf-rc1`, which reran the release runs
-    byte for byte.
+**Amendment, 2026-09-29: 1.0.0a3.** The rule below was followed: a bug found
+before the holdout was scored.
+- **How it was found.** 1.0.0a2 ran all 13 conditions and was checked on
+  chr1–8 only. The check found PASS calls genotyped 0/0, and their share rose
+  with depth: 0% at 5x, 22% at full.
+- **The diagnosis, on chr1–8 only.** The genotyper's length-concordance term
+  was wrongly applied when finalization re-genotyped the calls (`CHANGELOG.md`,
+  1.0.0a3).
+- **The fix changes only GT and GQ.** Rerun from frozen code, the nine release
+  runs keep their ledgers byte for byte. Their calls are identical apart from
+  GT and GQ, and so are their TP/FP/FN.
+- **What was not looked at.** The holdout was not scored, and no holdout
+  record was read, for 1.0.0a2 or for the fix.
+- **What happens to the 1.0.0a2 runs.** They are kept in
+  `placer_dev/tebench_1.0.0a2/runs` and never scored on the holdout. The 13
+  runs are repeated with 1.0.0a3, and everything below applies to 1.0.0a3.
+
+- **Code.** The code is v1.0.0a3, taken by `git archive` into
+  `placer_dev/frozen/v1.0.0a3`.
+  - Its `placer/` differs from `a3-rc1` in one docstring only. `a3-rc1`
+    reran the release runs: identical ledgers, and calls identical apart from
+    GT and GQ.
   - It is pip-installed, non-editable, into TEBench's
     `workflow/envs/placer.yaml`.
   - It is run as a user would run it: over the whole BAM, with no `--region`.
@@ -241,7 +259,8 @@ release run (HG002 chr1–8 and the cichlid slice; `calls.vcf` apart from its
        differ, because three things are estimated over the whole run: e-BH's
        m, the per-class decoy factor and the genotyper's overdispersion.
      - its CPU-h and peak RSS;
-     - its development score against 1094/52/374.
+     - its development score against 1094/52/374. 1.0.0a2 scored
+       1097/53/371 here. 1.0.0a3 changes no call, so it must score the same.
   2. The twelve titration runs follow, checked the same way.
   3. Only when all 13 are done is every partition scored, once, for every
      caller.

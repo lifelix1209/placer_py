@@ -10,16 +10,18 @@ this implementation departed from the C++ up to that point is recorded in
 [`docs/departures-from-cpp.md`](docs/departures-from-cpp.md). Every module's
 docstring still names the C++ file it came from.
 
-## 1.0.0a2: where it stands
+## 1.0.0a3: where it stands
 
 An alpha of PLACER 1.0. It calls **TE insertions** from long reads (ONT): BAM
 in, VCF out. An insertion that is not a TE is recorded in the evidence ledger
 but not reported.
 
-1.0.0a2 makes exactly the calls 1.0.0a1 made, about five times faster:
-- every 1.0.0a1 release run was rerun with its own arguments, and its output
-  files are the same bytes;
-- HG002 chr1-8 takes 8.4 CPU-hours, against 42.4 (see [Speed](#speed)).
+1.0.0a3 makes exactly the calls 1.0.0a1 made:
+- 1.0.0a2 made them about five times faster. Every 1.0.0a1 release run was
+  rerun with its own arguments, its output files were the same bytes, and
+  HG002 chr1-8 takes 8.4 CPU-hours against 42.4 (see [Speed](#speed)).
+- 1.0.0a3 reports their genotypes correctly. Genotype concordance on HG002
+  chr2-8 went from 83.6% to 95.1% (`CHANGELOG.md`); no call moved.
 
 **How it decides.**
 
@@ -49,7 +51,8 @@ but not reported.
      of it, and it is named after the family covering the most;
    - a call tested by a breakpoint interval moves to the locus's exact
      hypothesis with the most indel reads, where one lies within 100 bp;
-   - calls are genotyped with the sample's own overdispersion.
+   - calls are genotyped from their allele counts, with the sample's own
+     overdispersion.
 3. **The VCF.**
    - FILTER=IMPRECISE only when the breakpoint is known to no better than an
      interval wider than 200 bp; a narrower interval is written at its middle,
@@ -57,13 +60,14 @@ but not reported.
    - FAM_ABSTAIN marks a TE call whose class is not committed.
 
 **How well**:
-- the runs are 1.0.0a1's, which 1.0.0a2 reproduces byte for byte;
+- the calls are 1.0.0a1's: 1.0.0a2 reproduces them byte for byte, and
+  1.0.0a3 changes only their GT and GQ;
 - scored by TEBench's pipeline (`tools/tebench_score.py`);
 - HG002, GIAB v5.0q TE truth, confident regions, +-100 bp.
 
 | caller | chr1 TP / FP | chr1 P / R | chr2-8 TP / FP | chr2-8 P / R |
 |---|---|---|---|---|
-| **PLACER 1.0.0a2** (= 1.0.0a1) | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
+| **PLACER 1.0.0a3** (= 1.0.0a1) | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
 | Sniffles2 | 180 / 11 | 94.2% / 78.6% | 1025 / 46 | 95.7% / 82.7% |
 | GraffiTE | 166 / 10 | 94.3% / 72.5% | 909 / 49 | 94.9% / 73.4% |
 | cuteSV | 171 / 15 | 91.9% / 74.7% | 957 / 63 | 93.8% / 77.2% |
@@ -78,15 +82,17 @@ but not reported.
 - **Cichlid**, `chr1:10-20 Mb`, no truth set. 180 PASS TE calls:
   - 80.0% lie within 100 bp of a Sniffles2 insertion;
   - 58 of tldr's 78 PASS calls are matched.
-- **Cost**, 16 threads, 1.0.0a2:
+- **Cost**, 16 threads, 1.0.0a2 (1.0.0a3 costs the same):
   - HG002 chr1-8 took 8.4 CPU-hours in all (1.0.0a1: 42.4);
   - chr1 took 2.05 CPU-hours and 13 min (1.0.0a1: 10.3 and 2 h 55 min);
   - one chr1 worker peaks at 12.6 GB in 1q21, the others at 2-4 GB;
-  - cichlid took 0.6 CPU-hours per 10 Mb (1.0.0a1: 6.2).
+  - cichlid took 0.6 CPU-hours per 10 Mb (1.0.0a1: 6.2);
+  - the whole HG002 genome (TEBench full/r0, 32 threads) took 18.7
+    CPU-hours and 50 min, with a peak of 19 GB. The target was 30.
 
 **What it does not do yet.**
-- **Whole genome.** It has not been run on a whole genome yet. Scaled by
-  length, chr1-8 point to about 17 CPU-hours, against a target of 30.
+- **Whole-genome accuracy.** The whole genome has been run (see Cost), but it
+  is scored outside chr1-8 only once TEBench's release benchmark finishes.
 - **Tandem repeats.** An allele that the aligner scatters across a tandem
   repeat loses its reads to the reference count; that is most of what is
   left of the recall gap to Sniffles2.

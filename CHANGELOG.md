@@ -14,6 +14,66 @@ that file says what it cost.
 
 Nothing yet.
 
+## [1.0.0a3] - 2026-09-29
+
+**The same calls as 1.0.0a2, with correct genotypes.** No call, position,
+FILTER, QUAL or family moved; only GT and GQ did. PASS calls were reported
+0/0 when their read counts said 0/1 or 1/1. The deeper the data, the more
+often this happened.
+
+It was found in TEBench's release benchmark of 1.0.0a2
+(`docs/development-strategy.md`, "Release benchmark 1.0.0a3"). It was checked
+on the development contigs, HG002 chr1-8, and nothing else: the holdout had
+not been scored. In the whole-genome runs, this share of PASS calls on chr1-8
+was genotyped 0/0:
+
+| coverage | 5x | 10x | 20x | 30x | full |
+|---|---|---|---|---|---|
+| PASS calls genotyped 0/0 | 0% | 3% | 10% | 14% | 22% |
+
+**Measured.** Every release run was rerun from the frozen fix with its own
+arguments: HG002 chr1-8 and the cichlid slice, 16 threads, `--record-world`.
+- `evidence_ledger.tsv` is byte-identical in all nine.
+- `calls.vcf`, `calls.csv` and `scientific.txt` are identical except for GT
+  and GQ. DP, AD and AF are unchanged.
+- In the PASS calls, all 299 0/0 genotypes on HG002 chr1-8 became 0/1 (203)
+  or 1/1 (96). So did all 18 on the cichlid slice (10 and 8). No 0/1 or 1/1
+  call changed.
+- TEBench scores are unchanged: chr1 171/10/58 (P 94.5%, R 74.7%); chr2-8
+  923/42/316 (P 95.6%, R 74.5%).
+- Genotype concordance with GIAB v5.0q on the true positives, Wilson 95%:
+
+| | 1.0.0a2 | 1.0.0a3 |
+|---|---|---|
+| chr1 (development) | 121/171 = 70.8% [63.5, 77.1] | 149/171 = 87.1% [81.3, 91.3] |
+| chr2-8 pooled (validation) | 772/923 = 83.6% [81.1, 85.9] | 878/923 = 95.1% [93.5, 96.3] |
+
+- The cost is unchanged. chr1 took 2.06 CPU-h.
+
+### Fixed
+
+- **The reported genotype comes from the allele counts**
+  (`core/finalize.apply_sample_overdispersion_calibration`).
+  - **The cause.** Finalization re-genotypes each call with the sample's
+    overdispersion. Since 1.0.0a1 it also applied the scan's
+    length-concordance term, which has two faults:
+    - It averages over the few reads that report a length, then charges
+      that mean once per alt read. At chr2:171976066, an 8.3 kb insertion
+      with 66 alt reads and no reference read, two stray 25 and 28 bp CIGAR
+      insertions cost -39 nats.
+    - The lengths it scores include clip lengths, which are only lower
+      bounds.
+  - **Why it grew with depth.** The whole-sample overdispersion (0.14 on
+    HG002) caps the count evidence near 20 nats, while the penalty grows
+    with every alt read.
+  - **The fix.** Existence is settled before finalization, so the reported
+    genotype no longer takes a second vote on it. The configured error rate
+    and min-GQ are still used.
+  - **Not changed.** The scan still uses the same term for its existence
+    score, at the default overdispersion of 0.02. Fixing it there changes
+    detection, so it follows the replay-first method. The ledger must first
+    record the observed lengths.
+
 ## [1.0.0a2] - 2026-09-28
 
 **The same calls as 1.0.0a1, about five times faster.** Every release run of

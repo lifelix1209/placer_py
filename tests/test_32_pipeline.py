@@ -230,6 +230,33 @@ def test_a_call_carries_the_genotype_inputs_the_scan_used():
     assert len(inputs.alt_observed_lengths) == 8
 
 
+def test_the_reported_genotype_is_zygosity_from_the_counts_not_length_concordance():
+    """HG002 chr2:171976066 in the 1.0.0a2 whole-genome run: an 8.3 kb
+    insertion, 66 alt reads and no reference read. Two reads reported a length,
+    stray 25 and 28 bp CIGAR insertions, and the length term charged their
+    discordance once per alt read (-39 nats) against count evidence the
+    sample's overdispersion of 0.142 caps near 22. It was reported 0/0.
+    Existence is settled before finalization; the reported genotype is not a
+    second vote on it."""
+    from placer.core.finalize import apply_sample_overdispersion_calibration
+    from placer.core.ledger import FinalCall
+    from placer.core.policy import EventGenotypeInput
+    from placer.core.result import PipelineResult
+
+    call = FinalCall(alt_struct_reads=66, ref_span_reads=0)
+    call.genotype_likelihood_input = EventGenotypeInput(
+        alt_struct_reads=66, ref_span_reads=0, event_length=28,
+        alt_observed_lengths=[25, 28])
+    result = PipelineResult(final_calls=[call], estimated_overdispersion=0.142)
+    apply_sample_overdispersion_calibration(result)
+    assert result.estimated_overdispersion == 0.142   # no ledger: the fallback
+    assert call.genotype == "1/1"
+    assert call.gq > 20
+    # The call still carries what the scan decided with.
+    assert call.genotype_likelihood_input.alt_observed_lengths == [25, 28]
+    assert call.genotype_likelihood_input.overdispersion == 0.142
+
+
 def test_an_insertion_that_is_not_a_te_is_recorded_not_reported():
     """
     TE hits cover 30% of the insert, below TEBench's 50%. The insertion is

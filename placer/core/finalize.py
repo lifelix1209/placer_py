@@ -106,11 +106,21 @@ def apply_sample_overdispersion_calibration(result: PipelineResult) -> None:
     of the sample's sequencing and mapping, and estimating it from the selected
     calls alone would measure it on the loci least representative of the rest.
 
-    The likelihood inputs the call was DECIDED with are reused and only the
-    overdispersion changes. Rebuilding a default input here would silently drop
-    the configured error rate, the min-GQ threshold and the length-concordance
-    term, so the reported GQ and AF would describe a different model than the
-    decision came from.
+    The configured error rate and min-GQ threshold the call was decided with
+    are reused; rebuilding a default input here would silently drop them.
+
+    The length-concordance term is NOT. It is existence evidence -- do the alt
+    reads measure this event? -- and existence was settled by the scan and
+    e-BH before this runs. The reported genotype is zygosity, from the allele
+    counts. With the term, the model charges the mean discordance of the few
+    reads that report a length (clip lower bounds and stray CIGAR insertions
+    among them) once per alt read, while the sample's overdispersion caps the
+    count evidence. So the penalty outgrows the evidence with depth.
+    HG002 chr1-8, whole genome, 1.0.0a2: 22% of PASS calls came out 0/0 at
+    full depth, 0% at 5x. Every one of the 165 true positives called 0/0 had
+    counts favouring an alt genotype (66 alt, 0 ref at chr2:171976066).
+    Dropping it moves no call. Genotype concordance with GIAB on the chr2-8
+    release runs went from 83.6% to 95.1%.
     """
     from placer.core.genotype import estimate_overdispersion, genotype_from_alt_vs_ref
 
@@ -131,8 +141,7 @@ def apply_sample_overdispersion_calibration(result: PipelineResult) -> None:
         decision = genotype_from_alt_vs_ref(
             inputs.alt_struct_reads, inputs.ref_span_reads,
             error_rate=inputs.error_rate, overdispersion=rho,
-            min_gq=inputs.min_gq, event_length=inputs.event_length,
-            alt_observed_lengths=list(inputs.alt_observed_lengths))
+            min_gq=inputs.min_gq)
         call.gq = decision.gq
         call.af = decision.allele_fraction
         call.genotype = decision.best_gt
