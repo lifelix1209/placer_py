@@ -113,8 +113,8 @@ def apply_sample_overdispersion_calibration(result: PipelineResult) -> None:
     reads measure this event? -- and existence was settled by the scan and
     e-BH before this runs. The reported genotype is zygosity, from the allele
     counts. With the term, the model charges the mean discordance of the few
-    reads that report a length (clip lower bounds and stray CIGAR insertions
-    among them) once per alt read, while the sample's overdispersion caps the
+    reads that report a length (soft-clip lengths among them, which are only
+    lower bounds) once per alt read, while the sample's overdispersion caps the
     count evidence. So the penalty outgrows the evidence with depth.
     HG002 chr1-8, whole genome, 1.0.0a2: 22% of PASS calls came out 0/0 at
     full depth, 0% at 5x. Every one of the 165 true positives called 0/0 had

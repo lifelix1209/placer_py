@@ -233,9 +233,10 @@ def test_a_call_carries_the_genotype_inputs_the_scan_used():
 def test_the_reported_genotype_is_zygosity_from_the_counts_not_length_concordance():
     """HG002 chr2:171976066 in the 1.0.0a2 whole-genome run: an 8.3 kb
     insertion, 66 alt reads and no reference read. Two reads reported a length,
-    stray 25 and 28 bp CIGAR insertions, and the length term charged their
-    discordance once per alt read (-39 nats) against count evidence the
-    sample's overdispersion of 0.142 caps near 22. It was reported 0/0.
+    soft clips of 25 and 28 bp (lower bounds, not measurements), and the
+    length term charged their discordance once per alt read (-39 nats)
+    against count evidence the sample's overdispersion of 0.142 caps near 22.
+    It was reported 0/0.
     Existence is settled before finalization; the reported genotype is not a
     second vote on it."""
     from placer.core.finalize import apply_sample_overdispersion_calibration

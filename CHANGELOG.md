@@ -59,8 +59,9 @@ arguments: HG002 chr1-8 and the cichlid slice, 16 threads, `--record-world`.
     length-concordance term, which has two faults:
     - It averages over the few reads that report a length, then charges
       that mean once per alt read. At chr2:171976066, an 8.3 kb insertion
-      with 66 alt reads and no reference read, two stray 25 and 28 bp CIGAR
-      insertions cost -39 nats.
+      with 66 alt reads and no reference read, two soft clips of 25 and
+      28 bp cost -39 nats. They are lower bounds that say nothing about an
+      8.3 kb insert.
     - The lengths it scores include clip lengths, which are only lower
       bounds.
   - **Why it grew with depth.** The whole-sample overdispersion (0.14 on
@@ -69,10 +70,13 @@ arguments: HG002 chr1-8 and the cichlid slice, 16 threads, `--record-world`.
   - **The fix.** Existence is settled before finalization, so the reported
     genotype no longer takes a second vote on it. The configured error rate
     and min-GQ are still used.
-  - **Not changed.** The scan still uses the same term for its existence
-    score, at the default overdispersion of 0.02. Fixing it there changes
-    detection, so it follows the replay-first method. The ledger must first
-    record the observed lengths.
+  - **Not changed.** The scan still uses the same term, at the default
+    overdispersion of 0.02, in the GQ its own diagnostics read. Those are
+    the INFO fields TEPOST, LFDRMAX, MECHART, MECHNONTE, MECH and QC.
+    - None of them decides emission, PASS, position or family.
+    - They do enter the equality test that de-duplicates ledger rows. So a
+      fix there is checked the way this release was: frozen A/B runs, calls
+      compared record for record.
 
 ## [1.0.0a2] - 2026-09-28
 
