@@ -79,3 +79,67 @@ def test_decoys_are_scored_at_shifted_breakpoints_and_summarised():
     # No duplication at any decoy: each scores the "no TSD" term, and the EN
     # motif against random flanks, so the mean sits well under 1.
     assert 0.0 < scored.decoy_mean_exp_linkage < 1.0
+
+
+# ------------------------------------------- recorded for replay: the TSD decomposition
+def _mixed_detect(bp, tsd):
+    """A duplication at the real junction and at every third shift: decoys
+    with and without a TSD, so both halves of the decomposition are used."""
+    def detect(chrom, left, right, insert):
+        return Dup(tsd) if left == bp or (left - bp) % 90 == 0 else None
+    return detect
+
+
+def test_the_decoy_decomposition_rebuilds_the_recorded_mean():
+    bp = 3000
+    tsd = REFERENCE[bp - 14:bp]
+    scored = L.score_evaluated_locus("c", bp, bp, "G" * 800 + "A" * 30 + tsd,
+                                     _alignment(), 10, 10, fetch, _mixed_detect(bp, tsd))
+    p = scored.decoy_tsd_p_present
+    assert p == pytest.approx(0.9)                   # LINE, no superfamily model for L1
+    assert 0 < scored.decoy_tsd_hits < scored.decoy_count
+    rebuilt = ((max(1e-6, 1 - p) * scored.decoy_sum_absent
+                + p * scored.decoy_sum_present_per_p) / scored.decoy_count)
+    assert rebuilt == pytest.approx(scored.decoy_mean_exp_linkage, rel=1e-12)
+
+
+def test_the_decomposition_predicts_the_decoy_mean_at_another_p_present():
+    """What the replay relies on: the recorded sums give, at any p, exactly the
+    decoy mean a scan run with that p would have written."""
+    from placer.core import mechanism as mech
+    from placer.core.taxonomy import TeClass
+
+    bp = 3000
+    tsd = REFERENCE[bp - 14:bp]
+    insert = "G" * 800 + "A" * 30 + tsd
+    detect = _mixed_detect(bp, tsd)
+    base = L.score_evaluated_locus("c", bp, bp, insert, _alignment(), 10, 10, fetch, detect)
+    params = mech.MechanismParameters()
+    params.class_tsd[TeClass.LINE] = mech.TsdModel(0.3, mean_len=15.0)
+    rerun = L.score_evaluated_locus("c", bp, bp, insert, _alignment(), 10, 10, fetch, detect,
+                                    params=params)
+    predicted = ((1 - 0.3) * base.decoy_sum_absent
+                 + 0.3 * base.decoy_sum_present_per_p) / base.decoy_count
+    assert rerun.decoy_mean_exp_linkage == pytest.approx(predicted, rel=1e-12)
+    assert rerun.tsd_p_present == pytest.approx(0.3)
+
+
+def test_the_own_tsd_model_p_is_recorded_only_when_there_is_one_tsd_term():
+    bp = 3000
+    line = L.score_evaluated_locus("c", bp, bp, "G" * 800, _alignment("LINE"), 10, 10,
+                                   fetch, lambda *a: None, with_decoys=False)
+    assert line.tsd_p_present == pytest.approx(0.9)
+    unknown = L.score_evaluated_locus("c", bp, bp, "G" * 800, _alignment("Unknown"), 10, 10,
+                                      fetch, lambda *a: None, with_decoys=False)
+    assert unknown.tsd_p_present == -1.0              # a mixture over the classes' models
+
+
+def test_the_allele_counts_term_uses_the_span_s_own_error_rate():
+    from placer.core import tprt
+
+    clean = L.allele_counts_term("c", 3000, 3300, 20, 20, 300, fetch)
+    assert clean == pytest.approx(tprt.log_bf_counts(20, 20, 300.0, eps=0.02))
+    tandem = "CA" * 1000
+    in_repeat = L.allele_counts_term("c", 800, 1100, 20, 20, 300,
+                                     lambda chrom, start, end: tandem[start:end])
+    assert in_repeat < clean                          # a VNTR's higher artifact rate

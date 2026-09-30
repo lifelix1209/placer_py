@@ -85,6 +85,20 @@ def test_a_world_says_it_has_no_measured_lengths_rather_than_zero():
     assert rows[0].alt_measured_lengths == "NA"
 
 
+def test_a_world_before_the_replay_observables_replays_as_its_scan_decided():
+    """Worlds scanned before the TSD decomposition and the allele-level tally:
+    no extra carriers, so a policy reading the allele tally leaves every row
+    as it was; and -1 / NA for what was not recorded."""
+    rows, missing = _world_rows([_row(1000, 30.0)])
+    assert {"mech_tsd_p_present", "allele_bylen_extra_carriers",
+            "allele_carrier_offsets"} <= set(missing)
+    row = rows[0]
+    assert (row.allele_bylen_extra_carriers, row.allele_byseq_extra_carriers,
+            row.allele_wide_extra_carriers) == (0, 0, 0)
+    assert row.allele_carrier_offsets == "NA" and row.allele_carrier_own == "NA"
+    assert row.mech_tsd_p_present == -1.0 and row.mech_decoy_tsd_hits == -1
+
+
 def test_a_recorded_single_length_stays_text_like_a_list_of_them():
     columns = LEDGER_COLUMNS + ("alt_measured_length_reads", "alt_measured_lengths")
     path = Path(tempfile.mkdtemp(prefix="dream_test_")) / "evidence_ledger.tsv"

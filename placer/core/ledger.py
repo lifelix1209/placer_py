@@ -155,6 +155,48 @@ class EvidenceLedgerRow:
     conformal_dominated_nulls: int = 0
     conformal_null_count: int = 0
     conformal_qc: str = "CONFORMAL_NOT_EVALUATED"
+    # ---- RECORDED FOR REPLAY: no decision reads these ----------------------
+    # `compare=False` on every one, so the per-bin de-duplication, which
+    # compares rows field by field, and with it every call, is unchanged by them.
+    #: The TSD term's inputs (`locus_evidence.LocusScore`): the locus's own TSD
+    #: length (-1: not recorded) and model p, and the decoys split by whether
+    #: they found a duplication, so a change of `p_present` replays exactly.
+    mech_tsd_len: int = field(default=-1, compare=False)
+    mech_tsd_p_present: float = field(default=-1.0, compare=False)
+    mech_decoy_tsd_p_present: float = field(default=-1.0, compare=False)
+    mech_decoy_tsd_hits: int = field(default=-1, compare=False)
+    mech_decoy_sum_absent: float = field(default=0.0, compare=False)
+    mech_decoy_sum_present_per_p: float = field(default=0.0, compare=False)
+    #: The allele-level tally (`events.collect_allele_evidence`): the allele's
+    #: length (-1: not computed), its carriers (offset from bp_left, length,
+    #: k-mer similarity, whether it is an own alt read), and three tallies --
+    #: `bylen`, `byseq` and `wide` (`events.AlleleEvidence`) -- each with its
+    #: alt and ref reads, span (relative to bp_left), carriers beyond the row's
+    #: own, and the counts term over the span (the row's own counts term when
+    #: there are none).
+    allele_length: int = field(default=-1, compare=False)
+    allele_carrier_offsets: list[int] = field(default_factory=list, compare=False)
+    allele_carrier_lengths: list[int] = field(default_factory=list, compare=False)
+    allele_carrier_similarity: list[float] = field(default_factory=list, compare=False)
+    allele_carrier_own: list[int] = field(default_factory=list, compare=False)
+    allele_bylen_alt_reads: int = field(default=-1, compare=False)
+    allele_bylen_ref_reads: int = field(default=-1, compare=False)
+    allele_bylen_span_lo: int = field(default=0, compare=False)
+    allele_bylen_span_hi: int = field(default=0, compare=False)
+    allele_bylen_extra_carriers: int = field(default=0, compare=False)
+    mech_counts_allele_bylen: float = field(default=0.0, compare=False)
+    allele_byseq_alt_reads: int = field(default=-1, compare=False)
+    allele_byseq_ref_reads: int = field(default=-1, compare=False)
+    allele_byseq_span_lo: int = field(default=0, compare=False)
+    allele_byseq_span_hi: int = field(default=0, compare=False)
+    allele_byseq_extra_carriers: int = field(default=0, compare=False)
+    mech_counts_allele_byseq: float = field(default=0.0, compare=False)
+    allele_wide_alt_reads: int = field(default=-1, compare=False)
+    allele_wide_ref_reads: int = field(default=-1, compare=False)
+    allele_wide_span_lo: int = field(default=0, compare=False)
+    allele_wide_span_hi: int = field(default=0, compare=False)
+    allele_wide_extra_carriers: int = field(default=0, compare=False)
+    mech_counts_allele_wide: float = field(default=0.0, compare=False)
 
 
 @dataclass

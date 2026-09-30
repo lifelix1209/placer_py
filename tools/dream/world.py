@@ -37,6 +37,39 @@ DEFAULTS: dict[str, object] = {
     # Scans before 1.0.0a4 did not record what the alt reads measured.
     "alt_measured_length_reads": -1,
     "alt_measured_lengths": "NA",
+    # Scans before the replay observables of the TSD term and the allele-level
+    # tally (EvidenceLedgerRow, after `conformal_qc`). -1 / NA: not recorded;
+    # 0 extra carriers leaves a row's own tally, so a policy that reads them
+    # replays an older world as the scan decided it.
+    "mech_tsd_len": -1,
+    "mech_tsd_p_present": -1.0,
+    "mech_decoy_tsd_p_present": -1.0,
+    "mech_decoy_tsd_hits": -1,
+    "mech_decoy_sum_absent": 0.0,
+    "mech_decoy_sum_present_per_p": 0.0,
+    "allele_length": -1,
+    "allele_carrier_offsets": "NA",
+    "allele_carrier_lengths": "NA",
+    "allele_carrier_similarity": "NA",
+    "allele_carrier_own": "NA",
+    "allele_bylen_alt_reads": -1,
+    "allele_bylen_ref_reads": -1,
+    "allele_bylen_span_lo": 0,
+    "allele_bylen_span_hi": 0,
+    "allele_bylen_extra_carriers": 0,
+    "mech_counts_allele_bylen": 0.0,
+    "allele_byseq_alt_reads": -1,
+    "allele_byseq_ref_reads": -1,
+    "allele_byseq_span_lo": 0,
+    "allele_byseq_span_hi": 0,
+    "allele_byseq_extra_carriers": 0,
+    "mech_counts_allele_byseq": 0.0,
+    "allele_wide_alt_reads": -1,
+    "allele_wide_ref_reads": -1,
+    "allele_wide_span_lo": 0,
+    "allele_wide_span_hi": 0,
+    "allele_wide_extra_carriers": 0,
+    "mech_counts_allele_wide": 0.0,
 }
 
 #: Columns kept as text even when they look numeric.
@@ -45,6 +78,8 @@ TEXT_COLUMNS = frozenset({
     "te_strand", "ltr_form", "te_dominant_family", "te_dominant_class",
     "candidate_retention_reason", "final_qc", "posterior_qc", "lfdr_qc",
     "mech_terms", "insert_seq", "te_structure_path", "alt_measured_lengths",
+    "allele_carrier_offsets", "allele_carrier_lengths", "allele_carrier_similarity",
+    "allele_carrier_own",
 })
 
 #: The registry of worlds, beside the scan outputs.

@@ -384,3 +384,276 @@ def collect_event_read_evidence(component: ComponentCall,
                                                         fragments, seed_left, seed_right)
     return collect_event_read_evidence_for_bounds(component, local_records, read_spans,
                                                   fragments, bp_left, bp_right)
+
+
+# ---------------------------------------------------------------------------
+# The allele-level tally: RECORDED, read by no decision
+# ---------------------------------------------------------------------------
+
+#: THE ALLELE-LEVEL TALLY. In a tandem repeat the aligner places one insertion
+#: at different offsets in different reads. On HG002 chr1, 73 of the 229 truth
+#: TEs have carriers spread over more than 50 bp, and 1.0.0a4 recalled 41% of
+#: them against 94% of the rest: the +-25 bp tally above sees a few carriers and
+#: counts the others as reference. This tally gathers the allele's carriers
+#: around the hypothesis, and counts as reference only reads that span the
+#: whole allele without an insertion. It is written to the ledger for replay
+#: (`docs/development-strategy.md`, section 1: record before deciding) and no
+#: decision reads it.
+ALLELE_WINDOW_BP = 500
+ALLELE_LENGTH_TOLERANCE = 0.3
+ALLELE_LENGTH_SLACK_BP = 20
+#: A read's insertion pieces at least this long and this close on the reference
+#: are one event: an ONT alignment often breaks one insertion into two or three
+#: CIGAR insertions a few bases apart (47 of 51 carriers at chr1:45497762).
+ALLELE_PIECE_MIN_BP = 20
+ALLELE_PIECE_MERGE_BP = 100
+#: Single linkage over the carriers' positions, grown from the hypothesis's own
+#: window, with the allele's span capped.
+ALLELE_CLUSTER_GAP_BP = 100
+ALLELE_SPAN_CAP_BP = 1000
+#: "The same sequence": the share of a carrier's k-mers found in the inserts of
+#: the hypothesis's own reads. At k = 11 and ONT error rates, same-length
+#: carriers of chr1's dispersed truth TEs sit at a median of 0.47, and 90% of
+#: them at 0.2 or more.
+ALLELE_KMER = 11
+ALLELE_MIN_SIMILARITY = 0.2
+
+
+
+@dataclass
+class AlleleTally:
+    """The allele's counts under one definition of "the same allele"."""
+
+    alt_reads: int = -1
+    ref_reads: int = -1
+    #: The allele's span, relative to the hypothesis's bp_left.
+    span_lo: int = 0
+    span_hi: int = 0
+    #: Carriers beyond the hypothesis's own alt reads. 0 means the tally is the
+    #: hypothesis's own tally, unchanged.
+    extra_carriers: int = 0
+
+
+@dataclass
+class AlleleEvidence:
+    """The allele-level view of one hypothesis (`collect_allele_evidence`)."""
+
+    #: The median of the hypothesis's measured lengths; -1 when it measured
+    #: none, and then nothing else here was computed.
+    length: int = -1
+    #: Every read carrying an insertion of that length within ALLELE_WINDOW_BP,
+    #: the hypothesis's own included, sorted: its offset from bp_left, its
+    #: length, its k-mer similarity to the own inserts (-1 when it cannot be
+    #: measured: a split, or no own insert sequence), and whether it is one of
+    #: the hypothesis's own alt reads (1) or not (0). With the own alt count,
+    #: that is enough to recount alt under any other grouping of the carriers.
+    carrier_offsets: list[int] = field(default_factory=list)
+    carrier_lengths: list[int] = field(default_factory=list)
+    carrier_similarity: list[float] = field(default_factory=list)
+    carrier_own: list[int] = field(default_factory=list)
+    #: Three definitions of the allele:
+    #:   * `by_length`: carriers of the length, grown by single linkage
+    #:     (ALLELE_CLUSTER_GAP_BP) from the hypothesis's own window;
+    #:   * `by_sequence`: the same, with only carriers of the same sequence;
+    #:   * `wide`: every carrier of the same length and sequence in the window,
+    #:     for alleles whose carriers the aligner spread with gaps wider than
+    #:     the linkage (chr1:2212064: 20 carriers over 520 bp, in groups
+    #:     136-232 bp apart).
+    by_length: AlleleTally = field(default_factory=AlleleTally)
+    by_sequence: AlleleTally = field(default_factory=AlleleTally)
+    wide: AlleleTally = field(default_factory=AlleleTally)
+
+
+def _distance_to(pos: int, left: int, right: int) -> int:
+    if left <= pos <= right:
+        return 0
+    return left - pos if pos < left else pos - right
+
+
+def _kmers(seq: str) -> set[str]:
+    k = ALLELE_KMER
+    text = seq.upper()
+    return {text[i:i + k] for i in range(len(text) - k + 1)}
+
+
+def _allele_event(read: AlignedRead, chrom: str, left: int, right: int,
+                  lo_len: float, hi_len: float) -> tuple[int, int, str] | None:
+    """The read's insertion of the allele's length nearest [left, right], as
+    (position, length, inserted sequence -- "" for a split), or None.
+
+    Pieces are merged first (ALLELE_PIECE_MERGE_BP). A CIGAR event wins over a
+    split one, as for `alt_measured_lengths`."""
+    index = cigar_index(read)
+    start = max(0, left - ALLELE_WINDOW_BP)
+    end = right + ALLELE_WINDOW_BP
+    a = bisect_left(index.ins_ref_pos, start - ALLELE_PIECE_MERGE_BP)
+    b = bisect_right(index.ins_ref_pos, end + ALLELE_PIECE_MERGE_BP)
+    groups: list[list[int]] = []
+    for k in range(a, b):
+        if index.ins_len[k] < ALLELE_PIECE_MIN_BP:
+            continue
+        if (groups and index.ins_ref_pos[k] - index.ins_ref_pos[groups[-1][-1]]
+                <= ALLELE_PIECE_MERGE_BP):
+            groups[-1].append(k)
+        else:
+            groups.append([k])
+    best: tuple[tuple[int, int, int], tuple[int, int, str]] | None = None
+    for group in groups:
+        pos = index.ins_ref_pos[group[0]]
+        length = sum(index.ins_len[k] for k in group)
+        if not (start <= pos <= end and lo_len <= length <= hi_len):
+            continue
+        seq = ("".join(read.seq[index.ins_query_pos[k]:index.ins_query_pos[k] + index.ins_len[k]]
+                       for k in group) if read.seq else "")
+        key = (_distance_to(pos, left, right), -length, pos)
+        if best is None or key < best[0]:
+            best = (key, (pos, length, seq))
+    if best is not None:
+        return best[1]
+    for pos, length in split_insertion_calls(read, chrom):
+        if start <= pos <= end and lo_len <= length <= hi_len:
+            key = (_distance_to(pos, left, right), -length, pos)
+            if best is None or key < best[0]:
+                best = (key, (pos, length, ""))
+    return best[1] if best is not None else None
+
+
+def _allele_tally(component: ComponentCall, local_records: list[AlignedRead],
+                  evidence: EventReadEvidence, own: set[str],
+                  carriers: list[tuple[int, str]], left: int, right: int,
+                  not_reference: set[str], linked: bool = True) -> AlleleTally:
+    """The allele: grown by single linkage from the carriers inside the
+    hypothesis's alt window (`linked`), or all of `carriers` when at least one
+    is inside it. Then its reads, and the reads that span all of it without an
+    event. A read in `not_reference` -- any carrier of the length in the
+    window -- is never reference, whichever carriers the allele took."""
+    own_tally = AlleleTally(alt_reads=evidence.alt_struct_reads,
+                            ref_reads=evidence.ref_span_reads,
+                            span_lo=left - evidence.bp_left,
+                            span_hi=right - evidence.bp_left, extra_carriers=0)
+    ordered = sorted(carriers)
+    positions = [pos for pos, _ in ordered]
+    tight_lo, tight_hi = left - ALT_SIGNAL_SLACK_BP, right + ALT_SIGNAL_SLACK_BP
+    seeds = [i for i, pos in enumerate(positions) if tight_lo <= pos <= tight_hi]
+    if not seeds:
+        return own_tally
+    lo, hi = (seeds[0], seeds[-1]) if linked else (0, len(positions) - 1)
+    while linked:
+        options = []
+        if lo > 0:
+            gap = positions[lo] - positions[lo - 1]
+            if (gap <= ALLELE_CLUSTER_GAP_BP
+                    and positions[hi] - positions[lo - 1] <= ALLELE_SPAN_CAP_BP):
+                options.append((gap, 0))
+        if hi + 1 < len(positions):
+            gap = positions[hi + 1] - positions[hi]
+            if (gap <= ALLELE_CLUSTER_GAP_BP
+                    and positions[hi + 1] - positions[lo] <= ALLELE_SPAN_CAP_BP):
+                options.append((gap, 1))
+        if not options:
+            break
+        if min(options)[1] == 0:
+            lo -= 1
+        else:
+            hi += 1
+    members = {qname for _, qname in ordered[lo:hi + 1]}
+    extra = members - own
+    if not extra:
+        return own_tally
+    span_left = min(positions[lo], left)
+    span_right = max(positions[hi], right)
+    names = own | members
+    excluded = names | not_reference
+    reference: set[str] = set()
+    for read in local_records:
+        if (read is None or read.tid != component.tid or not read.qname or not read.cigar
+                or read.qname in excluded or read.is_secondary or read.is_supplementary
+                or read.mapq < REF_SPAN_MIN_MAPQ):
+            continue
+        # Strictly spanning the whole allele, and clean inside its exclusion band.
+        if (read.pos > span_left - ALT_SIGNAL_SLACK_BP
+                or compute_ref_end(read) < span_right + ALT_SIGNAL_SLACK_BP):
+            continue
+        if read_has_local_event_signal(read, component.chrom,
+                                       max(0, span_left - REF_SIGNAL_SLACK_BP),
+                                       span_right + REF_SIGNAL_SLACK_BP):
+            continue
+        reference.add(read.qname)
+    return AlleleTally(alt_reads=len(names), ref_reads=len(reference),
+                       span_lo=span_left - evidence.bp_left,
+                       span_hi=span_right - evidence.bp_left,
+                       extra_carriers=len(extra))
+
+
+def collect_allele_evidence(component: ComponentCall, local_records: list[AlignedRead],
+                            evidence: EventReadEvidence) -> AlleleEvidence:
+    """The hypothesis's allele: its carriers wherever the aligner put them.
+
+    A carrier is a uniquely mapped primary read with an insertion (pieces
+    merged) or an SA split of the allele's length, +-ALLELE_LENGTH_TOLERANCE,
+    within ALLELE_WINDOW_BP. It is "of the same sequence" when its inserted
+    sequence shares at least ALLELE_MIN_SIMILARITY of its k-mers with the
+    hypothesis's own reads' inserts; one whose similarity cannot be measured
+    is kept. The three tallies are described on `AlleleEvidence`. Where no
+    carrier lies outside the hypothesis's own reads, a tally is the
+    hypothesis's own, exactly.
+    """
+    out = AlleleEvidence()
+    if evidence.bp_left < 0 or evidence.bp_right < 0 or not evidence.alt_measured_lengths:
+        return out
+    left = min(evidence.bp_left, evidence.bp_right)
+    right = max(evidence.bp_left, evidence.bp_right)
+    length = int(round(median(evidence.alt_measured_lengths)))
+    out.length = length
+    lo_len = max(LONG_INSERTION_SIGNAL_MIN, length * (1.0 - ALLELE_LENGTH_TOLERANCE))
+    hi_len = length * (1.0 + ALLELE_LENGTH_TOLERANCE) + ALLELE_LENGTH_SLACK_BP
+    own = set(evidence.support_qnames)
+
+    def nearness(event: tuple[int, int, str]) -> tuple[int, int, int]:
+        return (_distance_to(event[0], left, right), -event[1], event[0])
+
+    events: dict[str, tuple[int, int, str]] = {}
+    for read in local_records:
+        if (read is None or read.tid != component.tid or not read.qname or not read.cigar
+                or read.is_secondary or read.is_supplementary
+                or read.mapq != INSERTION_CANDIDATE_REQUIRED_MAPQ):
+            continue
+        found = _allele_event(read, component.chrom, left, right, lo_len, hi_len)
+        if found is None:
+            continue
+        current = events.get(read.qname)
+        if current is None or nearness(found) < nearness(current):
+            events[read.qname] = found
+
+    tight_lo, tight_hi = left - ALT_SIGNAL_SLACK_BP, right + ALT_SIGNAL_SLACK_BP
+    reference_kmers: set[str] = set()
+    for qname in sorted(own):
+        event = events.get(qname)
+        if event is not None and event[2] and tight_lo <= event[0] <= tight_hi:
+            reference_kmers |= _kmers(event[2])
+    similarity: dict[str, float] = {}
+    for qname, (_, _, seq) in events.items():
+        kmers = _kmers(seq) if seq else set()
+        similarity[qname] = (len(kmers & reference_kmers) / len(kmers)
+                             if kmers and reference_kmers else -1.0)
+
+    listed = sorted((pos - evidence.bp_left, size, round(similarity[qname], 3),
+                     int(qname in own))
+                    for qname, (pos, size, _) in events.items())
+    out.carrier_offsets = [entry[0] for entry in listed]
+    out.carrier_lengths = [entry[1] for entry in listed]
+    out.carrier_similarity = [entry[2] for entry in listed]
+    out.carrier_own = [entry[3] for entry in listed]
+
+    carriers = [(pos, qname) for qname, (pos, _, _) in events.items()]
+    every_carrier = set(events)
+    alike = [(pos, qname) for pos, qname in carriers
+             if qname in own or similarity[qname] < 0.0
+             or similarity[qname] >= ALLELE_MIN_SIMILARITY]
+    out.by_length = _allele_tally(component, local_records, evidence, own, carriers,
+                                  left, right, every_carrier)
+    out.by_sequence = _allele_tally(component, local_records, evidence, own, alike,
+                                    left, right, every_carrier)
+    out.wide = _allele_tally(component, local_records, evidence, own, alike,
+                             left, right, every_carrier, linked=False)
+    return out

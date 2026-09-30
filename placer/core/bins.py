@@ -672,6 +672,43 @@ def _record_shadow(target: EvidenceLedgerRow | FinalCall,
                                  for name, value in shadow.score.terms.items()) or "NA"
 
 
+def _record_replay_observables(row: EvidenceLedgerRow, shadow: locus_module.LocusScore,
+                               allele: events_module.AlleleEvidence, insert_seq: str,
+                               hooks: StageHooks) -> None:
+    """What the ledger records for replay and no decision reads (the fields
+    after `conformal_qc` in `EvidenceLedgerRow`). Set on the row only: a
+    FinalCall does not carry them."""
+    row.mech_tsd_len = shadow.observation.tsd_len
+    row.mech_tsd_p_present = shadow.tsd_p_present
+    row.mech_decoy_tsd_p_present = shadow.decoy_tsd_p_present
+    row.mech_decoy_tsd_hits = shadow.decoy_tsd_hits
+    row.mech_decoy_sum_absent = shadow.decoy_sum_absent
+    row.mech_decoy_sum_present_per_p = shadow.decoy_sum_present_per_p
+    row.allele_length = allele.length
+    row.allele_carrier_offsets = list(allele.carrier_offsets)
+    row.allele_carrier_lengths = list(allele.carrier_lengths)
+    row.allele_carrier_similarity = list(allele.carrier_similarity)
+    row.allele_carrier_own = list(allele.carrier_own)
+    own_counts = shadow.score.terms.get("counts", 0.0)
+
+    def counts(tally: events_module.AlleleTally) -> float:
+        if tally.extra_carriers <= 0:
+            return own_counts
+        return locus_module.allele_counts_term(
+            row.chrom, row.bp_left + tally.span_lo, row.bp_left + tally.span_hi,
+            tally.alt_reads, tally.ref_reads, len(insert_seq or ""),
+            hooks.fetch_reference)
+
+    for prefix, tally in (("bylen", allele.by_length), ("byseq", allele.by_sequence),
+                          ("wide", allele.wide)):
+        setattr(row, f"allele_{prefix}_alt_reads", tally.alt_reads)
+        setattr(row, f"allele_{prefix}_ref_reads", tally.ref_reads)
+        setattr(row, f"allele_{prefix}_span_lo", tally.span_lo)
+        setattr(row, f"allele_{prefix}_span_hi", tally.span_hi)
+        setattr(row, f"allele_{prefix}_extra_carriers", tally.extra_carriers)
+        setattr(row, f"mech_counts_allele_{prefix}", counts(tally))
+
+
 def _align_bin_inserts(insert_seqs: list[str | None],
                        hooks: StageHooks) -> list[TEAlignmentEvidence]:
     """One alignment per entry, in order; `None` means "nothing to align".
@@ -857,6 +894,10 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                 component, evidence, consensus, segmentation, te_alignment, joint,
                 owner_bin_start, owner_bin_end)
             _record_shadow(row, shadow)
+            _record_replay_observables(
+                row, shadow,
+                events_module.collect_allele_evidence(component, item.local_records, evidence),
+                segmentation.insert_seq, hooks)
             row_is_new = append_row(row)
 
             call = _final_call_from_evaluation(component, evidence, consensus,

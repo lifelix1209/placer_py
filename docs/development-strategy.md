@@ -317,6 +317,12 @@ before the holdout was scored.
     - They keep rows that two components wrote for one hypothesis, which a
       1.0.0a4 scan merges.
   - They load `alt_measured_lengths` as NA.
+  - **Worlds scanned before `frozen/rec1`** (the `*_rec1` worlds are the
+    first after it) lack the TSD decomposition and the allele tallies. They
+    load with -1 / NA and 0 extra carriers, so a policy that reads them
+    replays an older world as its scan decided it. The `mech_terms` values
+    are rounded to 3 decimals: compute a changed term's delta from the model,
+    not by subtracting the recorded term.
 - **Check a new world before using it.** Replaying `current` on it must give
   exactly the online run's selection. It did for both worlds recorded in
   round 1: 125 TE calls on chr1, and 286 TE / 183 structural on cichlid.
@@ -654,6 +660,66 @@ objective.
 - **Decision.** The maintainer accepted it for what it corrects, with the
   genotype-concordance cost reported. The rule is not relaxed: a change that
   moves the objective still needs the bootstrap.
+
+**Rounds 12-16 (2026-09-30): dispersed alleles and the linkage terms.**
+- **The diagnosis, on chr1.** Read in the BAM, recall falls with how widely
+  the aligner spread an allele's carriers:
+  - 94% when the p10-p90 spread is at most 50 bp (Sniffles2 95%);
+  - 54% at 50-200 bp (56%);
+  - 16% above 200 bp (44%).
+  - 43 of the 58 FNs are dispersed. The +-25 bp tally counts carriers placed
+    further away as reference.
+  - Separately, a TSD is detected at about 0.2-0.4 of loci whose counts alone
+    make them real, where the TSD models assume 0.85-0.95.
+- **Recorded first.** A scan change that only records (`frozen/rec1`) added
+  allele tallies and the TSD term's decoy decomposition to the ledger. All
+  nine release reruns kept their calls byte for byte. Worlds `*_rec1`.
+- **round12, TSD p_present from truth-free anchors.** chr1 172 / 11 against
+  171 / 10, gain -0.044 [-0.127, +0.018]: rejected.
+  - With the calibrated p, the exact decoy check rose to 2.2 (SINE) and 2.7
+    (LINE).
+  - The cause is the EN motif term. At shifted breakpoints E[exp(en)] is 3.3
+    for SINE and LINE and 2.0 for SVA, where a valid ratio has at most 1.
+    It rises with the local A+T, from 1.17 below 55% to 4.3 above 75%: the
+    PWM is scored against a uniform background, and the better strand is
+    kept.
+  - **The TSD-absence penalty and the EN reward are miscalibrated in
+    opposite directions and cancel.** That is why production's decoy check
+    passes.
+- **round15, the EN term against its locus's own decoys, plus round12.** The
+  decoy means fall to 0.6-0.8 and every class factor is 1.00, so the terms
+  are now valid e-values.
+  - The objective gains nothing: chr1 171 / 11, -0.052.
+  - The EN normalisation alone is a significant loss: 168 / 10, -0.022
+    [-0.045, -0.004].
+  - Cichlid gains 9 PASS calls, of which 8 are supported by neither Sniffles2
+    nor tldr.
+  - Once calibrated, the linkage terms separate little at the threshold. The
+    near misses are limited by their counts.
+- **round13, vs_artifact on the allele's counts.**
+  - chr1, eight variants. The best (same-sequence carriers, loci merged by
+    allele, placed at the carriers' mode) scored 181 / 11, gain +0.023
+    [-0.095, +0.155].
+  - Length-only and window-wide carriers each added 4-6 FPs.
+  - Cichlid: unchanged.
+  - **Pre-registered on chr2-8** (`record1/prereg`, node dce41194eb):
+    923 / 42 -> 941 / 60, P 95.6% -> 94.0%, R 74.5% -> 75.9%, gain -0.085
+    [-0.193, +0.016]: **fail**. It stays a candidate.
+- **round14 and round16, the combinations.** chr1 183 / 13 (-0.058) and
+  184 / 14 (-0.098): rejected.
+- **Lessons.**
+  - **Aggregating an allele's carriers raises FPs out of sample, twice now.**
+    Round 4's carrier rule went 858 / 42 -> 858 / 52; round13 went +18 TP and
+    +18 FP.
+  - Both times chr1 showed almost none of the FP cost. Round13's chr1 variant
+    was the best of eight, and chr1 has 229 truth loci.
+  - Nothing checks the counts term's null the way the decoys check the
+    linkage terms. A wider tally makes that null more fragile: eps is a model
+    constant, not a measurement. The next attempt at dispersed alleles should
+    first record an empirical null for the allele counts term, at shifted
+    positions.
+  - **A decoy check that passes can hide two errors that cancel.** Changing
+    one term exposes the other, and the check then charges the gain back.
 
 ## 9. Checklist for a change to what PLACER decides
 

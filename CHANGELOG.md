@@ -12,7 +12,61 @@ that file says what it cost.
 
 ## [Unreleased]
 
-Nothing yet.
+**The ledger records what two decision changes would need, and no call
+changes.** This is the recording half of a scan-domain change
+(`docs/development-strategy.md`, section 1: make the world richer before
+making the policy smarter). No decision reads the new columns.
+- **The allele-level tally** (`events.collect_allele_evidence`). In a tandem
+  repeat the aligner places one insertion at different offsets in different
+  reads.
+  - The +-25 bp tally sees a few of the carriers and counts the rest as
+    reference. chr1:2212064 has 20 carriers in the BAM; its row counts 2 alt
+    against 40 reference.
+  - On HG002 chr1, 1.0.0a4 recalls 94% of the truth TEs whose carriers lie
+    within 50 bp of each other, but 54% at a 50-200 bp spread and 16% above
+    200 bp (Sniffles2: 95 / 56 / 44%).
+  - Each evaluated row now carries its allele's carriers (offset, length,
+    k-mer similarity, own or not) and three tallies: by length, by length and
+    sequence, and window-wide. Each tally has alt, ref, span and the counts
+    term over the span.
+- **The TSD term's inputs** (`locus_evidence.LocusScore`). The row's own TSD
+  length and model p, and its decoys split by whether they found a
+  duplication. With these, a change of the TSD models' `p_present` replays
+  exactly, decoy check included.
+  - The models' p is 0.85-0.95. Among loci whose counts term alone exceeds 30
+    nats, a TSD is detected at 0.17-0.31 on HG002 and 0.11-0.40 on cichlid.
+
+**Measured.** Every release run was rerun from frozen code
+(`placer_dev/frozen/rec1`) with its own arguments: HG002 chr1-8 and the
+cichlid slice. Each was compared with its 1.0.0a4 run
+(`placer_dev/record1/compare_rec.py`).
+- **Calls.** `scientific.txt` and `calls.csv` are byte-identical, and
+  `calls.vcf` is identical apart from `##source`, on all nine runs.
+- **Ledger.** The same rows in the same order, the 1.0.0a4 columns identical,
+  29 columns appended.
+- **Self-checks on every EVALUATED row.**
+  - The decoy decomposition rebuilds the recorded decoy mean.
+  - A tally with no carrier beyond the row's own equals the row's own counts.
+- **Replay.** A replay of each new ledger gives that run's PASS calls exactly.
+- **Cost.** 9.18 CPU-h in all, against 9.47. Per run the difference ranges
+  from -7.6% to +6.1% across nodes, so it is noise.
+- **Extra carriers.** chr1 rows with carriers beyond their own: 5,254 by
+  length, 4,228 by sequence, 4,990 window-wide.
+
+### Added
+
+- Ledger columns, appended after `alt_measured_lengths`, all written for
+  replay and read by no decision:
+  - `mech_tsd_len`, `mech_tsd_p_present`, `mech_decoy_tsd_p_present`,
+    `mech_decoy_tsd_hits`, `mech_decoy_sum_absent`,
+    `mech_decoy_sum_present_per_p`;
+  - `allele_length`, `allele_carrier_offsets`, `allele_carrier_lengths`,
+    `allele_carrier_similarity`, `allele_carrier_own`;
+  - for each of `bylen`, `byseq` and `wide`: `allele_<t>_alt_reads`,
+    `allele_<t>_ref_reads`, `allele_<t>_span_lo`, `allele_<t>_span_hi`,
+    `allele_<t>_extra_carriers` and `mech_counts_allele_<t>`.
+  - `EvidenceLedgerRow` holds them with `compare=False`, so the per-bin
+    de-duplication, and with it every call, is unchanged.
 
 ## [1.0.0a4] - 2026-09-29
 

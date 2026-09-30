@@ -368,6 +368,37 @@ def test_an_insertion_of_another_length_nearby_is_not_the_same_allele():
     assert max(row.alt_carrier_reads for row in rows) == 0
 
 
+def test_the_allele_tally_is_recorded_and_round_trips_through_a_world():
+    """Recorded for replay, read by no decision: the dispersed allele's
+    carriers are on the row, and a world loaded from the written ledger holds
+    them as the scan wrote them."""
+    import pathlib
+    import tempfile
+
+    from tools.dream import world
+
+    result = run(dispersed_reads(offsets=(-80, 0, 80)))
+    rows = [row for row in result.evidence_ledger
+            if row.candidate_retention_reason == "EVALUATED" and abs(row.pos - 10000) <= 50]
+    assert rows
+    best = max(rows, key=lambda row: row.allele_bylen_alt_reads)
+    assert best.allele_length == len(INSERT)
+    assert best.allele_bylen_alt_reads == 24 and best.allele_bylen_extra_carriers == 16
+    assert best.allele_bylen_ref_reads == 3
+    assert best.mech_counts_allele_bylen > float(
+        dict(t.split("=") for t in best.mech_terms.split(";"))["counts"])
+    assert best.mech_decoy_tsd_hits >= 0
+    with tempfile.TemporaryDirectory() as output_dir:
+        path = pathlib.Path(output_dir) / "evidence_ledger.tsv"
+        path.write_text(O.render_evidence_ledger_tsv(result))
+        loaded, missing = world.load_rows(path)
+    assert not {"allele_bylen_alt_reads", "allele_carrier_offsets"} & set(missing)
+    back = max((r for r in loaded if abs(r.pos - 10000) <= 50),
+               key=lambda r: r.allele_bylen_alt_reads)
+    assert back.allele_bylen_alt_reads == 24
+    assert len(back.allele_carrier_offsets.split(",")) == 24
+
+
 def test_the_carrier_rule_is_off_by_default():
     rows = [row for row in run(dispersed_reads()).evidence_ledger
             if row.candidate_retention_reason == "EVALUATED"]

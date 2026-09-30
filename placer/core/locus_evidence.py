@@ -30,6 +30,7 @@ from dataclasses import dataclass
 
 from placer.core import element_structure as structure_module
 from placer.core import mechanism as mech
+from placer.core import tprt
 from placer.core.endonuclease import endonuclease_motif_log_odds
 from placer.core.null_control import make_breakpoint_shift_controls
 from placer.core.seqtools import microsatellite_mask
@@ -58,6 +59,20 @@ class LocusScore:
     #: Mean over the decoys of exp(linkage terms): <= 1 when the TSD and motif
     #: nulls hold at this locus.
     decoy_mean_exp_linkage: float = 0.0
+    #: RECORDED FOR REPLAY, read by no decision: what a change of the TSD
+    #: models' `p_present` would need to be replayed exactly.
+    #:   * `tsd_p_present`: the p of the model behind the locus's own "tsd"
+    #:     term; -1 when it has none, or a mixture of them (Unknown class).
+    #:   * the decoys, split by whether they found a duplication. Every decoy
+    #:     shares one model (`decoy_tsd_p_present`), and its exp(linkage) is
+    #:     max(1e-6, 1 - p) * exp(en) without a TSD and p * exp(tsd - log p + en)
+    #:     with one, so the mean at any p is
+    #:     (max(1e-6, 1 - p) * sum_absent + p * sum_present_per_p) / count.
+    tsd_p_present: float = -1.0
+    decoy_tsd_p_present: float = -1.0
+    decoy_tsd_hits: int = -1
+    decoy_sum_absent: float = 0.0
+    decoy_sum_present_per_p: float = 0.0
 
 
 def _te_class(value: str) -> TeClass:
@@ -163,6 +178,36 @@ def _linkage_at(chrom: str, bp_left: int, bp_right: int, insert_seq: str,
     return obs, linkage
 
 
+def _own_tsd_p_present(score: mech.MechanismScore, obs: mech.LocusObservation,
+                       params: mech.MechanismParameters) -> float:
+    """The p of the TSD model behind `score_locus`'s own "tsd" term."""
+    if "tsd" not in score.terms:
+        return -1.0
+    if "no_te_alignment" in score.terms:
+        return params.tsd_model(TeClass.UNKNOWN, "").p_present
+    return params.tsd_model(obs.te_class, obs.superfamily).p_present
+
+
+def allele_counts_term(chrom: str, span_left: int, span_right: int, n_alt: int,
+                       n_ref: int, insert_len: int,
+                       fetch_reference: Callable[[str, int, int], str]) -> float:
+    """The counts term (`mechanism.counts_term`) over an allele's whole span.
+
+    The error rate is the span's own: its composition and its tandem-repeat
+    content over [span_left, span_right], so an allele gathered across a VNTR
+    is weighed against the higher artifact rate a VNTR has. RECORDED FOR
+    REPLAY (`events.collect_allele_evidence`); no decision reads it.
+    """
+    lo = max(0, span_left - LOCAL_WINDOW_BP)
+    hi = span_right + LOCAL_WINDOW_BP
+    window = fetch_reference(chrom, lo, hi) or ""
+    a_frac, t_frac = local_composition(window)
+    repeat = repeat_fraction_at(window, span_left - lo, span_right - lo)
+    eps = tprt.local_error_rate(a_frac, t_frac, repeat)
+    return tprt.log_bf_counts(max(0, n_alt), max(0, n_ref), float(max(1, insert_len)),
+                              eps=eps)
+
+
 def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
                           insert_seq: str, te_alignment, n_alt: int, n_ref: int,
                           fetch_reference: Callable[[str, int, int], str],
@@ -204,7 +249,9 @@ def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
             obs.polya_len = max(obs.polya_len, structure_module.measure(
                 trimmed, te_alignment.annotation_class, te_alignment.te_strand).polya_len)
     if not with_decoys or bp_left < 0:
-        return LocusScore(observation=obs, score=mech.score_locus(obs, params))
+        score = mech.score_locus(obs, params)
+        return LocusScore(observation=obs, score=score,
+                          tsd_p_present=_own_tsd_p_present(score, obs, params))
 
     # The shifted breakpoints: the same insert and reads, the breakpoint moved.
     width = max(0, bp_right - bp_left)
@@ -236,18 +283,34 @@ def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
 
     obs.tsd_empirical_null = rate_at_least(obs.tsd_len)
     out = LocusScore(observation=obs, score=mech.score_locus(obs, params))
+    out.tsd_p_present = _own_tsd_p_present(out.score, obs, params)
 
     # Each shift as a decoy, scored exactly as the locus is -- against the
     # empirical null of the OTHER shifts (leave-one-out), so the check tests
     # the statistic actually used rather than the analytic one.
     values = []
+    hits, absent, present = 0, 0.0, 0.0
     for index, decoy in enumerate(shifted):
         decoy.tsd_empirical_null = rate_at_least(decoy.tsd_len, exclude=index)
-        linkage = mech.tsd_term(decoy, params.tsd_model(decoy.te_class, decoy.superfamily))
+        model = params.tsd_model(decoy.te_class, decoy.superfamily)
+        tsd = mech.tsd_term(decoy, model)
+        linkage = tsd
+        en = 0.0
         if decoy.te_class in _EN_CLASSES:
-            linkage += mech.en_term(decoy)
+            en = mech.en_term(decoy)
+            linkage += en
         values.append(math.exp(min(linkage, 700.0)))
+        # The decomposition `LocusScore` documents; it changes nothing above.
+        out.decoy_tsd_p_present = model.p_present
+        if decoy.tsd_len > 0:
+            hits += 1
+            present += math.exp(min(tsd - math.log(max(1e-6, model.p_present)) + en, 700.0))
+        else:
+            absent += math.exp(min(en, 700.0))
     if values:
         out.decoy_count = len(values)
         out.decoy_mean_exp_linkage = sum(values) / len(values)
+        out.decoy_tsd_hits = hits
+        out.decoy_sum_absent = absent
+        out.decoy_sum_present_per_p = present
     return out
