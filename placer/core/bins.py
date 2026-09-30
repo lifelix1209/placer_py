@@ -674,7 +674,8 @@ def _record_shadow(target: EvidenceLedgerRow | FinalCall,
 
 def _record_replay_observables(row: EvidenceLedgerRow, shadow: locus_module.LocusScore,
                                allele: events_module.AlleleEvidence, insert_seq: str,
-                               hooks: StageHooks) -> None:
+                               hooks: StageHooks,
+                               own_background: tuple[int, int] = (-1, -1)) -> None:
     """What the ledger records for replay and no decision reads (the fields
     after `conformal_qc` in `EvidenceLedgerRow`). Set on the row only: a
     FinalCall does not carry them."""
@@ -690,14 +691,19 @@ def _record_replay_observables(row: EvidenceLedgerRow, shadow: locus_module.Locu
     row.allele_carrier_similarity = list(allele.carrier_similarity)
     row.allele_carrier_own = list(allele.carrier_own)
     own_counts = shadow.score.terms.get("counts", 0.0)
+    row.mech_counts_eps = shadow.counts_eps
+    row.counts_bg_own_reads, row.counts_bg_own_hits = own_background
 
-    def counts(tally: events_module.AlleleTally) -> float:
+    def counts(tally: events_module.AlleleTally) -> tuple[float, float]:
+        """The tally's counts term and the error rate it was scored with."""
         if tally.extra_carriers <= 0:
-            return own_counts
+            return own_counts, shadow.counts_eps
+        span_left, span_right = row.bp_left + tally.span_lo, row.bp_left + tally.span_hi
+        eps = locus_module.allele_error_rate(row.chrom, span_left, span_right,
+                                             hooks.fetch_reference)
         return locus_module.allele_counts_term(
-            row.chrom, row.bp_left + tally.span_lo, row.bp_left + tally.span_hi,
-            tally.alt_reads, tally.ref_reads, len(insert_seq or ""),
-            hooks.fetch_reference)
+            row.chrom, span_left, span_right, tally.alt_reads, tally.ref_reads,
+            len(insert_seq or ""), hooks.fetch_reference), eps
 
     for prefix, tally in (("bylen", allele.by_length), ("byseq", allele.by_sequence),
                           ("wide", allele.wide)):
@@ -706,7 +712,11 @@ def _record_replay_observables(row: EvidenceLedgerRow, shadow: locus_module.Locu
         setattr(row, f"allele_{prefix}_span_lo", tally.span_lo)
         setattr(row, f"allele_{prefix}_span_hi", tally.span_hi)
         setattr(row, f"allele_{prefix}_extra_carriers", tally.extra_carriers)
-        setattr(row, f"mech_counts_allele_{prefix}", counts(tally))
+        term, eps = counts(tally)
+        setattr(row, f"mech_counts_allele_{prefix}", term)
+        setattr(row, f"allele_{prefix}_eps", eps)
+        setattr(row, f"allele_{prefix}_bg_reads", tally.background_reads)
+        setattr(row, f"allele_{prefix}_bg_hits", tally.background_hits)
 
 
 def _align_bin_inserts(insert_seqs: list[str | None],
@@ -897,7 +907,8 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
             _record_replay_observables(
                 row, shadow,
                 events_module.collect_allele_evidence(component, item.local_records, evidence),
-                segmentation.insert_seq, hooks)
+                segmentation.insert_seq, hooks,
+                events_module.collect_own_background(component, item.local_records, evidence))
             row_is_new = append_row(row)
 
             call = _final_call_from_evaluation(component, evidence, consensus,

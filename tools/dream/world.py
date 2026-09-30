@@ -70,6 +70,19 @@ DEFAULTS: dict[str, object] = {
     "allele_wide_span_hi": 0,
     "allele_wide_extra_carriers": 0,
     "mech_counts_allele_wide": 0.0,
+    # Scans before frozen/rec2 did not measure the counts term's local null.
+    "mech_counts_eps": -1.0,
+    "counts_bg_own_reads": -1,
+    "counts_bg_own_hits": -1,
+    "allele_bylen_eps": -1.0,
+    "allele_bylen_bg_reads": -1,
+    "allele_bylen_bg_hits": -1,
+    "allele_byseq_eps": -1.0,
+    "allele_byseq_bg_reads": -1,
+    "allele_byseq_bg_hits": -1,
+    "allele_wide_eps": -1.0,
+    "allele_wide_bg_reads": -1,
+    "allele_wide_bg_hits": -1,
 }
 
 #: Columns kept as text even when they look numeric.

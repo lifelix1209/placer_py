@@ -143,3 +143,19 @@ def test_the_allele_counts_term_uses_the_span_s_own_error_rate():
     in_repeat = L.allele_counts_term("c", 800, 1100, 20, 20, 300,
                                      lambda chrom, start, end: tandem[start:end])
     assert in_repeat < clean                          # a VNTR's higher artifact rate
+
+
+def test_the_counts_error_rate_is_recorded_as_the_counts_term_used_it():
+    from placer.core import tprt
+
+    bp = 3000
+    scored = L.score_evaluated_locus("c", bp, bp, "G" * 800, _alignment(), 10, 10, fetch,
+                                     lambda *a: None, with_decoys=False)
+    obs = scored.observation
+    assert scored.counts_eps == tprt.local_error_rate(obs.local_a_frac, obs.local_t_frac,
+                                                      obs.local_repeat_frac)
+    assert scored.score.terms["counts"] == pytest.approx(
+        tprt.log_bf_counts(10, 10, 800.0, eps=scored.counts_eps))
+    eps = L.allele_error_rate("c", 3000, 3300, fetch)
+    assert L.allele_counts_term("c", 3000, 3300, 20, 20, 300, fetch) == pytest.approx(
+        tprt.log_bf_counts(20, 20, 300.0, eps=eps))

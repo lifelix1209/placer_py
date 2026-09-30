@@ -388,6 +388,9 @@ def test_the_allele_tally_is_recorded_and_round_trips_through_a_world():
     assert best.mech_counts_allele_bylen > float(
         dict(t.split("=") for t in best.mech_terms.split(";"))["counts"])
     assert best.mech_decoy_tsd_hits >= 0
+    assert best.counts_bg_own_reads > 0 and best.counts_bg_own_hits >= 0
+    assert best.allele_bylen_bg_reads >= 0 and best.allele_bylen_eps > 0
+    assert best.mech_counts_eps > 0
     with tempfile.TemporaryDirectory() as output_dir:
         path = pathlib.Path(output_dir) / "evidence_ledger.tsv"
         path.write_text(O.render_evidence_ledger_tsv(result))

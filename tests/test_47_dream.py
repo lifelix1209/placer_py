@@ -97,6 +97,8 @@ def test_a_world_before_the_replay_observables_replays_as_its_scan_decided():
             row.allele_wide_extra_carriers) == (0, 0, 0)
     assert row.allele_carrier_offsets == "NA" and row.allele_carrier_own == "NA"
     assert row.mech_tsd_p_present == -1.0 and row.mech_decoy_tsd_hits == -1
+    assert (row.mech_counts_eps, row.counts_bg_own_reads, row.allele_byseq_bg_hits) == (
+        -1.0, -1, -1)
 
 
 def test_a_recorded_single_length_stays_text_like_a_list_of_them():

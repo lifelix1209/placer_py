@@ -69,6 +69,8 @@ class LocusScore:
     #:     with one, so the mean at any p is
     #:     (max(1e-6, 1 - p) * sum_absent + p * sum_present_per_p) / count.
     tsd_p_present: float = -1.0
+    #: The error rate the counts term used (`mechanism.counts_term`).
+    counts_eps: float = -1.0
     decoy_tsd_p_present: float = -1.0
     decoy_tsd_hits: int = -1
     decoy_sum_absent: float = 0.0
@@ -188,22 +190,34 @@ def _own_tsd_p_present(score: mech.MechanismScore, obs: mech.LocusObservation,
     return params.tsd_model(obs.te_class, obs.superfamily).p_present
 
 
-def allele_counts_term(chrom: str, span_left: int, span_right: int, n_alt: int,
-                       n_ref: int, insert_len: int,
-                       fetch_reference: Callable[[str, int, int], str]) -> float:
-    """The counts term (`mechanism.counts_term`) over an allele's whole span.
+def _counts_eps(obs: mech.LocusObservation) -> float:
+    """The error rate `mechanism.counts_term` scores this observation with."""
+    return tprt.local_error_rate(obs.local_a_frac, obs.local_t_frac, obs.local_repeat_frac)
 
-    The error rate is the span's own: its composition and its tandem-repeat
-    content over [span_left, span_right], so an allele gathered across a VNTR
-    is weighed against the higher artifact rate a VNTR has. RECORDED FOR
-    REPLAY (`events.collect_allele_evidence`); no decision reads it.
-    """
+
+def allele_error_rate(chrom: str, span_left: int, span_right: int,
+                      fetch_reference: Callable[[str, int, int], str]) -> float:
+    """The counts term's error rate over an allele's whole span: its
+    composition and its tandem-repeat content over [span_left, span_right]."""
     lo = max(0, span_left - LOCAL_WINDOW_BP)
     hi = span_right + LOCAL_WINDOW_BP
     window = fetch_reference(chrom, lo, hi) or ""
     a_frac, t_frac = local_composition(window)
     repeat = repeat_fraction_at(window, span_left - lo, span_right - lo)
-    eps = tprt.local_error_rate(a_frac, t_frac, repeat)
+    return tprt.local_error_rate(a_frac, t_frac, repeat)
+
+
+def allele_counts_term(chrom: str, span_left: int, span_right: int, n_alt: int,
+                       n_ref: int, insert_len: int,
+                       fetch_reference: Callable[[str, int, int], str]) -> float:
+    """The counts term (`mechanism.counts_term`) over an allele's whole span.
+
+    The error rate is the span's own (`allele_error_rate`), so an allele
+    gathered across a VNTR is weighed against the higher artifact rate a VNTR
+    has. RECORDED FOR REPLAY (`events.collect_allele_evidence`); no decision
+    reads it.
+    """
+    eps = allele_error_rate(chrom, span_left, span_right, fetch_reference)
     return tprt.log_bf_counts(max(0, n_alt), max(0, n_ref), float(max(1, insert_len)),
                               eps=eps)
 
@@ -251,7 +265,8 @@ def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
     if not with_decoys or bp_left < 0:
         score = mech.score_locus(obs, params)
         return LocusScore(observation=obs, score=score,
-                          tsd_p_present=_own_tsd_p_present(score, obs, params))
+                          tsd_p_present=_own_tsd_p_present(score, obs, params),
+                          counts_eps=_counts_eps(obs))
 
     # The shifted breakpoints: the same insert and reads, the breakpoint moved.
     width = max(0, bp_right - bp_left)
@@ -284,6 +299,7 @@ def score_evaluated_locus(chrom: str, bp_left: int, bp_right: int,
     obs.tsd_empirical_null = rate_at_least(obs.tsd_len)
     out = LocusScore(observation=obs, score=mech.score_locus(obs, params))
     out.tsd_p_present = _own_tsd_p_present(out.score, obs, params)
+    out.counts_eps = _counts_eps(obs)
 
     # Each shift as a decoy, scored exactly as the locus is -- against the
     # empirical null of the OTHER shifts (leave-one-out), so the check tests

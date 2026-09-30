@@ -197,6 +197,22 @@ class EvidenceLedgerRow:
     allele_wide_span_hi: int = field(default=0, compare=False)
     allele_wide_extra_carriers: int = field(default=0, compare=False)
     mech_counts_allele_wide: float = field(default=0.0, compare=False)
+    #: The counts term's local null, measured (`events.COUNTS_BACKGROUND_WINDOWS`):
+    #: the model's error rate for the row's own counts term and for each tally
+    #: (-1: not recorded), and each tally's signal where the insertion is not --
+    #: read-windows spanned, and those showing the signal (-1: not measured).
+    mech_counts_eps: float = field(default=-1.0, compare=False)
+    counts_bg_own_reads: int = field(default=-1, compare=False)
+    counts_bg_own_hits: int = field(default=-1, compare=False)
+    allele_bylen_eps: float = field(default=-1.0, compare=False)
+    allele_bylen_bg_reads: int = field(default=-1, compare=False)
+    allele_bylen_bg_hits: int = field(default=-1, compare=False)
+    allele_byseq_eps: float = field(default=-1.0, compare=False)
+    allele_byseq_bg_reads: int = field(default=-1, compare=False)
+    allele_byseq_bg_hits: int = field(default=-1, compare=False)
+    allele_wide_eps: float = field(default=-1.0, compare=False)
+    allele_wide_bg_reads: int = field(default=-1, compare=False)
+    allele_wide_bg_hits: int = field(default=-1, compare=False)
 
 
 @dataclass

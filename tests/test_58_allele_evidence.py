@@ -149,3 +149,43 @@ def test_recorded_fields_do_not_take_part_in_row_equality():
                           allele_carrier_offsets=[0, 80], allele_wide_alt_reads=24,
                           mech_tsd_len=14, mech_decoy_sum_absent=3.5)
     assert a == b
+
+
+# ------------------------------------------- the counts term's local null, measured
+def test_a_clean_neighbourhood_shows_no_background_signal():
+    _, found = allele(group(-80) + group(0) + group(80) + refs())
+    tally = found.by_length
+    assert tally.background_reads > 0 and tally.background_hits == 0
+
+
+def test_the_allele_s_insertion_beyond_the_carrier_window_is_its_background():
+    """Reads with the allele's insertion 700 bp away are outside the carrier
+    window, so not carriers: they are what the allele's signal looks like where
+    the insertion is not, as in a VNTR where every read carries something."""
+    _, found = allele(group(-80) + group(0) + group(80) + refs() + group(700, n=6))
+    assert found.by_length.extra_carriers == 16
+    assert found.by_length.background_hits == 6
+    # Of another sequence, they are background by length only.
+    _, other = allele(group(-80) + group(0) + group(80) + refs()
+                      + group(700, n=6, insert=OTHER))
+    assert other.by_length.background_hits == 6
+    assert other.by_sequence.background_hits == 0
+
+
+def test_a_tally_that_is_the_row_s_own_has_no_background_of_its_own():
+    _, found = allele(group(0) + refs())
+    assert (found.by_length.background_reads, found.by_length.background_hits) == (-1, -1)
+
+
+def test_the_own_background_counts_a_clip_as_the_alt_tally_would():
+    """A read clipped inside a background window does not span it, and is
+    counted all the same: the +-25 bp tally counts clipped reads as alt."""
+    component = C.ComponentCall(chrom="chr1", tid=0, anchor_pos=SITE)
+    clipped = [AlignedRead(qname=f"clip{i}", tid=0, pos=9000, mapq=60,
+                           cigar=[(CIGAR_M, 430), (CIGAR_S, 300)],
+                           seq=REFERENCE[9000:9430] + INSERT[:300]) for i in range(4)]
+    for reads, hits in ((group(0) + refs(), 0), (group(0) + refs() + clipped, 4)):
+        evidence = E.collect_event_read_evidence_for_bounds(
+            component, reads, E.read_reference_spans(reads), [], SITE, SITE)
+        counted, found = E.collect_own_background(component, reads, evidence)
+        assert found == hits and counted >= 11 * 8

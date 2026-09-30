@@ -12,6 +12,31 @@ that file says what it cost.
 
 ## [Unreleased]
 
+**The ledger measures the counts term's local null, and no call changes.**
+The counts term's null is a model: under H_artifact a read shows the signal
+with probability eps, from the locus's composition. Nothing checked it, as
+the shifted-breakpoint decoys check the TSD and motif terms.
+- **What is now recorded.** Every evaluated row records the eps its counts
+  term used, and the rate its signal shows where the insertion is not. That
+  rate is taken over 4 windows a side, as wide as the tally, beyond the
+  +-500 bp carrier window (`events.COUNTS_BACKGROUND_WINDOWS`). It is
+  recorded for the row's own +-25 bp tally and for each allele tally.
+- **Measured / model eps.**
+
+  | tally | HG002 chr1, median | chr1, share > 1 | cichlid slice, median | cichlid, share > 1 |
+  |---|---|---|---|---|
+  | own +-25 bp | 0.40 (p90 32) | 32% | 2.38 | 86% |
+  | allele, by sequence | 0.12 | 9% | 0.12 | 6% |
+
+  The own tally's windows sit 0.5-0.7 kb from the breakpoint, where a real
+  insertion's own scattered signal can also fall, so its measured rate is an
+  upper bound.
+- **Measured.** Every release run was rerun from `placer_dev/frozen/rec2`.
+  - Calls are identical to 1.0.0a4 on all nine runs.
+  - The ledger has 12 more columns than the previous recording change.
+  - A replay of each ledger gives its run's PASS calls exactly.
+  - 9.42 CPU-h, against 9.47.
+
 **The ledger records what two decision changes would need, and no call
 changes.** This is the recording half of a scan-domain change
 (`docs/development-strategy.md`, section 1: make the world richer before
@@ -67,6 +92,10 @@ cichlid slice. Each was compared with its 1.0.0a4 run
     `allele_<t>_extra_carriers` and `mech_counts_allele_<t>`.
   - `EvidenceLedgerRow` holds them with `compare=False`, so the per-bin
     de-duplication, and with it every call, is unchanged.
+- The counts term's local null, also for replay only:
+  - `mech_counts_eps`, `counts_bg_own_reads`, `counts_bg_own_hits`;
+  - for each of `bylen`, `byseq` and `wide`: `allele_<t>_eps`,
+    `allele_<t>_bg_reads` and `allele_<t>_bg_hits`.
 
 ## [1.0.0a4] - 2026-09-29
 

@@ -721,6 +721,40 @@ objective.
   - **A decoy check that passes can hide two errors that cancel.** Changing
     one term exposes the other, and the check then charges the gain back.
 
+**Round 17 (2026-09-30): the counts term's null, measured, was not the
+cause.**
+- **What was recorded.** A second scan change that only records
+  (`frozen/rec2`, worlds `*_rec2`, calls identical on all nine release runs).
+  It adds, for each tally, the rate at which the tally's signal appears where
+  the insertion is not: 4 windows a side, as wide as the tally, beyond the
+  +-500 bp carrier window.
+- **The allele tallies.** The measured rate is a fraction of the model's eps:
+  median 0.12 on chr1 and on cichlid, and only 9% and 6% of rows above the
+  model. The model was already conservative for them.
+  - round17 (round13 with eps = max(model, measured)): chr1 181 / 11, as
+    round13.
+- **Production's own +-25 bp tally.** The measured rate exceeds the model on
+  32% of chr1 rows (median 0.40, p90 32) and 86% of cichlid rows (median
+  2.4).
+  - Rescoring the own counts term at the measured rate leaves chr1's TE
+    calls at 171 / 10, with 560 -> 528 structural calls.
+  - On cichlid: 179 -> 169 PASS. Those supported by neither Sniffles2 nor
+    tldr fall 32 -> 24, and tldr matched falls 58 -> 55.
+  - The windows sit 0.5-0.7 kb from the breakpoint, where a real
+    insertion's own scattered signal also falls, so the measured rate is an
+    upper bound.
+- **What round13's extra FPs are, on chr1.** Every one of the six has a GIAB
+  insertion within 1 kb.
+  - Three are the rescued allele placed 283-355 bp from GIAB's position
+    (chr1:155954455: carriers at -150 bp and at 0, GIAB at +134).
+  - Two sit at the TE-rule boundary (GIAB 98 bp, or not TE by the truth).
+  - One is a second fragment of a 2.3 kb insertion.
+- **Lesson.** The out-of-sample FPs of allele aggregation are, as far as
+  chr1 shows, rescued alleles placed more than 100 bp from where the
+  benchmark puts them, not false alleles. Each such allele turns an FN into
+  an FP + FN. Where to place a multimodal allele is a replay question: the
+  carriers' offsets are recorded.
+
 ## 9. Checklist for a change to what PLACER decides
 
 - [ ] Which side of the boundary? If scan-domain: what does the next round need

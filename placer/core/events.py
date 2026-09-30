@@ -417,6 +417,18 @@ ALLELE_SPAN_CAP_BP = 1000
 #: them at 0.2 or more.
 ALLELE_KMER = 11
 ALLELE_MIN_SIMILARITY = 0.2
+#: THE COUNTS TERM'S LOCAL NULL, measured. The counts term's null is a model:
+#: under H_artifact a read shows the signal with probability eps, from the
+#: locus's composition (`tprt.local_error_rate`). Nothing checks it, as the
+#: shifted-breakpoint decoys check the TSD and motif terms, and a tally
+#: widened to an allele's span makes it more fragile: in a VNTR, reads carry
+#: insertions of every length. So the rate is measured where the insertion is
+#: not: in COUNTS_BACKGROUND_WINDOWS windows on each side, each as wide as the
+#: tally's own window, beyond the carrier window (ALLELE_WINDOW_BP). A window's
+#: reads are counted as the tally counts them: those showing its signal inside
+#: the window (alt-like), and those strictly spanning it without one
+#: (reference-like). Recorded for replay; no decision reads it.
+COUNTS_BACKGROUND_WINDOWS = 4
 
 
 
@@ -432,6 +444,11 @@ class AlleleTally:
     #: Carriers beyond the hypothesis's own alt reads. 0 means the tally is the
     #: hypothesis's own tally, unchanged.
     extra_carriers: int = 0
+    #: The tally's signal where the insertion is not (COUNTS_BACKGROUND_WINDOWS):
+    #: read-windows counted, and those showing a carrier of this allele's length
+    #: (and sequence, for `by_sequence` and `wide`). -1 when extra_carriers is 0.
+    background_reads: int = -1
+    background_hits: int = -1
 
 
 @dataclass
@@ -656,4 +673,111 @@ def collect_allele_evidence(component: ComponentCall, local_records: list[Aligne
                                     left, right, every_carrier)
     out.wide = _allele_tally(component, local_records, evidence, own, alike,
                              left, right, every_carrier, linked=False)
+
+    def matches(seq: str, by_sequence: bool) -> bool:
+        if not by_sequence or not seq or not reference_kmers:
+            return True
+        kmers = _kmers(seq)
+        return bool(kmers) and len(kmers & reference_kmers) / len(kmers) >= ALLELE_MIN_SIMILARITY
+
+    for tally, by_sequence in ((out.by_length, False), (out.by_sequence, True),
+                               (out.wide, True)):
+        if tally.extra_carriers <= 0:
+            continue
+        windows = background_windows(left, right,
+                                     tally.span_hi - tally.span_lo + 2 * ALT_SIGNAL_SLACK_BP)
+        tally.background_reads, tally.background_hits = 0, 0
+        for read in local_records:
+            if (read is None or read.tid != component.tid or not read.qname or not read.cigar
+                    or read.is_secondary or read.is_supplementary
+                    or read.mapq != INSERTION_CANDIDATE_REQUIRED_MAPQ):
+                continue
+            end = compute_ref_end(read)
+            touched = [(lo, hi) for lo, hi in windows if read.pos <= hi and end >= lo]
+            if not touched:
+                continue
+            found = _length_events(read, component.chrom, touched[0][0], touched[-1][1],
+                                   lo_len, hi_len)
+            for lo, hi in touched:
+                if any(lo <= pos <= hi and matches(seq, by_sequence) for pos, seq in found):
+                    tally.background_reads += 1
+                    tally.background_hits += 1
+                elif read.pos <= lo and end >= hi:
+                    tally.background_reads += 1
     return out
+
+
+def background_windows(left: int, right: int, width: int) -> list[tuple[int, int]]:
+    """COUNTS_BACKGROUND_WINDOWS windows of `width` on each side of the carrier
+    window [left - ALLELE_WINDOW_BP, right + ALLELE_WINDOW_BP], in order."""
+    width = max(1, width)
+    lo_edge, hi_edge = left - ALLELE_WINDOW_BP, right + ALLELE_WINDOW_BP
+    out = [(lo_edge - (k + 1) * width, lo_edge - k * width)
+           for k in range(COUNTS_BACKGROUND_WINDOWS - 1, -1, -1)]
+    out += [(hi_edge + k * width, hi_edge + (k + 1) * width)
+            for k in range(COUNTS_BACKGROUND_WINDOWS)]
+    return [(lo, hi) for lo, hi in out if lo >= 0]
+
+
+def _length_events(read: AlignedRead, chrom: str, start: int, end: int,
+                   lo_len: float, hi_len: float) -> list[tuple[int, str]]:
+    """Every insertion event of the length in [start, end]: merged CIGAR pieces
+    (position, inserted sequence) and SA splits (position, "")."""
+    index = cigar_index(read)
+    a = bisect_left(index.ins_ref_pos, start - ALLELE_PIECE_MERGE_BP)
+    b = bisect_right(index.ins_ref_pos, end + ALLELE_PIECE_MERGE_BP)
+    groups: list[list[int]] = []
+    for k in range(a, b):
+        if index.ins_len[k] < ALLELE_PIECE_MIN_BP:
+            continue
+        if (groups and index.ins_ref_pos[k] - index.ins_ref_pos[groups[-1][-1]]
+                <= ALLELE_PIECE_MERGE_BP):
+            groups[-1].append(k)
+        else:
+            groups.append([k])
+    out = []
+    for group in groups:
+        pos = index.ins_ref_pos[group[0]]
+        length = sum(index.ins_len[k] for k in group)
+        if start <= pos <= end and lo_len <= length <= hi_len:
+            seq = ("".join(read.seq[index.ins_query_pos[k]:index.ins_query_pos[k] + index.ins_len[k]]
+                           for k in group) if read.seq else "")
+            out.append((pos, seq))
+    out.extend((pos, "") for pos, length in split_insertion_calls(read, chrom)
+               if start <= pos <= end and lo_len <= length <= hi_len)
+    return out
+
+
+def collect_own_background(component: ComponentCall, local_records: list[AlignedRead],
+                           evidence: EventReadEvidence) -> tuple[int, int]:
+    """The +-25 bp tally's signal where the insertion is not: (read-windows
+    counted, read-windows showing an alt-like signal -- a split, a clip, or a
+    uniquely mapped insertion of at least LONG_INSERTION_SIGNAL_MIN), over
+    COUNTS_BACKGROUND_WINDOWS windows a side as wide as the alt window. A
+    window counts the reads showing the signal inside it and the reads
+    strictly spanning it without one; primary reads, and MAPQ >=
+    REF_SPAN_MIN_MAPQ for the spanning ones, as the reference tally counts
+    them. (-1, -1) without a breakpoint. Recorded for replay; no decision
+    reads it."""
+    if evidence.bp_left < 0 or evidence.bp_right < 0:
+        return -1, -1
+    left = min(evidence.bp_left, evidence.bp_right)
+    right = max(evidence.bp_left, evidence.bp_right)
+    windows = background_windows(left, right, right - left + 2 * ALT_SIGNAL_SLACK_BP)
+    reads = hits = 0
+    for read in local_records:
+        if (read is None or read.tid != component.tid or not read.qname or not read.cigar
+                or read.is_secondary or read.is_supplementary):
+            continue
+        end = compute_ref_end(read)
+        for lo, hi in windows:
+            if read.pos > hi or end < lo:
+                continue
+            signal = classify_local_event_signal(read, component.chrom, lo, hi)
+            if (signal.split or signal.left_clip or signal.right_clip
+                    or (signal.indel and read.mapq == INSERTION_CANDIDATE_REQUIRED_MAPQ)):
+                reads += 1
+                hits += 1
+            elif read.pos <= lo and end >= hi and read.mapq >= REF_SPAN_MIN_MAPQ:
+                reads += 1
+    return reads, hits

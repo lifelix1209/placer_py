@@ -130,6 +130,10 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "allele_byseq_span_hi", "allele_byseq_extra_carriers", "mech_counts_allele_byseq",
     "allele_wide_alt_reads", "allele_wide_ref_reads", "allele_wide_span_lo",
     "allele_wide_span_hi", "allele_wide_extra_carriers", "mech_counts_allele_wide",
+    "mech_counts_eps", "counts_bg_own_reads", "counts_bg_own_hits",
+    "allele_bylen_eps", "allele_bylen_bg_reads", "allele_bylen_bg_hits",
+    "allele_byseq_eps", "allele_byseq_bg_reads", "allele_byseq_bg_hits",
+    "allele_wide_eps", "allele_wide_bg_reads", "allele_wide_bg_hits",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -320,6 +324,10 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.allele_byseq_span_hi, row.allele_byseq_extra_carriers, row.mech_counts_allele_byseq,
         row.allele_wide_alt_reads, row.allele_wide_ref_reads, row.allele_wide_span_lo,
         row.allele_wide_span_hi, row.allele_wide_extra_carriers, row.mech_counts_allele_wide,
+        row.mech_counts_eps, row.counts_bg_own_reads, row.counts_bg_own_hits,
+        row.allele_bylen_eps, row.allele_bylen_bg_reads, row.allele_bylen_bg_hits,
+        row.allele_byseq_eps, row.allele_byseq_bg_reads, row.allele_byseq_bg_hits,
+        row.allele_wide_eps, row.allele_wide_bg_reads, row.allele_wide_bg_hits,
     ]
     return [_number(value) for value in values]
 
