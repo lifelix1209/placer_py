@@ -696,10 +696,10 @@ def collect_allele_evidence(component: ComponentCall, local_records: list[Aligne
             touched = [(lo, hi) for lo, hi in windows if read.pos <= hi and end >= lo]
             if not touched:
                 continue
-            found = _length_events(read, component.chrom, touched[0][0], touched[-1][1],
-                                   lo_len, hi_len)
+            in_windows = _length_events(read, component.chrom, touched[0][0], touched[-1][1],
+                                        lo_len, hi_len)
             for lo, hi in touched:
-                if any(lo <= pos <= hi and matches(seq, by_sequence) for pos, seq in found):
+                if any(lo <= pos <= hi and matches(seq, by_sequence) for pos, seq in in_windows):
                     tally.background_reads += 1
                     tally.background_hits += 1
                 elif read.pos <= lo and end >= hi:
