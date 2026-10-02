@@ -668,17 +668,30 @@ def _record_shadow(target: EvidenceLedgerRow | FinalCall,
     target.mech_decoy_mean_exp_linkage = shadow.decoy_mean_exp_linkage
     target.mech_aligned_len = shadow.observation.aligned_len
     target.mech_sequence_term = shadow.score.terms.get("sequence", 0.0)
+    target.mech_counts_term = shadow.score.terms.get("counts", 0.0)
     target.mech_terms = ";".join(f"{name}={value:.3f}"
                                  for name, value in shadow.score.terms.items()) or "NA"
+
+
+def _copy_decision_observables(row: EvidenceLedgerRow, call: FinalCall) -> None:
+    """The row's fields the decision reads that `_record_shadow` does not set
+    (`FinalCall`, "What else the decision reads"), so the call and its row are
+    decided alike."""
+    call.alt_measured_lengths = list(row.alt_measured_lengths)
+    call.allele_length = row.allele_length
+    call.allele_byseq_span_lo = row.allele_byseq_span_lo
+    call.allele_byseq_span_hi = row.allele_byseq_span_hi
+    call.allele_byseq_extra_carriers = row.allele_byseq_extra_carriers
+    call.mech_counts_allele_byseq = row.mech_counts_allele_byseq
 
 
 def _record_replay_observables(row: EvidenceLedgerRow, shadow: locus_module.LocusScore,
                                allele: events_module.AlleleEvidence, insert_seq: str,
                                hooks: StageHooks,
                                own_background: tuple[int, int] = (-1, -1)) -> None:
-    """What the ledger records for replay and no decision reads (the fields
-    after `conformal_qc` in `EvidenceLedgerRow`). Set on the row only: a
-    FinalCall does not carry them."""
+    """What the ledger records for replay (the fields after `conformal_qc` in
+    `EvidenceLedgerRow`). Set on the row; the call gets the few the decision
+    reads from `_copy_decision_observables`."""
     row.mech_tsd_len = shadow.observation.tsd_len
     row.mech_tsd_p_present = shadow.tsd_p_present
     row.mech_decoy_tsd_p_present = shadow.decoy_tsd_p_present
@@ -915,6 +928,7 @@ def process_bin_records(bin_records: list[AlignedRead], chrom: str, tid: int,
                                                segmentation, te_alignment, joint,
                                                genotype, config, hooks)
             _record_shadow(call, shadow)
+            _copy_decision_observables(row, call)
             if item.genotype_input is not None:
                 # A copy: finalization sets the sample's overdispersion on it.
                 call.genotype_likelihood_input = replace(item.genotype_input)

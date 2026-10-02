@@ -83,6 +83,10 @@ DEFAULTS: dict[str, object] = {
     "allele_wide_eps": -1.0,
     "allele_wide_bg_reads": -1,
     "allele_wide_bg_hits": -1,
+    # Scans before round 20's decision did not write the counts term on its
+    # own; `load_rows` reads it from `mech_terms` (rounded to 3 decimals, so
+    # an allele's ratio replays to +-5e-4 nats on those worlds).
+    "mech_counts_term": 0.0,
 }
 
 #: Columns kept as text even when they look numeric.
@@ -94,6 +98,9 @@ TEXT_COLUMNS = frozenset({
     "allele_carrier_offsets", "allele_carrier_lengths", "allele_carrier_similarity",
     "allele_carrier_own",
 })
+
+#: Text columns that hold a list the decision reads as the scan's list of ints.
+INT_LIST_COLUMNS = frozenset({"alt_measured_lengths"})
 
 #: The registry of worlds, beside the scan outputs.
 DEFAULT_REGISTRY = Path("/mnt/beegfs/scratch/miska/hl725/placer_dev/dream/worlds.json")
@@ -156,6 +163,19 @@ def insert_length(values: dict[str, object]) -> int:
     return max(0, consensus - flanks)
 
 
+def _int_list(text: str) -> list[int]:
+    return [] if text in ("", "NA") else [int(x) for x in text.split(",")]
+
+
+def _term(terms: str, name: str) -> float:
+    """One term of `mech_terms` (`name=value;...`), 0.0 when absent."""
+    for part in terms.split(";"):
+        key, _, value = part.partition("=")
+        if key == name:
+            return float(value)
+    return 0.0
+
+
 def load_rows(ledger: Path) -> tuple[list[Row], list[str]]:
     csv.field_size_limit(sys.maxsize)   # insert_seq can be tens of kb
     rows: list[Row] = []
@@ -170,6 +190,10 @@ def load_rows(ledger: Path) -> tuple[list[Row], list[str]]:
             values: dict[str, object] = {k: _value(k, v) for k, v in raw.items()}
             for column in missing:
                 values[column] = DEFAULTS[column]
+            if "mech_counts_term" in missing:
+                values["mech_counts_term"] = _term(str(values.get("mech_terms", "NA")), "counts")
+            for column in INT_LIST_COLUMNS:
+                values[column] = _int_list(str(values.get(column, "NA")))
             values["tid"] = tids.setdefault(str(values["chrom"]), len(tids))
             values["insert_len"] = insert_length(values)
             values["_row_id"] = len(rows)

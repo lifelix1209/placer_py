@@ -80,6 +80,11 @@ class EvidenceLedgerRow:
     #: The inputs the sequence term was computed from.
     mech_aligned_len: int = 0
     mech_sequence_term: float = 0.0
+    #: The counts term of `mech_log_lr_vs_artifact`, unrounded (`mech_terms`
+    #: rounds it): the decision swaps it for the allele's
+    #: (`mechanism_selection.allele_log_lr_vs_artifact`). `compare=False`, like
+    #: the allele tally: the per-bin de-duplication is as before.
+    mech_counts_term: float = field(default=0.0, compare=False)
     #: Set at finalization by `core/mechanism_selection.py` on each locus's
     #: representative row: its e-value, whether the decision selects it as a
     #: TE call or as a structural call, and the precise breakpoint it is placed
@@ -118,7 +123,8 @@ class EvidenceLedgerRow:
     support_qnames: list[str] = field(default_factory=list)
     #: The alt reads' own measurements of the insertion's length, one per read
     #: (`EventReadEvidence.alt_measured_lengths`): CIGAR or SA-implied, never a
-    #: clip. A diagnostic for replay; no decision reads it.
+    #: clip. The TE rule reads their median
+    #: (`mechanism_selection.measured_insert_length`).
     alt_measured_lengths: list[int] = field(default_factory=list)
     best_te_identity: float = 0.0
     best_te_query_coverage: float = 0.0
@@ -155,9 +161,13 @@ class EvidenceLedgerRow:
     conformal_dominated_nulls: int = 0
     conformal_null_count: int = 0
     conformal_qc: str = "CONFORMAL_NOT_EVALUATED"
-    # ---- RECORDED FOR REPLAY: no decision reads these ----------------------
+    # ---- RECORDED FOR REPLAY ------------------------------------------------
     # `compare=False` on every one, so the per-bin de-duplication, which
     # compares rows field by field, and with it every call, is unchanged by them.
+    # The decision reads the `byseq` tally (`allele_length`, `allele_byseq_*`,
+    # `mech_counts_allele_byseq`; FinalCall carries a copy) and nothing else
+    # here: of two rows the de-duplication finds equal, the first one's tally
+    # is the one kept.
     #: The TSD term's inputs (`locus_evidence.LocusScore`): the locus's own TSD
     #: length (-1: not recorded) and model p, and the decoys split by whether
     #: they found a duplication, so a change of `p_present` replays exactly.
@@ -315,6 +325,16 @@ class FinalCall:
     #: Inside an alignment-collapse region, where the e-value was set to 0
     #: (`mechanism_selection.collapse_region_items`).
     mech_collapse_region: bool = False
+    #: What else the decision reads, copied from the call's ledger row
+    #: (`EvidenceLedgerRow`, same names): the counts term, the allele's
+    #: same-sequence tally, and the alt reads' measured lengths.
+    mech_counts_term: float = 0.0
+    alt_measured_lengths: list[int] = field(default_factory=list)
+    allele_length: int = -1
+    allele_byseq_span_lo: int = 0
+    allele_byseq_span_hi: int = 0
+    allele_byseq_extra_carriers: int = 0
+    mech_counts_allele_byseq: float = 0.0
     #: The TE alignment's own best family and subfamily, whatever the scan's
     #: joint decision (`core/policy.py`) then did to `family` (it overwrites it
     #: with UNKNOWN for a call it deems structural). Finalization names a TE

@@ -229,3 +229,76 @@ def test_finalization_keeps_the_scans_evidence_tokens():
     result = PipelineResult(candidate_calls=[te] + background(100_000, make=call))
     finalize_mechanism_calls(result, 0.1)
     assert te.final_qc.split("|") == ["PASS_TE_IMPRECISE", "PASS_TE_MECHANISM"]
+
+
+# ------------------------------------------------------------ alleles (round 20)
+def allele(item, counts, allele_counts, extra, span=(-200, 200), length=300):
+    """The row's own counts term, and the same-sequence tally over its allele."""
+    item.mech_counts_term = counts
+    item.mech_counts_allele_byseq = allele_counts
+    item.allele_byseq_extra_carriers = extra
+    item.allele_byseq_span_lo, item.allele_byseq_span_hi = span
+    item.allele_length = length
+    return item
+
+
+def test_an_allele_is_tested_on_all_its_carriers():
+    """The carriers the aligner put beyond the row's window count for it: the
+    allele's counts term replaces the row's own. Without extra carriers the
+    tally is the row's own, and nothing changes."""
+    dispersed = allele(row(1000, 2.0), counts=1.0, allele_counts=12.0, extra=10)
+    alone = allele(row(50_000, 2.0), counts=1.0, allele_counts=12.0, extra=0)
+    S.select_loci_coverage([dispersed, alone] + background(10_000), 0.1)
+    assert dispersed.mech_ebh_selected
+    assert dispersed.mech_e_value == pytest.approx(math.exp(2.0 - 1.0 + 12.0))
+    assert not alone.mech_ebh_selected
+    assert S.allele_log_lr_vs_artifact(alone) == 2.0
+
+
+def test_the_allele_tests_a_locus_but_its_own_rows_name_and_place_it():
+    """A row the allele term lifts above the locus's best does not take over
+    the call: on the whole-genome DREAM contigs that moved 51 true calls to a
+    structural insert or a wrong position."""
+    own = precise(row(1000, 10.0), 5)
+    lifted = allele(precise(row(1100, 5.0, coverage=0.2), 9), counts=3.0,
+                    allele_counts=15.0, extra=8)
+    S.select_loci_coverage([own, lifted] + background(10_000), 0.1)
+    assert own.mech_ebh_selected and own.mech_call_pos == -1
+    assert not (lifted.mech_ebh_selected or lifted.mech_structural_selected)
+    assert own.mech_e_value == pytest.approx((math.exp(10.0) + math.exp(17.0)) / 2)
+
+
+@pytest.mark.parametrize("length_b, merged", [(320, True), (600, False)])
+def test_loci_whose_alleles_overlap_are_tested_once(length_b, merged):
+    """450 bp apart, so two loci by distance; their same-sequence spans
+    overlap, so one allele when the lengths agree within 30%."""
+    a = allele(row(1000, 8.0), 1.0, 9.0, extra=5, span=(0, 500), length=300)
+    b = allele(row(1450, 8.0), 1.0, 9.0, extra=5, span=(-100, 300), length=length_b)
+    shadow = S.select_loci_coverage([a, b] + background(10_000), 0.1)
+    assert shadow.loci == (21 if merged else 22)
+    assert shadow.te_selected == (1 if merged else 2)
+
+
+# ------------------------------------------------------------ the measured length
+@pytest.mark.parametrize("lengths, is_te", [
+    ([], True),                  # no read measured it: the rule as before
+    ([80, 95, 99], False),       # the reads put it under 100 bp
+    ([90, 100, 110], True),      # median exactly 100
+    ([90, 99], False),           # median 94.5
+])
+def test_the_te_rule_needs_100_bp_as_the_reads_measure_it(lengths, is_te):
+    """The assembly inflates short insertions (GIAB 62-99 bp, assembled
+    108-227 bp, at 19 FPs). The reads' own measurements decide whether the
+    insertion can hold 100 bp of TE."""
+    r = row(1000, 30)
+    r.alt_measured_lengths = lengths
+    S.select_loci_coverage([r] + background(10_000), 0.1)
+    assert (r.mech_ebh_selected, r.mech_structural_selected) == (is_te, not is_te)
+
+
+def test_finalization_does_not_report_a_call_its_reads_measure_too_short():
+    short = call(1000, 30)
+    short.alt_measured_lengths = [70, 80, 90]
+    result = PipelineResult(candidate_calls=[short] + background(100_000, make=call))
+    finalize_mechanism_calls(result, 0.1)
+    assert result.final_calls == [] and short.mech_structural_selected

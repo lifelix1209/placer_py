@@ -12,6 +12,72 @@ that file says what it cost.
 
 ## [Unreleased]
 
+**Higher recall and higher precision: each locus is tested on its whole
+allele, and the TE rule's 100 bp floor applies to the length the reads
+measure.** This is round 20 of `docs/development-strategy.md` (section 8). It
+was dreamt on HG002 chr1 and the spent holdout chr9-22, X, Y, and validated,
+pre-registered, on chr2-8.
+- **Why, for recall.** In a tandem repeat the aligner puts one insertion at
+  different offsets in different reads. The +-25 bp tally counted the
+  carriers further away as reference. The allele's same-sequence tally,
+  recorded since `frozen/rec1`, now replaces the row's own counts in the
+  ratio a locus is tested on.
+  - Loci whose alleles overlap are tested as one locus.
+  - Which row names, labels and places the call is still chosen by the rows'
+    own ratios. Letting the allele term choose it (the earlier round13)
+    moved 51 true calls to structural or misplaced rows.
+- **Why, for precision.** The assembly inflates short insertions. 19 of 26
+  false positives whose GIAB insertion is not a TE were 62-99 bp in GIAB and
+  108-227 bp assembled, so the insert cleared the TE rule. A TE call now
+  also needs its alt reads to measure the insertion at 100 bp or more
+  (median of `alt_measured_lengths`). That held at 20 of those 26 FPs and at
+  13 of 1336 TPs.
+- **Replay, scored as TEBench scores.**
+
+  | world | before (TP/FP/FN) | after | precision | recall | gain, 90% |
+  |---|---|---|---|---|---|
+  | chr1 (`h_chr1_rec2`) | 171/10/58 | 178/7/51 | 94.5 -> 96.2% | 74.7 -> 77.7% | +0.083 [+0.013, +0.296] |
+  | chr1 + chr9-22, X, Y (whole-genome scan) | 1336/67/466 | 1382/65/420 | 95.2 -> 95.5% | 74.1 -> 76.7% | +0.026 [+0.012, +0.085] |
+  | chr2-8, pre-registered | 923/42/316 | 949/31/290 | 95.6 -> 96.8% | 74.5 -> 76.6% | +0.021 [+0.013, +0.070] |
+
+  On chr2-8 every chromosome gained TPs and none gained FPs (dream node
+  aa2e6f4453).
+- **Cichlid.** PASS TE calls fall from 179 to 173: the six the measured
+  length removes. tldr matched stays 58 of 78; the share within 100 bp of a
+  Sniffles2 insertion goes from 80.4% to 80.3%.
+- **Online.** Every release run was rerun from frozen code
+  (`placer_dev/frozen/r20-rc1`) with its own arguments: HG002 chr1-8 and the
+  cichlid slice. Each was compared with its rec2 run
+  (`placer_dev/release_r20/compare_r20.py`).
+  - **The ledger.** Same rows, same order. Only the decision's marks
+    (`mech_e_value`, `mech_ebh_selected`, `mech_structural_selected`) move,
+    on 47-739 rows per run, and `mech_counts_term` is appended.
+  - **Calls.** On all nine runs the PASS records equal both the replay of the
+    run's own ledger and the prediction from its rec2 ledger.
+  - **TEBench** (`tools/tebench_score.py`): chr1 178/7/51 and chr2-8 pooled
+    949/31/290. These are the replay's numbers, chromosome by chromosome.
+  - **Cichlid.** 173 PASS: the six predicted calls went, and none came.
+  - **Cost.** 9.36 CPU-h, against 9.42.
+
+### Changed
+
+- **The decision** (`mechanism_selection.select_loci_coverage`):
+  - it tests each locus on `allele_log_lr_vs_artifact`;
+  - it merges loci by allele (`_merge_by_allele`);
+  - its TE rule adds the measured-length floor (`_is_te_call`,
+    `TE_MIN_MEASURED_LEN_BP`).
+- **`FinalCall` carries what the decision reads from the row**: the counts
+  term, the `byseq` tally and the measured lengths.
+
+### Added
+
+- **Ledger column `mech_counts_term`**, appended: the counts term of
+  `mech_log_lr_vs_artifact`, unrounded.
+  - Worlds recorded earlier read it from `mech_terms`, which rounds it to
+    3 decimals.
+  - The replay loads `alt_measured_lengths` as a list of ints, as the
+    decision reads it.
+
 **The ledger measures the counts term's local null, and no call changes.**
 The counts term's null is a model: under H_artifact a read shows the signal
 with probability eps, from the locus's composition. Nothing checked it, as
@@ -80,8 +146,8 @@ cichlid slice. Each was compared with its 1.0.0a4 run
 
 ### Added
 
-- Ledger columns, appended after `alt_measured_lengths`, all written for
-  replay and read by no decision:
+- Ledger columns, appended after `alt_measured_lengths`, written for replay
+  (round 20's decision reads the `byseq` tally):
   - `mech_tsd_len`, `mech_tsd_p_present`, `mech_decoy_tsd_p_present`,
     `mech_decoy_tsd_hits`, `mech_decoy_sum_absent`,
     `mech_decoy_sum_present_per_p`;

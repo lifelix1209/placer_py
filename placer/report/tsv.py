@@ -119,7 +119,7 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "mech_e_value", "mech_ebh_selected", "mech_structural_selected",
     "mech_collapse_region", "alt_carrier_reads",
     "alt_measured_length_reads", "alt_measured_lengths",
-    # Recorded for replay, read by no decision (`EvidenceLedgerRow`).
+    # Recorded for replay (`EvidenceLedgerRow`); the decision reads the byseq tally.
     "mech_tsd_len", "mech_tsd_p_present", "mech_decoy_tsd_p_present",
     "mech_decoy_tsd_hits", "mech_decoy_sum_absent", "mech_decoy_sum_present_per_p",
     "allele_length", "allele_carrier_offsets", "allele_carrier_lengths",
@@ -134,6 +134,8 @@ EVIDENCE_LEDGER_COLUMNS: tuple[str, ...] = (
     "allele_bylen_eps", "allele_bylen_bg_reads", "allele_bylen_bg_hits",
     "allele_byseq_eps", "allele_byseq_bg_reads", "allele_byseq_bg_hits",
     "allele_wide_eps", "allele_wide_bg_reads", "allele_wide_bg_hits",
+    # Read by the decision (`mechanism_selection.allele_log_lr_vs_artifact`).
+    "mech_counts_term",
 )
 
 _LEDGER_INSERT_SEQ_AFTER = "event_consensus_len"
@@ -328,6 +330,7 @@ def evidence_ledger_row(row: EvidenceLedgerRow, include_insert_seq: bool = False
         row.allele_bylen_eps, row.allele_bylen_bg_reads, row.allele_bylen_bg_hits,
         row.allele_byseq_eps, row.allele_byseq_bg_reads, row.allele_byseq_bg_hits,
         row.allele_wide_eps, row.allele_wide_bg_reads, row.allele_wide_bg_hits,
+        row.mech_counts_term,
     ]
     return [_number(value) for value in values]
 

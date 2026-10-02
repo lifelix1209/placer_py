@@ -22,17 +22,39 @@ THE STEPS, over every evaluated hypothesis the scan recorded:
      The shifted null is not contaminated by true insertions -- a decoy is
      where the insertion is not -- which is what defeated calibrating on the
      candidates themselves (README, "The blocker").
-  3. LOCI. Rows within LOCUS_MERGE_BP of each other are one locus, tested
-     once. Its e-value is the MEAN of its rows' e-values: the max is not an
-     e-value (under the null its mean can reach the number of rows, so a locus
-     evaluated as many hypotheses would get that many chances), and the mean
-     is one under any dependence. Its best-scoring row represents it: names,
-     labels and places the call.
-  4. ONE e-BH on the decoy-adjusted exp(vs_artifact) over all loci: the
-     insertions. FDR is controlled on "an insertion is here".
+  3. LOCI. Rows within LOCUS_MERGE_BP of each other are one locus, and
+     consecutive loci whose alleles overlap are one locus too
+     (`_merge_by_allele`). Each is tested once. Its e-value is the MEAN of its
+     rows' e-values: the max is not an e-value (under the null its mean can
+     reach the number of rows, so a locus evaluated as many hypotheses would
+     get that many chances), and the mean is one under any dependence. Its
+     best-scoring row by the row's OWN ratio represents it: names, labels and
+     places the call.
+  4. ONE e-BH over all loci, on the decoy-adjusted exp of the ALLELE's
+     artifact ratio (`allele_log_lr_vs_artifact`): the insertions. FDR is
+     controlled on "an insertion is here".
   5. TEBench's rule on each selected insert: a TE call when TE hits cover at
-     least half of it and at least 100 bp, a structural call otherwise.
+     least half of it and at least 100 bp, and the alt reads measure the
+     insertion at 100 bp or more (`measured_insert_length`); a structural call
+     otherwise.
   6. Precise placement (`_placement`).
+
+TESTING AN ALLELE, NOT A WINDOW (round 20, 2026-10-02; docs/development-
+strategy.md, section 8). In a tandem repeat the aligner puts one insertion at
+different offsets in different reads, and a row's +-25 bp tally counts the
+carriers it misses as reference. The scan's same-sequence tally
+(`events.collect_allele_evidence`, `byseq`) gathers them; where it finds
+carriers beyond the row's own, the allele's counts term replaces the row's
+own in the ratio the locus is TESTED on. Which row represents the locus, and
+so its label, family and position, is still chosen by the rows' own ratios:
+letting the allele term choose it moved 51 true calls on the whole-genome
+DREAM contigs to structural or misplaced rows.
+
+THE MEASURED-LENGTH FLOOR (same round). The assembly inflates short
+insertions: 19 of 26 FPs whose GIAB insertion is not TE truth were 62-99 bp
+in GIAB and 108-227 bp assembled. An insertion its own reads measure at under
+100 bp cannot hold the rule's 100 bp of TE. Reads are biased short (ONT
+deletions, about 9%), so the floor errs towards fewer TE calls.
 
 The vs_non_te ratio is reported as the transposition evidence, not a gate: on
 HG002 chr1 gating on it lost the SVAs, whose identity to the library's
@@ -43,6 +65,7 @@ from __future__ import annotations
 
 import bisect
 import math
+import statistics
 from dataclasses import dataclass, field
 
 from placer.core.ledger import EvidenceLedgerRow
@@ -193,12 +216,66 @@ TE_MIN_COVERED_BP = 100
 #: give the same calls.
 PLACEMENT_WINDOW_BP = 100
 PLACEMENT_MIN_INDEL_SHARE = 0.5
+#: The TE rule's floor on the insertion as its alt reads measure it.
+TE_MIN_MEASURED_LEN_BP = TE_MIN_COVERED_BP
+#: Consecutive loci are one allele when their same-sequence tallies' spans
+#: overlap and their allele lengths are within this share of the longer one.
+ALLELE_LENGTH_TOLERANCE = 0.3
 
 
 def _is_te_insert(item) -> bool:
     return (item.te_union_coverage >= TE_MIN_COVERAGE_FRACTION
             and item.te_union_covered_bp >= TE_MIN_COVERED_BP
             and (item.te_dominant_class or "") not in _NOT_TE_CLASSES)
+
+
+def measured_insert_length(item) -> float | None:
+    """The median of the alt reads' measured insertion lengths, or None when
+    no read measured one."""
+    lengths = item.alt_measured_lengths
+    return statistics.median(lengths) if lengths else None
+
+
+def _is_te_call(item) -> bool:
+    """TEBench's rule on the insert, and the insertion long enough to hold
+    it as the reads measure it. A call no read measured keeps the rule."""
+    measured = measured_insert_length(item)
+    return _is_te_insert(item) and (measured is None or measured >= TE_MIN_MEASURED_LEN_BP)
+
+
+def allele_log_lr_vs_artifact(item) -> float:
+    """The artifact ratio with the allele's counts term in place of the row's
+    own, where the same-sequence tally found carriers beyond the row's own
+    reads; the row's own ratio otherwise."""
+    if item.allele_byseq_extra_carriers > 0:
+        return (item.mech_log_lr_vs_artifact - item.mech_counts_term
+                + item.mech_counts_allele_byseq)
+    return item.mech_log_lr_vs_artifact
+
+
+def _merge_by_allele(loci: list[list]) -> list[list]:
+    """Join consecutive loci that are one allele: their rows' same-sequence
+    spans overlap, and their allele lengths agree within
+    ALLELE_LENGTH_TOLERANCE. A locus with no extra carriers joins nothing."""
+    out: list[list] = []
+    last: tuple[str, int, int, float] | None = None
+    for group in loci:
+        spans = [(item.bp_left + item.allele_byseq_span_lo,
+                  item.bp_left + item.allele_byseq_span_hi, item.allele_length)
+                 for item in group if item.allele_byseq_extra_carriers > 0]
+        here = None
+        if spans:
+            here = (group[0].chrom, min(s[0] for s in spans), max(s[1] for s in spans),
+                    float(statistics.median(s[2] for s in spans)))
+        if (out and here is not None and last is not None and here[0] == last[0]
+                and here[1] <= last[2] and last[1] <= here[2]
+                and abs(here[3] - last[3]) <= ALLELE_LENGTH_TOLERANCE * max(here[3], last[3])):
+            out[-1].extend(group)
+            last = (last[0], min(last[1], here[1]), max(last[2], here[2]), last[3])
+        else:
+            out.append(list(group))
+            last = here
+    return out
 
 
 def _placement(group: list, rep, artifact) -> int:
@@ -218,17 +295,21 @@ def _placement(group: list, rep, artifact) -> int:
 
 
 def select_loci_coverage(items: list, q: float) -> ShadowSelection:
-    """The decision replayed as `coverage_rule` + precise placement.
+    """The decision replayed as `coverage_rule` + precise placement, testing
+    alleles (round 20).
 
       1. Alignment-collapse regions get e = 0 and stay in m.
-      2. The per-class decoy check adjusts the artifact ratio.
-      3. Loci, each tested once: ONE e-BH over all loci, on the mean of the
-         locus's rows' exp(adjusted artifact ratio). These are the insertions.
-         The row with the highest ratio represents the locus.
+      2. The per-class decoy check adjusts the artifact ratios, the row's own
+         and the allele's alike (the decoys measure the linkage terms only).
+      3. Loci, merged by allele, each tested once: ONE e-BH over all loci, on
+         the mean of the locus's rows' exp(adjusted ALLELE ratio). These are
+         the insertions. The row with the highest OWN ratio represents the
+         locus.
       4. A selected insertion is a TE call when TEBench's rule holds on its
-         insert, and a structural call otherwise. It is named after the family
+         insert and its reads measure it at 100 bp or more (`_is_te_call`),
+         and a structural call otherwise. It is named after the family
          covering the most of it.
-      5. It is placed by `_placement`.
+      5. It is placed by `_placement`, on the rows' own ratios.
 
     Marks the representative item: `mech_e_value`, `mech_ebh_selected` (TE) or
     `mech_structural_selected`, and `mech_call_pos`: the precise breakpoint to
@@ -237,15 +318,20 @@ def select_loci_coverage(items: list, q: float) -> ShadowSelection:
     collapse = {id(items[i]) for i in collapse_region_items(items)}
     out = ShadowSelection(checks=decoy_checks(items), collapse_items=len(collapse))
 
+    def log_factor(item) -> float:
+        return math.log(out.checks.get(item.te_annotation_class or "NA",
+                                       out.checks["ALL"]).factor)
+
     def artifact(item) -> float:
-        check = out.checks.get(item.te_annotation_class or "NA", out.checks["ALL"])
-        return item.mech_log_lr_vs_artifact - math.log(check.factor)
+        return item.mech_log_lr_vs_artifact - log_factor(item)
 
     def adjusted(item) -> float:
         return -math.inf if id(item) in collapse else artifact(item)
 
     def e_value(item) -> float:
-        return math.exp(min(adjusted(item), 700.0))
+        if id(item) in collapse:
+            return 0.0
+        return math.exp(min(allele_log_lr_vs_artifact(item) - log_factor(item), 700.0))
 
     for item in items:
         item.mech_collapse_region = id(item) in collapse
@@ -253,7 +339,7 @@ def select_loci_coverage(items: list, q: float) -> ShadowSelection:
         item.mech_ebh_selected = False
         item.mech_structural_selected = False
         item.mech_call_pos = -1
-    loci = _loci(items)
+    loci = _merge_by_allele(_loci(items))
     out.loci = len(loci)
     best = [max(group, key=adjusted) for group in loci]
     # The mean, as a sum of e/n so that many rows at the cap cannot overflow.
@@ -265,7 +351,7 @@ def select_loci_coverage(items: list, q: float) -> ShadowSelection:
     for index in ebh_select(e_values, q):
         rep = best[index]
         rep.mech_call_pos = _placement(loci[index], rep, artifact)
-        if _is_te_insert(rep):
+        if _is_te_call(rep):
             rep.mech_ebh_selected = True
             out.te_selected += 1
         else:

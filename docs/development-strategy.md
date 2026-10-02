@@ -193,7 +193,7 @@ Here that means:
 | **human chr1** (TEBench development contig) | The dreaming pool's primary world. |
 | **cichlid D2 chr1:10–20 Mb** | Pool guard. Its truth panel is pending. |
 | **human chr2–8** (development contigs) | Online validation only, never dreamt on. A change accepted in replay is confirmed here before any default switches. |
-| **TEBench holdout contigs** | Not touched until the release benchmark. |
+| **TEBench holdout contigs** | Not touched until the release benchmark. Spent on 1.0.0a3's; since 2026-10-02 dreamt on, never used to accept (below). |
 | **the 10 Mb dev slices** | Smoke tests only. With six truth insertions they can neither accept nor reject anything. |
 
 ### Release benchmark 1.0.0a3 (pre-registered 2026-09-28, amended 2026-09-29)
@@ -289,6 +289,23 @@ before the holdout was scored.
   - From then on, human chr9–22, X and Y cannot accept or reject any
     candidate. The next untouched set is mouse, once its truth is built.
 
+### Dreaming on the spent holdout (maintainer, 2026-10-02)
+
+chr1 holds 229 TE truth loci. That is too few to show an FP mechanism, and
+its precision sits at the floor, where a recall gain cannot be certified
+(round 9). The maintainer asked to look at the FP mechanism on more data.
+- **The dreaming pool** is chr1 plus the spent holdout chr9-22, X and Y:
+  1802 TE truth loci. It is read from a whole-genome world (`frozen/rec2` on
+  TEBench's full/r0 `rN.bam`, `placer_dev/record2/wgs`).
+- **What the holdout may do.** Diagnosis and candidate development, as on
+  chr1. It still accepts and rejects nothing (above).
+- **chr2-8 is unchanged.** It stays online validation only. A whole-genome
+  policy needs every contig's rows (e-BH's m, the decoy factors and the
+  collapse rule pool them), so chr2-8's rows are in the world. Its truth is
+  never loaded there (`placer_dev/wgsdream/wgs.py` asserts it).
+- **Acceptance is unchanged.** The bootstrap on chr1 (`h_chr1_rec2`), the
+  guards, and a pre-registered chr2-8 validation before a default changes.
+
 ## 6. Worlds
 
 - **Record from frozen code.** Use `--record-world` from a snapshot or
@@ -298,6 +315,18 @@ before the holdout was scored.
   rsync -a --exclude .git <worktree>/ placer_dev/frozen/<name>/
   ```
   Then submit with `REPO=` pointing at the snapshot.
+- **One job per node, or a pause before a chained one.** Sometimes a scan's
+  workers die within seconds of the start, in `SemLock._rebuild`
+  (`FileNotFoundError`; "a scan worker died after 0 of N chunks"). Their
+  POSIX semaphores are gone from the node. The cause is not established. Every
+  case so far started while another job of the same user started or ended on
+  that node:
+  - 1.0.0a4's first A/B run: 7 of 9 jobs, packed 4-5 per node;
+  - round 20: chr2, started on node6 a minute after chr1 (which ran on);
+  - round 20: chr7, started on node8 in the second that chr3 ended there.
+  Resubmitted alone, each ran. Pin jobs with `--nodelist`, and chain the
+  rest with `--dependency` and a sleep of about 90 s before the scan
+  (`placer_dev/release_r20/r20_check.sh`, `DELAY`).
 - **Register the world with its scan commit.**
   ```
   python3 -m tools.dream.run register NAME --path RUN --dataset DS --region R --scan-commit C
@@ -323,6 +352,10 @@ before the holdout was scored.
     replays an older world as its scan decided it. The `mech_terms` values
     are rounded to 3 decimals: compute a changed term's delta from the model,
     not by subtracting the recorded term.
+  - **Worlds scanned before round 20** (`frozen/r20-rc1`) lack
+    `mech_counts_term`. The loader reads it from `mech_terms`, so an
+    allele's ratio replays to +-5e-4 nats on them. On the nine rec2 worlds
+    that moved no decision.
 - **Check a new world before using it.** Replaying `current` on it must give
   exactly the online run's selection. It did for both worlds recorded in
   round 1: 125 TE calls on chr1, and 286 TE / 183 structural on cichlid.
@@ -754,6 +787,78 @@ cause.**
   benchmark puts them, not false alleles. Each such allele turns an FN into
   an FP + FN. Where to place a multimodal allele is a replay question: the
   carriers' offsets are recorded.
+
+**Rounds 18-20 (2026-10-02): dreamt on chr1 and the spent holdout.** The
+maintainer asked how to raise precision and recall together. The pool is the
+whole-genome world's chr1 + chr9-22, X, Y (section 5), where production
+scores 1336 / 67 / 466 (P 95.2%, R 74.1%). Work and numbers are in
+`placer_dev/wgsdream`.
+- **The FPs, classified against the truth and GIAB's insertions.**
+  - 28 are misplaced: an unmatched TE truth sits within 1 kb, mostly
+    100-200 bp away. Sniffles2, on the same BAM, places only 8 of the 28
+    within 100 bp. Shifting the insert along the reference (the VCF's
+    left-normalisation) reaches none of them. They are tandem-repeat
+    position conventions, not fixable from the reads.
+  - 26 have a GIAB insertion within 100 bp that is not TE truth. In 19 of
+    them GIAB's is 62-99 bp, under the TE rule's 100 bp, and the assembled
+    insert 108-227 bp. **The assembly inflates short insertions.** The alt
+    reads' own measured lengths put the median under 100 bp at 20 of the 26,
+    and at 13 of the 1336 TPs.
+  - 10 have no GIAB insertion within 1 kb.
+- **The FNs, with how many Sniffles2 finds.**
+  - Artifact ratio <= 0: 90 (33).
+  - Below e-BH: 75 (56). At those loci the counts term caps near 9-10 nats
+    even at 50 alt reads, and every linkage term is negative. That is a
+    validity question, and it is left for now.
+  - Labelled structural: 73 (33).
+  - Placed 100 bp-1 kb away: 60 (14).
+- **Why round13 failed.** It turned 84 FNs into TPs and 52 TPs into FNs. 51
+  of the 52 were still selected. The allele term had changed which row
+  represents the locus, and that row then labelled it (structural, for about
+  half) and placed it (100-450 bp off).
+- **round18: place at the leftmost precise row of the allele** (truth is
+  left-normalised: truth - call lies in [-20, -1] for 597 TPs and in
+  [+1, +20] for 32). 1340 / 65, gain +0.002 [-0.003, +0.034]: rejected
+  (chr1 node 6bd111579f).
+- **round19: round13's test, with production's representative.**
+  1396 / 96, P 93.6%: rejected (node b897b80a74). The extra FPs are mostly
+  still misplaced rescues, and four duplicates: an 8 kb ERVK split into two
+  loci that `merge=1` joins.
+- **round20 gate only: the measured-length floor.** 1323 / 41, P 97.0%,
+  R 73.4%: rejected for recall (node f171e2f078). It buys precision the
+  objective does not reward above the floor.
+- **round20: both** (tally=byseq, merge=1, production representative and
+  placement, gate=median).
+  - The pool: 1382 / 65 / 420, P 95.5%, R 76.7%, gain +0.026 [+0.012,
+    +0.085].
+  - chr1: 178 / 7 / 51, gain +0.083 [+0.013, +0.296], invariant. ACCEPT
+    (node e91bd5e785).
+  - Cichlid: PASS 179 -> 173; tldr 58 / 78 unchanged; unsupported 32 -> 31.
+  - **Pre-registered on chr2-8** (`placer_dev/wgsdream/prereg`, node
+    aa2e6f4453): 923 / 42 / 316 -> 949 / 31 / 290, P 95.6% -> 96.8%,
+    R 74.5% -> 76.6%, gain +0.021 [+0.013, +0.070]. **PASS.** Every
+    chromosome gained TPs and none gained FPs.
+  - **Its null.** The allele's counts term is scored at the span's model
+    eps. Round 17 measured that tally's signal where the insertion is not at
+    a median of 0.12 of the model, so the model is conservative there. The
+    decoy factors are unchanged, because the decoys measure only the linkage
+    terms.
+  - Promoted into `mechanism_selection`. On all nine rec2 worlds, `current`
+    replays to round20's decisions exactly.
+  - **Online** (`frozen/r20-rc1`, all nine release runs). The calls are
+    the replay's on every run. TEBench gives chr1 178 / 7 / 51 and chr2-8
+    949 / 31 / 290, at 9.36 CPU-h against 9.42.
+- **Lessons.**
+  - **A precision fix and a recall fix can each fail the objective and pass
+    together.** Above the floor the objective rewards only recall, and below
+    it a recall gain is swamped. The gate made headroom that the allele test
+    spent.
+  - **Test, label and place are three questions.** Answering all three from
+    the row that scores highest on the test let a better test move true
+    calls.
+  - **Data large enough to classify FPs changes the diagnosis.** On chr1,
+    round13's FPs looked like placement alone. On 1802 loci they were
+    placement, representative switching, inflated inserts and duplicates.
 
 ## 9. Checklist for a change to what PLACER decides
 

@@ -78,11 +78,12 @@ def test_a_world_keeps_evaluated_rows_as_numbers_and_defaults_what_it_lacks():
 
 def test_a_world_says_it_has_no_measured_lengths_rather_than_zero():
     """Scans before 1.0.0a4 did not record what the alt reads measured: -1
-    and NA say "not measured", where 0 would be a measurement."""
+    says "not measured", where 0 would be a measurement. The list is empty,
+    which the decision's TE rule reads as no read measured it."""
     rows, missing = _world_rows([_row(1000, 30.0)])
     assert {"alt_measured_length_reads", "alt_measured_lengths"} <= set(missing)
     assert rows[0].alt_measured_length_reads == -1
-    assert rows[0].alt_measured_lengths == "NA"
+    assert rows[0].alt_measured_lengths == []
 
 
 def test_a_world_before_the_replay_observables_replays_as_its_scan_decided():
@@ -101,7 +102,9 @@ def test_a_world_before_the_replay_observables_replays_as_its_scan_decided():
         -1.0, -1, -1)
 
 
-def test_a_recorded_single_length_stays_text_like_a_list_of_them():
+def test_recorded_lengths_load_as_the_scans_list_of_ints():
+    """The decision reads them as the scan holds them (`FinalCall`), so a
+    single length is a list of one, not a number."""
     columns = LEDGER_COLUMNS + ("alt_measured_length_reads", "alt_measured_lengths")
     path = Path(tempfile.mkdtemp(prefix="dream_test_")) / "evidence_ledger.tsv"
     values = [dict(_row(1000, 30.0), alt_measured_length_reads="1", alt_measured_lengths="312"),
@@ -111,8 +114,25 @@ def test_a_recorded_single_length_stays_text_like_a_list_of_them():
                               + ["\t".join(r[c] for c in columns) for r in values]) + "\n")
     rows, missing = world.load_rows(path)
     assert "alt_measured_lengths" not in missing
-    assert [r.alt_measured_lengths for r in rows] == ["312", "300,310"]
+    assert [r.alt_measured_lengths for r in rows] == [[312], [300, 310]]
     assert [r.alt_measured_length_reads for r in rows] == [1, 2]
+
+
+def test_an_older_world_reads_the_counts_term_from_its_terms():
+    """Scans before round 20's decision wrote the counts term only inside
+    `mech_terms`, rounded to 3 decimals; a later scan writes it on its own."""
+    columns = LEDGER_COLUMNS + ("mech_terms",)
+    path = Path(tempfile.mkdtemp(prefix="dream_test_")) / "evidence_ledger.tsv"
+    value = dict(_row(1000, 30.0), mech_terms="sequence=12.000;counts=8.487;tsd=-1.897")
+    path.write_text("\n".join(["\t".join(columns), "\t".join(value[c] for c in columns)]) + "\n")
+    rows, missing = world.load_rows(path)
+    assert "mech_counts_term" in missing and rows[0].mech_counts_term == 8.487
+
+    columns = columns + ("mech_counts_term",)
+    value["mech_counts_term"] = "8.48712345"
+    path.write_text("\n".join(["\t".join(columns), "\t".join(value[c] for c in columns)]) + "\n")
+    rows, missing = world.load_rows(path)
+    assert "mech_counts_term" not in missing and rows[0].mech_counts_term == 8.48712345
 
 
 def test_the_insert_is_the_consensus_less_its_flanks_unless_recorded():
