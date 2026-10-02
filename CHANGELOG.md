@@ -12,6 +12,10 @@ that file says what it cost.
 
 ## [Unreleased]
 
+Nothing yet.
+
+## [1.0.0a5] - 2026-10-02
+
 **Higher recall and higher precision: each locus is tested on its whole
 allele, and the TE rule's 100 bp floor applies to the length the reads
 measure.** This is round 20 of `docs/development-strategy.md` (section 8). It

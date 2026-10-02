@@ -10,13 +10,13 @@ this implementation departed from the C++ up to that point is recorded in
 [`docs/departures-from-cpp.md`](docs/departures-from-cpp.md). Every module's
 docstring still names the C++ file it came from.
 
-## 1.0.0a4: where it stands
+## 1.0.0a5: where it stands
 
 An alpha of PLACER 1.0. It calls **TE insertions** from long reads (ONT): BAM
 in, VCF out. An insertion that is not a TE is recorded in the evidence ledger
 but not reported.
 
-1.0.0a4 scores what 1.0.0a1 scored on HG002 chr1-8:
+1.0.0a5 is the first release since 1.0.0a1 to change what it calls:
 - 1.0.0a2 made it about five times faster. Every 1.0.0a1 release run was
   rerun with its own arguments, its output files were the same bytes, and
   HG002 chr1-8 takes 8.4 CPU-hours against 42.4 (see [Speed](#speed)).
@@ -30,6 +30,13 @@ but not reported.
     tldr supports went.
   - The ledger also records what each alt read measured the insertion to
     be.
+- 1.0.0a5 raises recall and precision together. On HG002 chr2-8 it goes from
+  923 / 42 to 949 / 31 (TP / FP), recall 74.5% -> 76.6%, precision
+  95.6% -> 96.8%. Two changes:
+  - each locus is tested on its whole allele: carriers the aligner put
+    elsewhere in a tandem repeat count for it;
+  - a TE call needs its reads to measure the insertion at 100 bp or more,
+    because the assembly inflated short insertions past the TE rule.
 
 **How it decides.**
 
@@ -52,11 +59,16 @@ but not reported.
 2. **Finalization**, once, over the whole run (`core/mechanism_selection.py`):
    - hypotheses in alignment-collapse regions get e = 0;
    - a per-class decoy check bounds each class's e-values;
-   - hypotheses within 300 bp are one locus, tested once, on the mean of its
-     hypotheses' e-values;
+   - hypotheses within 300 bp are one locus, and loci whose alleles overlap
+     are one locus too;
+   - each locus is tested once, on the mean of its hypotheses' e-values;
+     where the scan found the allele's carriers beyond a hypothesis's own
+     window, its read-count term is the allele's;
    - one e-BH at q = 0.1 controls the FDR of "an insertion is here";
+   - the hypothesis with the best own evidence represents the locus;
    - a selected insertion is a TE call when TE hits cover >= 50% and >= 100 bp
-     of it, and it is named after the family covering the most;
+     of it and its alt reads measure it at >= 100 bp; it is named after the
+     family covering the most;
    - a call tested by a breakpoint interval moves to the locus's exact
      hypothesis with the most indel reads, where one lies within 100 bp;
    - calls are genotyped from their allele counts, with the sample's own
@@ -68,8 +80,10 @@ but not reported.
    - FAM_ABSTAIN marks a TE call whose class is not committed.
 
 **How well**:
-- the counts are 1.0.0a1's:
-  - 1.0.0a2 reproduces its calls byte for byte;
+- 1.0.0a5 is online, from frozen code, on every release run. Its calls are
+  exactly the replay that was validated, pre-registered, on chr2-8.
+- 1.0.0a1 to 1.0.0a4 share one set of counts:
+  - 1.0.0a2 reproduces 1.0.0a1's calls byte for byte;
   - 1.0.0a3 changes only their GT and GQ;
   - 1.0.0a4 trades four true positives;
 - scored by TEBench's pipeline (`tools/tebench_score.py`);
@@ -77,23 +91,26 @@ but not reported.
 
 | caller | chr1 TP / FP | chr1 P / R | chr2-8 TP / FP | chr2-8 P / R |
 |---|---|---|---|---|
-| **PLACER 1.0.0a4** (= 1.0.0a1) | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
+| **PLACER 1.0.0a5** | 178 / 7 | 96.2% / 77.7% | 949 / 31 | 96.8% / 76.6% |
+| PLACER 1.0.0a4 (= 1.0.0a1) | 171 / 10 | 94.5% / 74.7% | 923 / 42 | 95.6% / 74.5% |
 | Sniffles2 | 180 / 11 | 94.2% / 78.6% | 1025 / 46 | 95.7% / 82.7% |
 | GraffiTE | 166 / 10 | 94.3% / 72.5% | 909 / 49 | 94.9% / 73.4% |
 | cuteSV | 171 / 15 | 91.9% / 74.7% | 957 / 63 | 93.8% / 77.2% |
 | tldr | 119 / 2 | 98.3% / 52.0% | 674 / 15 | 97.8% / 54.4% |
 
 - **Where the numbers come from.** The other callers are TEBench's own runs,
-  scored the same way. chr1 is where the decision layer was developed. chr2-8
-  were used only to validate candidates, never to develop them. TEBench's
-  holdout contigs have not been looked at.
+  scored the same way.
+  - chr1 is where the decision layer was developed. Since 1.0.0a5 it is
+    developed on chr1 and TEBench's holdout contigs (chr9-22, X, Y). Those
+    were spent, once, on the 1.0.0a3 release benchmark.
+  - chr2-8 were used only to validate candidates, never to develop them.
 - **The same numbers two ways.** Each run's PASS calls are exactly the
   replay of its own evidence ledger, and the replay scores the same numbers.
-- **Cichlid**, `chr1:10-20 Mb`, no truth set. 179 PASS TE calls (180
-  before 1.0.0a4):
-  - 80.4% lie within 100 bp of a Sniffles2 insertion (80.0% before);
+- **Cichlid**, `chr1:10-20 Mb`, no truth set. 173 PASS TE calls (179
+  before 1.0.0a5: the six the reads measure under 100 bp went):
+  - 80.3% lie within 100 bp of a Sniffles2 insertion (80.4% before);
   - 58 of tldr's 78 PASS calls are matched, as before.
-- **Cost**, 16 threads, 1.0.0a2 (1.0.0a3 and 1.0.0a4 cost the same; see
+- **Cost**, 16 threads, 1.0.0a2 (1.0.0a3 to 1.0.0a5 cost the same; see
   `CHANGELOG.md`):
   - HG002 chr1-8 took 8.4 CPU-hours in all (1.0.0a1: 42.4);
   - chr1 took 2.05 CPU-hours and 13 min (1.0.0a1: 10.3 and 2 h 55 min);
@@ -103,11 +120,12 @@ but not reported.
     CPU-hours and 50 min, with a peak of 19 GB. The target was 30.
 
 **What it does not do yet.**
-- **Whole-genome accuracy.** The whole genome has been run (see Cost), but it
-  is scored outside chr1-8 only once TEBench's release benchmark finishes.
-- **Tandem repeats.** An allele that the aligner scatters across a tandem
-  repeat loses its reads to the reference count; that is most of what is
-  left of the recall gap to Sniffles2.
+- **Whole-genome accuracy of 1.0.0a5.** TEBench's release benchmark scored
+  1.0.0a3 over the whole genome, once. 1.0.0a5 has not been benchmarked
+  there.
+- **Tandem repeats.** 1.0.0a5 counts an allele's scattered carriers, but
+  where the reads place such an insertion is often more than 100 bp from the
+  truth's position. Sniffles2 places most of those no better.
 - **Other species.** Only human is scored against a truth set. The cichlid
   slice is checked for consistency with Sniffles2 and tldr; mouse is not
   run yet.
